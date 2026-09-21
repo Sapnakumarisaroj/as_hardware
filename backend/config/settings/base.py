@@ -6,6 +6,7 @@ hardcoded here.
 """
 
 from datetime import timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import environ
@@ -44,6 +45,18 @@ INSTALLED_APPS = [
     # Local
     "apps.core",
     "apps.accounts",
+    "apps.catalog",
+    "apps.stores",
+    "apps.inventory",
+    "apps.offers",
+    "apps.carts",
+    "apps.orders",
+    "apps.payments",
+    "apps.delivery",
+    "apps.reviews",
+    "apps.notifications",
+    "apps.support",
+    "apps.ai",
 ]
 
 MIDDLEWARE = [
@@ -177,7 +190,8 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
-    "SIGNING_KEY": env("JWT_SIGNING_KEY", default=SECRET_KEY),
+    # Blank in .env must fall back too (an empty HMAC key would break every token).
+    "SIGNING_KEY": env("JWT_SIGNING_KEY", default="") or SECRET_KEY,
 }
 
 SPECTACULAR_SETTINGS = {
@@ -187,10 +201,18 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": "/api/",
+    "ENUM_NAME_OVERRIDES": {
+        "OrderStatusEnum": "apps.orders.models.OrderStatus",
+        "OrderPaymentStatusEnum": "apps.orders.models.PaymentStatus",
+        "PaymentRecordStatusEnum": "apps.payments.models.Payment.Status",
+        "ReviewStatusEnum": "apps.reviews.models.Review.Status",
+    },
 }
 
 # --- Business configuration -------------------------------------------------------
 FAST_DELIVERY_MAX_MINUTES = env.int("FAST_DELIVERY_MAX_MINUTES", default=60)
+DELIVERY_FEE = Decimal(env.str("DELIVERY_FEE", default="") or "40.00")
+FREE_DELIVERY_MIN_ORDER = Decimal(env.str("FREE_DELIVERY_MIN_ORDER", default="") or "499.00")
 
 # --- Provider selection (implemented from Phase 8 onwards) ------------------------------
 # Every external service sits behind an interface; these choose the implementation.

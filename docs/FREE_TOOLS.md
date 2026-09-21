@@ -1,0 +1,74 @@
+# Free & Open-Source Tools
+
+Policy: only free/open-source tools, with no paid SaaS, cloud or AI API unless the owner explicitly approves it.
+Every external service has a free mock/local default. Exact versions are pinned in `backend/requirements/*.txt`
+and `frontend/package-lock.json`.
+
+## Backend (Python) — runtime (`requirements/base.txt`)
+| Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Web framework, ORM, admin, migrations | Django 5.2 LTS | ✅ BSD-3 | ✅ | No | LTS, security support until April 2028 |
+| REST APIs, serializers, permissions, throttling | Django REST Framework | ✅ BSD-3 | ✅ | No | |
+| JWT authentication (access + rotating refresh, blacklist) | djangorestframework-simplejwt | ✅ MIT | ✅ | No | Signing key = `DJANGO_SECRET_KEY` unless `JWT_SIGNING_KEY` is set |
+| OpenAPI schema, Swagger UI, ReDoc | drf-spectacular | ✅ BSD-3 | ✅ | No | `/api/docs/`, `/api/redoc/` |
+| CORS allow-list | django-cors-headers | ✅ MIT | ✅ | No | |
+| `.env` / environment config | django-environ | ✅ MIT | ✅ | No | |
+| PostgreSQL driver | psycopg 3 (binary) | ✅ LGPL-3.0 | ✅ | No | Used only if `DATABASE_URL=postgres://…` |
+| Password hashing | argon2-cffi | ✅ MIT | ✅ | No | Argon2id; PBKDF2 fallback built into Django |
+| Static files from the Python app (shared hosting friendly) | WhiteNoise | ✅ MIT | ✅ | No | No separate static server needed |
+| Image validation for product/delivery-proof uploads | **Pillow** *(new in Phase 2)* | ✅ MIT-CMU (HPND) | ✅ | No | Needed by Django `ImageField`; prebuilt wheels, no compiler on hosting |
+
+## Backend — optional / environment-specific
+| Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| MySQL/MariaDB driver | PyMySQL (`requirements/mysql.txt`) | ✅ MIT | ✅ | No | Pure Python; for MySQL-only shared hosting |
+| Production WSGI server (VPS only) | gunicorn (`requirements/prod.txt`) | ✅ MIT | ✅ | No | Shared hosting uses Passenger via `passenger_wsgi.py` instead |
+| Local database | SQLite (bundled with Python) | ✅ Public domain | ✅ | No | Default when `DATABASE_URL` is blank |
+
+## Backend — development & testing (`requirements/dev.txt`)
+| Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Test runner | pytest | ✅ MIT | ✅ | No | |
+| Django test integration | pytest-django | ✅ BSD-3 | ✅ | No | |
+| Coverage | pytest-cov | ✅ MIT | ✅ | No | |
+| Lint + formatter | Ruff | ✅ MIT | ✅ | No | `ruff check .`, `ruff format .` |
+| Test data builders | `apps/core/testing.py` (in-repo) | ✅ project code | ✅ | No | No factory library needed |
+
+## Frontend (unchanged in Phase 2)
+| Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| UI library | React 19 | ✅ MIT | ✅ | No | |
+| Routing | React Router | ✅ MIT | ✅ | No | |
+| Server state / caching | TanStack Query | ✅ MIT | ✅ | No | |
+| HTTP client | Axios | ✅ MIT | ✅ | No | |
+| Build tool / dev server | Vite (+ @vitejs/plugin-react) | ✅ MIT | ✅ | No | Builds static files; no Node.js needed on the server |
+| Type checking | TypeScript | ✅ Apache-2.0 | ✅ | No | |
+| Styling | Tailwind CSS 4 (+ @tailwindcss/vite) | ✅ MIT | ✅ | No | |
+| Lint | ESLint, typescript-eslint, react-hooks & react-refresh plugins, globals | ✅ MIT | ✅ | No | |
+| Tests | Vitest, jsdom, Testing Library (react, jest-dom, user-event) | ✅ MIT | ✅ | No | |
+
+## Tooling on the dev machine
+| Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Python runtime | CPython 3.11 | ✅ PSF | ✅ | No | |
+| JavaScript runtime | Node.js 24 LTS (portable zip) | ✅ MIT | ✅ | No | In `%LOCALAPPDATA%\tools`, not on system PATH |
+| Version control | Git | ✅ GPL-2.0 | ✅ | No | |
+| Containers (optional, local only) | Docker Desktop | ⚠️ Free for personal use, education, and small businesses (< 250 employees **and** < $10M revenue); larger companies need a paid subscription | ✅ | No | **Not required.** The project runs without it; production never uses it |
+
+## Integrations — defaults vs. optional production providers
+| Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Payments (dev) | `MockPaymentProvider` (in-repo, `integrations/payments/mock.py`) | ✅ project code | ✅ | No | Moves no money; HMAC-signed intents; **blocked in production** |
+| Payments (prod, optional) | Razorpay | ❌ Commercial gateway (per-transaction fee, no subscription) | ❌ | Yes | Phase 8. Optional; COD works without it |
+| WhatsApp (dev) | `MockWhatsAppProvider` (Phase 20) | ✅ project code | ✅ | No | Records messages; never claims real delivery |
+| WhatsApp (prod, optional) | WhatsApp Business Cloud API (Meta) | ❌ Meta pricing per conversation/template | ❌ | Yes | Needs owner approval + Meta business account |
+| Maps (planned) | OpenStreetMap tiles + Leaflet; Nominatim geocoding | ✅ ODbL data / BSD-2 library | ✅ | No | Respect Nominatim policy (≤ 1 req/s, cache results, identify User-Agent) |
+| Distance / ETA (planned) | Haversine (in-repo Python) | ✅ | ✅ | No | Routing APIs are optional later |
+| AI (dev, planned) | Ollama + open models (e.g. Llama 3.1, Qwen 2.5, LLaVA) | ✅ MIT runtime; model licences vary | ✅ | No | Needs local RAM/GPU; not usable on shared hosting |
+| AI (prod default) | `none` provider: rule-based fallbacks | ✅ project code | ✅ | No | No paid AI API is subscribed automatically |
+| Email (prod) | SMTP mailbox from the hosting plan | ✅ included in hosting | ❌ | SMTP password | Console backend in dev |
+| SMS (prod, optional) | MSG91 / Twilio | ❌ paid per message | ❌ | Yes | Mock provider until approved |
+
+## Deliberately NOT used
+Redis, Celery, RabbitMQ, Elasticsearch/OpenSearch, pgvector-only features, paid vector databases, AWS/Azure/GCP services,
+Sentry SaaS, and any paid AI API. They are replaced by DB-backed queues + cron, DB cache, portable SQL search, and in-Python vector math.

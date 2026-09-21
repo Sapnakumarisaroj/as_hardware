@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest -p no:cacheprovider -x -q apps/catalog apps/inventory apps/carts 2>&1 | Select-Object -Last 40)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest -p no:cacheprovider -q 2>&1 | Select-Object -Last 5)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest -p no:cacheprovider -q 2>&1 | Select-Object -Last 3; .\\\\.venv\\\\Scripts\\\\ruff.exe format . | Select-Object -Last 1; .\\\\.venv\\\\Scripts\\\\ruff.exe check .; .\\\\.venv\\\\Scripts\\\\python.exe manage.py makemigrations --check --dry-run; .\\\\.venv\\\\Scripts\\\\python.exe manage.py check)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\ruff.exe check .; .\\\\.venv\\\\Scripts\\\\ruff.exe format --check . | Select-Object -Last 1; .\\\\.venv\\\\Scripts\\\\python.exe -m pytest -p no:cacheprovider -q 2>&1 | Select-Object -Last 2)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest -p no:cacheprovider -q 2>&1 | Select-Object -Last 2; .\\\\.venv\\\\Scripts\\\\ruff.exe check .; .\\\\.venv\\\\Scripts\\\\ruff.exe format --check . | Select-Object -Last 1; .\\\\.venv\\\\Scripts\\\\python.exe manage.py makemigrations --check --dry-run)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest -p no:cacheprovider -q 2>&1 | Select-Object -Last 2; .\\\\.venv\\\\Scripts\\\\ruff.exe check .)"
+    ]
+  }
+}

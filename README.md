@@ -2,7 +2,7 @@
 
 AI-powered hardware marketplace with fast (~60-minute) delivery: a Django REST API and a React SPA.
 
-> Status: **Phase 1 complete** (foundation). See [TASKS.md](TASKS.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
+> Status: **Phase 2 complete** (database + backend foundation). See [TASKS.md](TASKS.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
 
 | | |
 |---|---|
@@ -20,6 +20,8 @@ cd backend
 py -3.11 -m venv .venv
 .\.venv\Scripts\pip install -r requirements\dev.txt
 .\.venv\Scripts\python manage.py migrate
+.\.venv\Scripts\python manage.py seed_demo_data     # optional: DEMO catalog/stores/stock (dev only)
+.\.venv\Scripts\python manage.py createsuperuser
 .\.venv\Scripts\python manage.py runserver
 
 cd ..\frontend                  # second terminal
@@ -51,6 +53,7 @@ npm run lint; npm run typecheck; npm test; npm run build
 - [API](docs/API.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Deployment](docs/DEPLOYMENT.md), including the hosting questions to answer
+- [Free tools & dependencies](docs/FREE_TOOLS.md)
 
 ## Principles
 - AI never invents prices, stock, availability, reviews, compatibility or analytics. Every product fact comes from the database.

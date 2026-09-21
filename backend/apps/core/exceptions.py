@@ -29,6 +29,18 @@ class ServiceError(exceptions.APIException):
         self.details = details or {}
 
 
+class NotFoundError(ServiceError):
+    status_code = status.HTTP_404_NOT_FOUND
+    default_detail = "Not found."
+    default_code = "not_found"
+
+
+class ConflictError(ServiceError):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "The request conflicts with the current state."
+    default_code = "conflict"
+
+
 def _envelope(code: str, message: str, details, status_code: int) -> Response:
     return Response(
         {"error": {"code": code, "message": message, "details": details}, "request_id": request_id_var.get()},

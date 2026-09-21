@@ -45,23 +45,24 @@ with optional local PostgreSQL/MySQL matching production. Ollama provides a free
 as_hardware/
 ├── backend/
 │   ├── config/settings/     base / dev / test / prod (all env-driven)
-│   ├── apps/
-│   │   ├── core/            base models (timestamps, soft delete), health, error envelope, request ID, audit log, jobs
-│   │   ├── accounts/        custom User + roles (Phase 1); profile, addresses, auth flows (Phases 2–3)
-│   │   ├── catalog/         categories (tree), brands, products, variants, specs, images, search      (Phase 4)
-│   │   ├── locations/       stores/warehouses, delivery zones                                          (Phase 9)
-│   │   ├── inventory/       inventory per store, stock movements, reservations                        (Phase 7)
-│   │   ├── shopping/        cart, wishlist, recently viewed                                           (Phase 6)
-│   │   ├── promotions/      coupons, offers                                                            (Phase 6)
-│   │   ├── orders/          orders, items, status history, returns                                    (Phase 7)
-│   │   ├── payments/        payments, refunds, webhooks                                               (Phase 8)
-│   │   ├── delivery/        partners, assignments, ETA engine                                         (Phases 9–10)
-│   │   ├── reviews/         reviews + ratings                                                          (Phases 4/19)
-│   │   ├── notifications/   multi-channel notifications                                               (Phase 20)
-│   │   ├── support/         support conversations (WhatsApp / call / in-app)                          (Phase 20)
-│   │   ├── ai/              AI services, conversations, projects, bundles, recommendations            (Phases 12–19)
-│   │   └── analytics/       whitelisted reporting queries + business assistant                        (Phase 21)
-│   ├── integrations/        llm/, payments/, messaging/, maps/, storage/
+│   ├── apps/                (✅ = models + services exist as of Phase 2)
+│   │   ├── core/            ✅ base models, soft delete, health, errors, request ID, audit log, permissions,
+│   │   │                       money helpers, validators, upload paths, seed_demo_data command, test builders
+│   │   ├── accounts/        ✅ User + roles, CustomerProfile, Address (+ API); auth flows in Phase 3
+│   │   ├── catalog/         ✅ Category tree (+ SubCategory proxy), Brand, Product, ProductVariant, images, specs (+ API)
+│   │   ├── stores/          ✅ Store (store / dark store / warehouse) + Warehouse proxy
+│   │   ├── inventory/       ✅ Inventory per (store, variant), StockMovement ledger, stock service (+ staff API)
+│   │   ├── offers/          ✅ Coupon, CouponRedemption, Offer; coupon validation service
+│   │   ├── carts/           ✅ Cart, CartItem, Wishlist, WishlistItem (+ API)
+│   │   ├── orders/          ✅ Order, OrderItem (snapshots), OrderStatusHistory, state machine, pricing, placement (+ API)
+│   │   ├── payments/        ✅ Payment, Refund (verification/webhooks in Phase 8)
+│   │   ├── delivery/        ✅ DeliveryZone, DeliveryPartner, DeliveryAssignment, DeliveryStatusHistory (logic Phase 9–10)
+│   │   ├── reviews/         ✅ Review (verified buyers only, moderation) (+ API)
+│   │   ├── notifications/   ✅ Notification (sending in Phase 20)
+│   │   ├── support/         ✅ SupportConversation, SupportMessage (channels in Phase 20)
+│   │   ├── ai/              ✅ AIConversation, AIMessage, Project, ProjectItem (AI logic Phases 12–19)
+│   │   └── analytics/       🔜 whitelisted reporting queries + business assistant (Phase 21)
+│   ├── integrations/        payments/ ✅ (PaymentProvider + MockPaymentProvider); llm/, messaging/, maps/ 🔜
 │   ├── passenger_wsgi.py    shared-hosting entry point
 │   └── requirements/        base / dev / prod / mysql
 ├── frontend/                React 19 + TS + Vite + Tailwind v4; builds to static dist/
@@ -92,8 +93,14 @@ The production vendor is unknown, so models use only portable Django features:
 - Row locking (`select_for_update`) works on PostgreSQL and MySQL/InnoDB. SQLite serialises writes, which is acceptable locally.
 - The migration test suite runs against SQLite locally. CI and pre-deploy runs use the production vendor.
 
-### Order state machine (Phase 7)
-`pending_payment → confirmed → processing → packed → assigned → picked_up → out_for_delivery → delivered`,
+### Dependency direction between apps
+`core` ← everything. `catalog`, `stores` ← `inventory` ← `carts`/`orders`. `orders.pricing` is the single price/tax/fee
+calculator shared by the cart and checkout (no duplicated money logic). `offers.services` validates coupons against
+duck-typed priced lines, so it doesn't import `orders`. Views never call other apps' models directly for writes; they
+call services.
+
+### Order state machine (implemented in Phase 2: `orders/state_machine.py`)
+`pending → confirmed → processing → packed → assigned → picked_up → out_for_delivery → delivered`,
 with exits `cancelled` (before pickup) and `return_requested → returned`. `orders.services.transition_order()` validates
 each transition and writes an `OrderStatusHistory` row in the same transaction.
 

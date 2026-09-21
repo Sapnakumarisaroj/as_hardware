@@ -6,7 +6,7 @@ Every phase respects the hosting constraints in `ARCHITECTURE.md` §1: portable 
 | # | Phase | Key deliverables | Exit criteria |
 |---|---|---|---|
 | 1 ✅ | Setup & architecture | docs (incl. DEPLOYMENT), Django project with env-driven split settings, vendor-portable DB config (PostgreSQL/MySQL/SQLite), DRF + JWT libs + OpenAPI, core app (base models, soft delete, health, error envelope, request ID, audit log), custom User, Passenger entry point, React/Vite/TS/Tailwind shell, Router, Query, Axios, `.htaccess`, optional compose | backend tests + ruff + `check --deploy`; frontend lint/typecheck/test/build; health endpoint live |
-| 2 | Database + backend | all domain models (portable), admin registration, `seed_dev` command (refuses in prod), DB job queue model | migrations apply on SQLite and the production vendor |
+| 2 ✅ | Database + backend | all domain models (portable), services, core APIs (catalog, addresses, cart, wishlist, orders, inventory), admin, `seed_demo_data` (refuses without DEBUG) | 85 tests, lint, checks, migrations on SQLite; production-vendor run pending hosting info |
 | 3 | Auth + roles | register/login/logout/refresh/forgot/reset, profile, addresses, role permissions, throttles | auth API tests |
 | 4 | Catalog + search | category tree, products/variants/specs/images, filters/sorting, `SearchBackend` (PG FTS+trigram / portable fuzzy), suggestions | search tests on the SQLite path |
 | 5 | Customer frontend | home, listing, detail, category, search, auth pages, profile/addresses (Leaflet + OSM pin picker) | component tests |
