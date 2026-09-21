@@ -1,0 +1,2 @@
+# Only needed when DATABASE_URL is mysql:// (typical shared hosting). Pure Python, no compiler required.
+PyMySQL==1.1.2
