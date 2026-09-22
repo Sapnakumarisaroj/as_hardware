@@ -5,6 +5,7 @@ foreign key. `Warehouse` is a proxy for admin convenience. Retail stores and dar
 fulfil customer orders; warehouses hold replenishment stock.
 """
 
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -52,6 +53,13 @@ class Store(SoftDeleteModel):
     )
     is_active = models.BooleanField(default=True)
     accepts_orders = models.BooleanField(default=True, help_text="Temporarily pause new orders without deactivating.")
+    # Store managers only see inventory/orders of stores they are assigned to.
+    managers = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="managed_stores",
+        limit_choices_to={"role": "store_manager"},
+    )
 
     class Meta:
         ordering = ["name"]

@@ -50,16 +50,29 @@ Legend: `[x]` done and verified · `[ ]` open · `[~]` partially done / blocked 
 - [ ] Confirm brand name ("BoltRun" placeholder)
 - [ ] Choose local DB for dev parity: SQLite (current), Docker PostgreSQL, or local MySQL matching the host
 
-## Phase 3 — Authentication + roles (next, not started)
-- [ ] Register, login, refresh, logout (blacklist), forgot/reset password, `me` profile endpoints; auth throttles
-- [ ] Role assignment rules (customers self-register; staff, delivery and admin roles are set by admins)
+## Phase 3 — Authentication + authorization ✅ (2026-09-22)
+- [x] Auth API: register (always `customer`), login, refresh (rotation + blacklist), logout (blacklist), `me`, profile + avatar, self-deactivation; `auth` throttle scope per IP
+- [x] Per-account login lockout (`LOGIN_MAX_FAILURES`/`LOGIN_LOCKOUT_SECONDS`, cache-backed, hashed email key); inactive accounts get 403
+- [x] Hardened JWT auth: tokens issued before the last password change/reset are rejected (access and refresh); change-password keeps the current session only
+- [x] Password reset: emailed single-use link (`FRONTEND_URL`), 1 h expiry, no account enumeration; letter+digit password validator
+- [x] Roles: admin-only user management (`/api/admin/users/`: list/filter/detail/patch role, active flag, store assignments); admins cannot demote/deactivate themselves; audit-logged
+- [x] Store managers scoped to assigned stores (`Store.managers`) for inventory, movements, orders and transitions
+- [x] Delivery partner self-service: `/api/delivery/me/` (availability), `assignments/`, `earnings/`, own data only
+- [x] Customer endpoints: support conversations, AI conversations, my reviews
+- [x] OpenAPI documents the custom JWT class as Bearer `jwtAuth` (schema extension)
+- [x] Tests: `core/tests/test_role_access.py` (role-positive + cross-role/cross-store/cross-partner denials), `accounts/tests/test_auth_flow.py` (register, lockout, rotation, logout, password change/reset)
+- [x] Verified: 104 backend tests pass, ruff lint clean, `check` clean, `check --deploy` (prod settings) has no security warnings, `makemigrations --check` clean; fresh SQLite DB migrates from zero + seed idempotent; live server: 22 smoke checks + 52 role checks with real JWT logins for admin, store manager, 2 delivery partners and a customer (temporary dev-only accounts, removed afterwards by rebuilding the dev DB); frontend lint/typecheck clean, 7 tests pass (frontend unchanged)
+- [~] 7 Phase 3 files are not `ruff format`-clean (lint is clean); 5 drf-spectacular enum-naming warnings remain (cosmetic)
+- [~] Reset emails use the console backend in dev; production needs SMTP settings (`EMAIL_*`)
 
 ## Known limitations carried forward
 - Store selection picks the first store covering all items (distance/zone/ETA selection is Phase 9)
 - Offers are stored but not auto-applied (Phase 6); coupons work
 - Online payments create a mock intent only; verification, webhooks and refunds are Phase 8
 - Keyword `q` search is a basic `icontains`; full-text/typo-tolerant search is Phase 4
-- Staff permissions are global (not scoped per store) until Phase 11
+- Delivery assignment workflow (accept, pickup, OTP, proof) is Phase 10; partners are verified by admins in Django admin
+- Email verification is not implemented yet (`email_verified` is reset on email change)
+- A local dev server stopped with `Stop-Process -Force` makes Git Bash report exit 127 (the venv `python.exe` launcher loses its child); stop it with Ctrl+C in normal use
 - `core.Job` DB queue deferred to Phase 8/20, when the first background job exists
 
 ## Later phases

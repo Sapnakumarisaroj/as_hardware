@@ -1,6 +1,6 @@
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
-from rest_framework import serializers, status
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import SAFE_METHODS, AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -54,3 +54,41 @@ class ProductReviewsView(GenericAPIView):
         serializer.is_valid(raise_exception=True)
         review = services.create_review(user=request.user, product=product, **serializer.validated_data)
         return Response(ReviewSerializer(review).data, status=status.HTTP_201_CREATED)
+
+
+class MyReviewSerializer(ReviewSerializer):
+    product_slug = serializers.CharField(source="product.slug", read_only=True)
+    product_name = serializers.CharField(source="product.name", read_only=True)
+
+    class Meta(ReviewSerializer.Meta):
+        fields = ReviewSerializer.Meta.fields + ["product_slug", "product_name"]
+
+
+class ReviewUpdateSerializer(serializers.Serializer):
+    rating = serializers.IntegerField(min_value=1, max_value=5, required=False)
+    title = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    body = serializers.CharField(max_length=3000, required=False, allow_blank=True)
+
+
+class MyReviewViewSet(
+    mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet
+):
+    """The signed-in customer's own reviews (any moderation status). Edits go back to moderation."""
+
+    serializer_class = MyReviewSerializer
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Review.objects.none()
+        return Review.objects.filter(user=self.request.user).select_related("product", "user")
+
+    @extend_schema(request=ReviewUpdateSerializer, responses=MyReviewSerializer)
+    def partial_update(self, request, pk=None):
+        review = self.get_object()
+        serializer = ReviewUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        review = services.update_own_review(review, **serializer.validated_data)
+        return Response(MyReviewSerializer(review).data)
+
+    def perform_destroy(self, instance):
+        services.delete_own_review(instance)

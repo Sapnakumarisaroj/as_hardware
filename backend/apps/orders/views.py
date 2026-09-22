@@ -1,9 +1,11 @@
+from django.db.models import Q
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from apps.core.permissions import IsStaffRole, is_staff_member
+from apps.core.permissions import IsStaffRole, is_admin, is_staff_member, managed_store_ids
 
 from . import services
 from .models import Order
@@ -18,7 +20,7 @@ from .serializers import (
 
 @extend_schema_view(list=extend_schema(parameters=[OpenApiParameter("status", str)]))
 class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
-    """Customers see only their own orders; store staff/admins see all."""
+    """Customers: own orders. Store managers: orders of their assigned stores (+ own). Admins: all."""
 
     lookup_field = "order_number"
 
@@ -26,8 +28,14 @@ class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         qs = Order.objects.select_related("store").prefetch_related("items", "status_history", "payments")
         if getattr(self, "swagger_fake_view", False):  # OpenAPI schema generation
             return qs.none()
-        if not is_staff_member(self.request.user):
-            qs = qs.filter(user=self.request.user)
+        user = self.request.user
+        store_ids = managed_store_ids(user)
+        if store_ids is None:
+            pass  # admin
+        elif is_staff_member(user):
+            qs = qs.filter(Q(store_id__in=store_ids) | Q(user=user))
+        else:
+            qs = qs.filter(user=user)
         if status_filter := self.request.query_params.get("status"):
             qs = qs.filter(status=status_filter)
         return qs
@@ -56,6 +64,9 @@ class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
     @action(detail=True, methods=["post"], permission_classes=[IsStaffRole])
     def transition(self, request, order_number=None):
         order = self.get_object()
+        # A manager's own purchase at a store they don't manage is visible to them, but not operable.
+        if order.store_id not in (managed_store_ids(request.user) or []) and not is_admin(request.user):
+            raise PermissionDenied("You can only update orders of stores assigned to you.")
         serializer = TransitionOrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         services.transition_order(

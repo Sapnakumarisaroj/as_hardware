@@ -29,7 +29,27 @@ def admin_user(db):
 
 @pytest.fixture
 def staff_user(db):
-    return _user("staff@example.com", role="store_staff")
+    """A store manager. Assign stores with `store.managers.add(staff_user)`."""
+    return _user("staff@example.com", role="store_manager")
+
+
+@pytest.fixture
+def delivery_user(db):
+    from apps.delivery.models import DeliveryPartner
+
+    user = _user("rider@example.com", role="delivery_partner", full_name="Ravi Rider", phone="9123456780")
+    DeliveryPartner.objects.create(user=user, phone="9123456780")
+    return user
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    """Throttle counters and login-failure counters live in the cache; isolate tests."""
+    from django.core.cache import cache
+
+    cache.clear()
+    yield
+    cache.clear()
 
 
 @pytest.fixture

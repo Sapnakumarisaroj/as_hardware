@@ -28,5 +28,9 @@ def brand_logo_path(instance, filename: str) -> str:
     return _random_path("brands", filename)
 
 
+def avatar_path(instance, filename: str) -> str:
+    return _random_path("avatars", filename)
+
+
 def delivery_proof_path(instance, filename: str) -> str:
     return _random_path("delivery-proofs", filename)

@@ -12,8 +12,14 @@ STORAGES = {
 # Throttling is exercised by dedicated tests; keep default rates generous.
 REST_FRAMEWORK = {
     **REST_FRAMEWORK,
-    "DEFAULT_THROTTLE_RATES": {**REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"], "anon": "1000/min", "user": "1000/min"},
+    "DEFAULT_THROTTLE_RATES": {
+        **REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],
+        "anon": "1000/min",
+        "user": "1000/min",
+        "auth": "1000/min",
+    },
 }
+FRONTEND_URL = "http://testserver-frontend"
 
 # WhiteNoise isn't needed under the test client (and warns when staticfiles/ is absent).
 from .base import MIDDLEWARE  # noqa: E402

@@ -130,7 +130,16 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 8}},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {"NAME": "apps.accounts.password_validation.LetterAndDigitValidator"},
 ]
+# Password-reset links expire after this many seconds and become invalid once used
+# (Django's token embeds the password hash, so a successful reset voids it).
+PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=3600)
+LOGIN_MAX_FAILURES = env.int("LOGIN_MAX_FAILURES", default=5)
+LOGIN_LOCKOUT_SECONDS = env.int("LOGIN_LOCKOUT_SECONDS", default=900)
+# Public URL of the SPA, used to build links in emails (password reset).
+FRONTEND_URL = (env("FRONTEND_URL", default="") or "http://localhost:5173").rstrip("/")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="") or "no-reply@localhost"
 
 # --- I18N ---------------------------------------------------------------------
 LANGUAGE_CODE = "en-in"
@@ -158,7 +167,7 @@ CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 # --- DRF ------------------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.accounts.authentication.JWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
@@ -189,6 +198,7 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
+    "TOKEN_REFRESH_SERIALIZER": "apps.accounts.authentication.TokenRefreshSerializer",
     "AUTH_HEADER_TYPES": ("Bearer",),
     # Blank in .env must fall back too (an empty HMAC key would break every token).
     "SIGNING_KEY": env("JWT_SIGNING_KEY", default="") or SECRET_KEY,

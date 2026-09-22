@@ -150,8 +150,10 @@ def test_customer_cancel_releases_stock_and_voids_payment(user, stocked):
     assert payment.status == Payment.Status.CANCELLED
 
 
-def test_orders_api_flow_and_permissions(auth_client, api_client, staff_client, user, other_user, stocked):
-    _, _, tape = stocked
+def test_orders_api_flow_and_permissions(
+    auth_client, api_client, staff_client, staff_user, user, other_user, stocked
+):
+    store, _, tape = stocked
     address = create_address(user)
     auth_client.post("/api/cart/items/", {"variant_id": tape.id, "quantity": 2}, format="json")
 
@@ -173,10 +175,11 @@ def test_orders_api_flow_and_permissions(auth_client, api_client, staff_client, 
         auth_client.post(f"/api/orders/{number}/transition/", {"status": "processing"}, format="json").status_code
         == 403
     )
-    assert (
-        staff_client.post(f"/api/orders/{number}/transition/", {"status": "processing"}, format="json").status_code
-        == 200
-    )
+    url = f"/api/orders/{number}/transition/"
+    # A manager of a different store can't even see the order.
+    assert staff_client.post(url, {"status": "processing"}, format="json").status_code == 404
+    store.managers.add(staff_user)
+    assert staff_client.post(url, {"status": "processing"}, format="json").status_code == 200
 
     other = api_client
     other.force_authenticate(other_user)

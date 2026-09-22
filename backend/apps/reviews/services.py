@@ -58,6 +58,25 @@ def moderate_review(review: Review, *, status: str, moderator, note: str = "") -
     return review
 
 
+@transaction.atomic
+def update_own_review(review: Review, **data) -> Review:
+    for field, value in data.items():
+        setattr(review, field, value.strip() if isinstance(value, str) else value)
+    was_approved = review.status == Review.Status.APPROVED
+    review.status = Review.Status.PENDING  # edited text must be moderated again
+    review.save()
+    if was_approved:
+        refresh_product_rating(review.product_id)
+    return review
+
+
+@transaction.atomic
+def delete_own_review(review: Review) -> None:
+    product_id = review.product_id
+    review.delete()
+    refresh_product_rating(product_id)
+
+
 def refresh_product_rating(product_id: int) -> None:
     agg = Review.objects.filter(product_id=product_id, status=Review.Status.APPROVED).aggregate(
         avg=Avg("rating"), count=Count("id")

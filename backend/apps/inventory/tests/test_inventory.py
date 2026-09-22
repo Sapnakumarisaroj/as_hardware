@@ -1,5 +1,6 @@
 import pytest
 from django.db import IntegrityError, transaction
+from rest_framework.test import APIClient
 
 from apps.core.exceptions import ServiceError
 from apps.core.testing import add_stock, create_product, create_store
@@ -68,13 +69,37 @@ def test_total_available_ignores_warehouses_and_inactive_stores():
     assert total_available(variant.id) == 5
 
 
-def test_inventory_api_is_staff_only(auth_client, staff_client, inventory):
+def test_inventory_api_is_staff_only(auth_client, staff_client, staff_user, delivery_user, inventory):
     assert auth_client.get("/api/inventory/").status_code == 403
+    rider = APIClient()
+    rider.force_authenticate(delivery_user)
+    assert rider.get("/api/inventory/").status_code == 403
+    # A manager with no assigned store sees nothing.
+    assert staff_client.get("/api/inventory/").json()["count"] == 0
+    inventory.store.managers.add(staff_user)
     res = staff_client.get("/api/inventory/")
     assert res.status_code == 200 and res.json()["count"] == 1
 
 
-def test_staff_adjusts_stock_via_api(staff_client, inventory):
+def test_manager_is_limited_to_assigned_stores(staff_client, staff_user, admin_client, inventory):
+    other_store = create_store()
+    _, variant = create_product()
+    other_inv = add_stock(variant, 4, store=other_store)
+    inventory.store.managers.add(staff_user)
+
+    ids = [row["id"] for row in staff_client.get("/api/inventory/").json()["results"]]
+    assert ids == [inventory.pk]
+    adjust = {"movement_type": "purchase", "quantity": 1, "reason": "x"}
+    assert staff_client.post(f"/api/inventory/{other_inv.pk}/adjust/", adjust, format="json").status_code == 404
+    create = {"store": other_store.pk, "variant": inventory.variant_id, "opening_quantity": 5}
+    assert staff_client.post("/api/inventory/", create, format="json").status_code == 403
+    movement_stores = {m["store_code"] for m in staff_client.get("/api/inventory/movements/").json()["results"]}
+    assert movement_stores == {inventory.store.code}
+    assert admin_client.get("/api/inventory/").json()["count"] == 2  # admins see every store
+
+
+def test_staff_adjusts_stock_via_api(staff_client, staff_user, inventory):
+    inventory.store.managers.add(staff_user)
     res = staff_client.post(
         f"/api/inventory/{inventory.pk}/adjust/",
         {"movement_type": "purchase", "quantity": 5, "reason": "Supplier delivery"},

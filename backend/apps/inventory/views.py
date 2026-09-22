@@ -3,10 +3,11 @@ from django.db.models import F
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.core.audit import record_audit
-from apps.core.permissions import IsStaffRole
+from apps.core.permissions import IsStaffRole, managed_store_ids, scope_to_managed_stores
 
 from . import services
 from .models import Inventory, StockMovement
@@ -34,7 +35,8 @@ class InventoryViewSet(
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Staff only. Quantities change exclusively through `adjust` (ledgered), never by PATCH."""
+    """Admins: all stores. Store managers: assigned stores only (others 404).
+    Quantities change exclusively through `adjust` (ledgered), never by PATCH."""
 
     permission_classes = [IsStaffRole]
     queryset = Inventory.objects.select_related("store", "variant__product").order_by("store__code", "variant__sku")
@@ -47,7 +49,7 @@ class InventoryViewSet(
         return InventorySerializer
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = scope_to_managed_stores(super().get_queryset(), self.request.user)
         params = self.request.query_params
         if store := params.get("store"):
             qs = qs.filter(store_id=store)
@@ -62,6 +64,9 @@ class InventoryViewSet(
     def create(self, request, *args, **kwargs):
         serializer = InventoryCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        allowed = managed_store_ids(request.user)
+        if allowed is not None and serializer.validated_data["store"].id not in allowed:
+            raise PermissionDenied("You can only manage stock for stores assigned to you.")
         opening = serializer.validated_data.pop("opening_quantity", 0)
         inventory = serializer.save()
         if opening:
@@ -103,7 +108,11 @@ class StockMovementViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StockMovementSerializer
 
     def get_queryset(self):
-        qs = StockMovement.objects.select_related("inventory__variant", "inventory__store")
+        qs = scope_to_managed_stores(
+            StockMovement.objects.select_related("inventory__variant", "inventory__store"),
+            self.request.user,
+            store_field="inventory__store",
+        )
         if inv := self.request.query_params.get("inventory"):
             qs = qs.filter(inventory_id=inv)
         if kind := self.request.query_params.get("type"):

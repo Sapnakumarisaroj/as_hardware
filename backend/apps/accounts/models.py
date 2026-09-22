@@ -6,12 +6,13 @@ The custom User was defined in Phase 1 so the very first migration uses it.
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
 from apps.core.models import SoftDeleteModel, TimeStampedModel
-from apps.core.validators import phone_validator, postal_code_validator
+from apps.core.uploads import ALLOWED_IMAGE_EXTENSIONS, avatar_path
+from apps.core.validators import MaxFileSizeValidator, phone_validator, postal_code_validator
 
 
 class UserManager(BaseUserManager):
@@ -43,12 +44,13 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     class Role(models.TextChoices):
         CUSTOMER = "customer", "Customer"
-        STORE_STAFF = "store_staff", "Store staff"
+        STORE_MANAGER = "store_manager", "Store manager"
         DELIVERY_PARTNER = "delivery_partner", "Delivery partner"
         ADMIN = "admin", "Admin"
 
     email = models.EmailField(unique=True)
-    phone = models.CharField(max_length=15, unique=True, null=True, blank=True)
+    # Stored as 10 digits (see core.validators.normalize_phone).
+    phone = models.CharField(max_length=15, unique=True, null=True, blank=True, validators=[phone_validator])
     full_name = models.CharField(max_length=150, blank=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.CUSTOMER, db_index=True)
     is_active = models.BooleanField(default=True)
@@ -57,6 +59,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     phone_verified = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
+    # JWTs issued before this moment are rejected (see accounts.authentication).
+    password_changed_at = models.DateTimeField(null=True, blank=True, editable=False)
+    deactivated_at = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
 
@@ -72,11 +77,17 @@ class User(AbstractBaseUser, PermissionsMixin):
         # indexes): always store lowercase, and let the plain unique index do the rest.
         if self.email:
             self.email = self.email.strip().lower()
+        if self.phone == "":
+            self.phone = None  # keep the unique index happy for users without a phone
         super().save(*args, **kwargs)
+
+    def set_password(self, raw_password):
+        super().set_password(raw_password)
+        self.password_changed_at = timezone.now()
 
     @property
     def is_admin_role(self) -> bool:
-        return self.role == self.Role.ADMIN
+        return self.is_superuser or self.role == self.Role.ADMIN
 
     def get_full_name(self) -> str:
         return self.full_name or self.email
@@ -92,6 +103,11 @@ class CustomerProfile(TimeStampedModel):
         HINGLISH = "hi-latn", "Hinglish"
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
+    avatar = models.ImageField(
+        upload_to=avatar_path,
+        blank=True,
+        validators=[FileExtensionValidator(ALLOWED_IMAGE_EXTENSIONS), MaxFileSizeValidator(2)],
+    )
     preferred_language = models.CharField(max_length=10, choices=Language.choices, default=Language.ENGLISH)
     marketing_opt_in = models.BooleanField(default=False)
     whatsapp_opt_in = models.BooleanField(default=False)
