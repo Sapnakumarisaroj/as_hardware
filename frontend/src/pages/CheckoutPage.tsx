@@ -10,6 +10,8 @@ import { useAddresses } from '@/features/addresses/api'
 import { useAuth } from '@/features/auth/context'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { checkoutKeys, useCheckoutPreview, type CheckoutPreview } from '@/features/checkout/api'
+import { useAvailableCoupons } from '@/features/offers/api'
+import { AvailableCouponList, CartOfferNotes } from '@/features/offers/components'
 import { newIdempotencyKey, usePlaceOrder } from '@/features/orders/api'
 import { PriceSummary } from '@/features/orders/components'
 import type { PaymentMethod } from '@/features/orders/types'
@@ -88,17 +90,21 @@ function CouponBox({
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const available = useAvailableCoupons()
 
-  async function submit(event: FormEvent) {
-    event.preventDefault()
-    const value = code.trim()
-    if (!value) return
+  async function apply(value: string) {
     setBusy(true)
     setError('')
     const problem = await onApply(value)
     setBusy(false)
     if (problem) setError(problem)
     else setCode('')
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    const value = code.trim()
+    if (value) void apply(value)
   }
 
   if (applied && preview.coupon) {
@@ -141,6 +147,7 @@ function CouponBox({
           {error}
         </p>
       )}
+      <AvailableCouponList coupons={available.data ?? []} onApply={(value) => void apply(value)} busy={busy} />
     </form>
   )
 }
@@ -399,7 +406,17 @@ export function CheckoutPage() {
 
         <aside className="h-fit space-y-3 lg:sticky lg:top-32">
           <div className="rounded-lg bg-white p-5 ring-1 ring-steel-200" aria-busy={preview.isFetching}>
-            <PriceSummary totals={data.totals} couponCode={data.coupon?.code} heading="Order summary" />
+            <PriceSummary
+              totals={data.totals}
+              couponCode={data.coupon?.code}
+              offers={data.offers.applied}
+              heading="Order summary"
+            />
+            {data.offers.missed.length > 0 && (
+              <div className="mt-3">
+                <CartOfferNotes offers={{ applied: [], missed: data.offers.missed }} />
+              </div>
+            )}
             {issues.length > 0 && (
               <ul role="alert" className="mt-3 space-y-1 rounded-md bg-amber-100 p-3 text-sm text-ink-900">
                 {issues.map((issue) => (

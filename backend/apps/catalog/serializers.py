@@ -156,6 +156,7 @@ class ProductListSerializer(serializers.ModelSerializer):
     default_variant_id = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
     image_alt = serializers.SerializerMethodField()
+    offer = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -182,7 +183,25 @@ class ProductListSerializer(serializers.ModelSerializer):
             "rating_count",
             "image",
             "image_alt",
+            "offer",
         ]
+
+    def get_offer(self, obj) -> dict | None:
+        """The live automatic offer for this product (badge only; the discount is applied in the cart)."""
+        from apps.offers.engine import best_offer_for_product, load_active_offers
+
+        # One offers query per response, shared by every product in a list (context is shared).
+        if "active_offers" not in self.context:
+            self.context["active_offers"] = load_active_offers()
+        rule = best_offer_for_product(obj, self.context["active_offers"])
+        if rule is None:
+            return None
+        return {
+            "id": rule.id,
+            "name": rule.name,
+            "badge": rule.badge,
+            "min_order_value": str(rule.min_order_value),
+        }
 
     def _has_price(self, obj) -> bool:
         return bool(getattr(obj, "mrp", None)) and getattr(obj, "price", None) is not None

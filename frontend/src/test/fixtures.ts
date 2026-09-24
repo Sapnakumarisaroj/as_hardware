@@ -48,6 +48,7 @@ export function productSummary(overrides: Partial<ProductSummary> = {}): Product
     rating_count: 12,
     image: null,
     image_alt: 'Impact Drill 650W',
+    offer: null,
     ...overrides,
   }
 }
@@ -258,15 +259,19 @@ export function address(overrides: Partial<Address> = {}): Address {
   }
 }
 
-const TOTALS_800 = {
+export const TOTALS_800 = {
   subtotal: '800.00',
   mrp_total: '1000.00',
   discount_total: '0.00',
+  offer_discount: '0.00',
+  coupon_discount: '0.00',
   delivery_fee: '0.00',
   tax_total: '122.03',
   grand_total: '800.00',
   savings_vs_mrp: '200.00',
 }
+
+export const NO_OFFERS = { applied: [], missed: [] }
 
 export function checkoutPreview(overrides: Partial<CheckoutPreview> = {}): CheckoutPreview {
   return {
@@ -284,6 +289,7 @@ export function checkoutPreview(overrides: Partial<CheckoutPreview> = {}): Check
       eta_minutes: null,
       message: 'Delivery estimate will be confirmed after your order is placed.',
     },
+    offers: NO_OFFERS,
     blocking_issues: [],
     can_place_order: true,
     payment_methods: [
@@ -317,6 +323,9 @@ export function orderDetail(overrides: Partial<OrderDetail> = {}): OrderDetail {
     subtotal: '800.00',
     mrp_total: '1000.00',
     discount_total: '0.00',
+    offer_discount: '0.00',
+    coupon_discount: '0.00',
+    applied_offers: [],
     delivery_fee: '0.00',
     tax_total: '122.03',
     grand_total: '800.00',
@@ -347,6 +356,7 @@ export function orderDetail(overrides: Partial<OrderDetail> = {}): OrderDetail {
         gst_rate: '18.00',
         quantity: 2,
         line_total: '800.00',
+        offer_discount: '0.00',
         image: null,
       },
     ],
@@ -407,11 +417,14 @@ export function cart(overrides: Partial<Cart> = {}): Cart {
       subtotal: '0.00',
       mrp_total: '0.00',
       discount_total: '0.00',
+      offer_discount: '0.00',
+      coupon_discount: '0.00',
       delivery_fee: '0.00',
       tax_total: '0.00',
       grand_total: '0.00',
       savings_vs_mrp: '0.00',
     },
+    offers: NO_OFFERS,
     issues: [],
     can_checkout: false,
     ...overrides,

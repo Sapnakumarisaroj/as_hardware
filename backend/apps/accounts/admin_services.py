@@ -72,9 +72,7 @@ def _ensure_delivery_profile(user) -> None:
     if hasattr(user, "delivery_partner"):
         return
     if not user.phone:
-        raise UserManagementError(
-            "Add a phone number before making someone a delivery partner.", code="phone_required"
-        )
+        raise UserManagementError("Add a phone number before making someone a delivery partner.", code="phone_required")
     DeliveryPartner.objects.create(user=user, phone=user.phone)
 
 

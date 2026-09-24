@@ -37,12 +37,39 @@ export interface CartTotals {
   tax_total: string
   grand_total: string
   savings_vs_mrp: string
+  /** Automatic offers (no code). discount_total = offer_discount + coupon_discount. */
+  offer_discount: string
+  coupon_discount: string
+}
+
+export interface AppliedOffer {
+  id: number
+  name: string
+  description: string
+  badge: string
+  discount: string
+  variant_ids: number[]
+}
+
+export interface MissedOffer {
+  id: number
+  name: string
+  badge: string
+  min_order_value: string
+  /** How much more to spend on the offer's items to unlock it. */
+  shortfall: string
+}
+
+export interface CartOffers {
+  applied: AppliedOffer[]
+  missed: MissedOffer[]
 }
 
 export interface Cart {
   id: number
   items: CartLine[]
   totals: CartTotals
+  offers: CartOffers
   issues: string[]
   can_checkout: boolean
 }

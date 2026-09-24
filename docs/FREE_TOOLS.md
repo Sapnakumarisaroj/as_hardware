@@ -52,7 +52,11 @@ and `frontend/package-lock.json`.
 | Idempotency / locking | Database unique constraint + `select_for_update` | ✅ | ✅ | No | No Redis or queue needed |
 | Idempotency keys (browser) | `crypto.randomUUID()` | ✅ built into browsers | ✅ | No | |
 
-## Frontend (no new packages in Phases 4–5)
+## Offers & coupon discovery (Phase 6): no new dependencies
+The offer engine is plain Python/`Decimal` over Django ORM reads (`apps/offers/engine.py`); offers are managed in the
+free Django admin. No promotion/pricing SaaS, no Redis cache.
+
+## Frontend (no new packages in Phases 4–6)
 | Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
 |---|---|---|---|---|---|
 | UI library | React 19 | ✅ MIT | ✅ | No | |

@@ -183,8 +183,9 @@ def request_password_reset(*, email: str, request=None) -> None:
 
 @transaction.atomic
 def reset_password(*, uid: str, token: str, new_password: str, request=None):
-    invalid = ServiceError("This reset link is invalid or has expired. Please request a new one.",
-                           code="invalid_reset_token")
+    invalid = ServiceError(
+        "This reset link is invalid or has expired. Please request a new one.", code="invalid_reset_token"
+    )
     try:
         user_pk = force_str(urlsafe_base64_decode(uid))
         user = User.objects.select_for_update().get(pk=user_pk, is_active=True)
@@ -220,7 +221,10 @@ def _set_active(user, active: bool, *, actor, request=None, reason: str = "") ->
         revoke_all_sessions(user)
     record_audit(
         action="user.reactivate" if active else "user.deactivate",
-        actor=actor, target=user, request=request, changes={"reason": reason[:200]} if reason else {},
+        actor=actor,
+        target=user,
+        request=request,
+        changes={"reason": reason[:200]} if reason else {},
     )
 
 

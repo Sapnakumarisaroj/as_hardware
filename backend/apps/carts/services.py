@@ -7,7 +7,8 @@ from django.db import IntegrityError, transaction
 from apps.catalog.models import Product, ProductVariant
 from apps.core.exceptions import NotFoundError, ServiceError
 from apps.inventory.services import InsufficientStock, total_available
-from apps.orders.pricing import PricedLine, Totals, calculate_totals, line_from_variant
+from apps.offers.engine import OfferResult
+from apps.orders.pricing import PricedLine, Totals, calculate_totals, line_from_variant, price_lines
 
 from .models import Cart, CartItem, Wishlist, WishlistItem
 
@@ -112,6 +113,7 @@ class CartSummary:
     lines: list[CartLineView]
     totals: Totals
     issues: list[str] = field(default_factory=list)
+    offers: OfferResult = field(default_factory=OfferResult)
 
     @property
     def can_checkout(self) -> bool:
@@ -148,7 +150,8 @@ def summarize_cart(user) -> CartSummary:
             issues.append(f"Only {available} unit(s) of {view.item.variant} available.")
         lines.append(view)
     summary = CartSummary(cart=cart, lines=lines, totals=calculate_totals([]), issues=issues)
-    summary.totals = calculate_totals(summary.priced_lines)
+    pricing = price_lines(summary.priced_lines)  # automatic offers included; coupons are chosen at checkout
+    summary.totals, summary.offers = pricing.totals, pricing.offers
     return summary
 
 

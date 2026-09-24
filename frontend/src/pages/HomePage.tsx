@@ -6,6 +6,7 @@ import { useAuth } from '@/features/auth/context'
 import { useCategories } from '@/features/catalog/api'
 import { ProductRail } from '@/features/catalog/components/ProductCollections'
 import type { Category } from '@/features/catalog/types'
+import { LiveOffersStrip } from '@/features/offers/components'
 import { useWishlist } from '@/features/wishlist/api'
 import { env } from '@/lib/env'
 import { pluralize } from '@/lib/format'
@@ -147,6 +148,7 @@ export function HomePage() {
       <Hero />
       <div className="container-page">
         <PopularCategories />
+        <LiveOffersStrip />
         <RecommendedForYou />
         <ProductRail
           title="Today’s offers"

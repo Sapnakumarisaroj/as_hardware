@@ -33,16 +33,21 @@ class DeliveryMeView(APIView):
         serializer.is_valid(raise_exception=True)
         new_status = serializer.validated_data["status"]
         if new_status == DeliveryPartner.Status.AVAILABLE and not (partner.is_active and partner.is_verified):
-            raise ConflictError("Your partner account must be verified by an admin before going online.",
-                                code="partner_not_verified")
+            raise ConflictError(
+                "Your partner account must be verified by an admin before going online.", code="partner_not_verified"
+            )
         if partner.assignments.filter(status__in=DeliveryAssignment.ACTIVE_STATUSES).exists():
-            raise ConflictError("Finish your active delivery before changing availability.",
-                                code="active_delivery")
+            raise ConflictError("Finish your active delivery before changing availability.", code="active_delivery")
         if partner.status != new_status:
             partner.status = new_status
             partner.save(update_fields=["status", "updated_at"])
-            record_audit(action="delivery.availability", actor=request.user, target=partner,
-                         changes={"status": new_status}, request=request)
+            record_audit(
+                action="delivery.availability",
+                actor=request.user,
+                target=partner,
+                changes={"status": new_status},
+                request=request,
+            )
         return Response(DeliveryPartnerSerializer(partner).data)
 
 
@@ -54,9 +59,11 @@ class AssignmentViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return DeliveryAssignment.objects.none()
-        qs = DeliveryAssignment.objects.filter(partner__user=self.request.user).select_related(
-            "order__store"
-        ).prefetch_related("status_history")
+        qs = (
+            DeliveryAssignment.objects.filter(partner__user=self.request.user)
+            .select_related("order__store")
+            .prefetch_related("status_history")
+        )
         scope = self.request.query_params.get("scope")
         if scope == "active":
             qs = qs.filter(status__in=DeliveryAssignment.ACTIVE_STATUSES)
@@ -82,9 +89,13 @@ class EarningsView(APIView):
             week=Sum("earning_amount", filter=delivered & Q(delivered_at__gte=now - timedelta(days=7))),
         )
         zero = Decimal("0.00")
-        return Response(EarningsSerializer({
-            "delivered_count": agg["delivered_count"],
-            "total_earnings": agg["total"] or zero,
-            "today_earnings": agg["today"] or zero,
-            "last_7_days_earnings": agg["week"] or zero,
-        }).data)
+        return Response(
+            EarningsSerializer(
+                {
+                    "delivered_count": agg["delivered_count"],
+                    "total_earnings": agg["total"] or zero,
+                    "today_earnings": agg["today"] or zero,
+                    "last_7_days_earnings": agg["week"] or zero,
+                }
+            ).data
+        )

@@ -31,6 +31,15 @@ export interface ProductSummary {
   rating_count: number
   image: string | null
   image_alt: string
+  /** Live automatic offer for this product; the discount itself is applied in the cart. */
+  offer: ProductOffer | null
+}
+
+export interface ProductOffer {
+  id: number
+  name: string
+  badge: string
+  min_order_value: string
 }
 
 export interface ProductVariant {

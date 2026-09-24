@@ -1,20 +1,11 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { cart, cartLine, checkoutPreview, customer, address } from '@/test/fixtures'
+import { address, cart, cartLine, checkoutPreview, customer, TOTALS_800 as TOTALS } from '@/test/fixtures'
 import { httpError, mockApi } from '@/test/mockApi'
 import { currentUrl, renderRoute, signIn } from '@/test/utils'
 
 const line = cartLine({ available_quantity: 5 })
-const TOTALS = {
-  subtotal: '800.00',
-  mrp_total: '1000.00',
-  discount_total: '0.00',
-  delivery_fee: '0.00',
-  tax_total: '122.03',
-  grand_total: '800.00',
-  savings_vs_mrp: '200.00',
-}
 const filled = cart({ items: [line], totals: TOTALS, can_checkout: true })
 
 function routes(cartReply: unknown, extra: Record<string, unknown> = {}) {

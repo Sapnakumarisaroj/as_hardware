@@ -76,7 +76,10 @@ All optional and combinable. Unknown or malformed values are ignored (never a 50
 `ordering`: `relevance` (default when `q` is set), *(empty)* = featured first then name (default otherwise), `price`, `-price`, `newest`, `rating`, `discount`, `popular` (units sold), `name`. Unknown values fall back to the default. Every ordering ends with a unique tie-breaker, so pages never overlap.
 
 ### Listing item fields
-`id, name, slug, sku, short_description, brand{id,name,slug}, category, subcategory, unit, price, mrp, discount_percent, discount_amount, stock_status, fast_delivery, variant_count, default_variant_id, is_featured, rating_avg, rating_count, image, image_alt`.
+`id, name, slug, sku, short_description, brand{id,name,slug}, category, subcategory, unit, price, mrp, discount_percent, discount_amount, stock_status, fast_delivery, variant_count, default_variant_id, is_featured, rating_avg, rating_count, image, image_alt, offer`.
+
+`offer` (Phase 6): the best live automatic offer targeting the product, `{id, name, badge, min_order_value}` or `null`.
+It is informational: `price` is unchanged and the discount is applied in the cart.
 
 - `price`/`mrp`/`default_variant_id` come from the **cheapest active variant** ("from ₹X").
 - `discount_percent`, `discount_amount`: computed with `Decimal` on the server, returned as strings.
@@ -123,16 +126,26 @@ Other users' addresses return 404.
 ## Cart & wishlist ✅
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/cart/` | Lines with current price, `unit_mrp`, `line_total`, `line_mrp_total`, `discount_percent`, `price_at_add` + `price_changed`, `available_quantity`, `in_stock`, `purchasable`, `brand_name`, `attributes`, `max_order_quantity`, `image`; `totals` (subtotal, mrp_total, discount_total, delivery_fee, tax_total, grand_total, savings_vs_mrp); `issues[]`; `can_checkout` |
+| GET | `/api/cart/` | Lines with current price, `unit_mrp`, `line_total`, `line_mrp_total`, `discount_percent`, `price_at_add` + `price_changed`, `available_quantity`, `in_stock`, `purchasable`, `brand_name`, `attributes`, `max_order_quantity`, `image`; `totals` (subtotal, mrp_total, discount_total = offer_discount + coupon_discount, delivery_fee, tax_total, grand_total, savings_vs_mrp); `offers` (`applied[]`: id, name, description, badge, discount, variant_ids · `missed[]`: id, name, badge, min_order_value, shortfall); `issues[]`; `can_checkout`. Cart totals include automatic offers; coupons are applied at checkout |
 | DELETE | `/api/cart/` | Empty the cart |
 | POST | `/api/cart/items/` | `{variant_id, quantity}`. Adds or increments. Validates purchasable, `max_order_quantity` and stock (409) |
 | PATCH | `/api/cart/items/{id}/` | `{quantity}`, re-validated |
 | DELETE | `/api/cart/items/{id}/` | |
-| POST | `/api/cart/coupon-preview/` | `{code}` → discount + totals against the current cart. Nothing is reserved |
+| POST | `/api/cart/coupon-preview/` | `{code}` → coupon discount (after automatic offers) + totals against the current cart. Nothing is reserved |
 | GET/POST | `/api/wishlist/` | POST `{product_id}` (idempotent) |
 | DELETE | `/api/wishlist/{product_id}/` | |
 
 Delivery fee: `DELIVERY_FEE` (default ₹40), free at or above `FREE_DELIVERY_MIN_ORDER` (default ₹499), after discounts.
+
+## Offers & coupons ✅ (Phase 6)
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET | `/api/offers/` | public | Live automatic offers: `id, name, description, badge, min_order_value, ends_at, applies_to_everything, categories[{name, slug}], products[{name, slug}]`. Applied in the cart without a code |
+| GET | `/api/coupons/available/` | customer | Coupons the store advertises (`show_in_checkout`) that this customer can still use, each checked against their cart: `code, description, badge, min_order_value, ends_at, applicable, discount` (if applicable), `message` (why not, e.g. "Add ₹120.00 more…"). Applicable first. Private coupons are never listed |
+
+Offers are managed in Django admin only (no write API). Order of application: automatic offers (one per line, lowest
+`priority` wins; minimum spend counted on the offer's own lines), then one coupon on the remaining amount. See
+ARCHITECTURE.md → *Offers and coupons*.
 
 ## Checkout ✅ (Phase 5)
 | Method | Path | Access | Notes |
@@ -142,10 +155,13 @@ Delivery fee: `DELIVERY_FEE` (default ₹40), free at or above `FREE_DELIVERY_MI
 Response:
 ```json
 { "cart": { …same as GET /api/cart/… },
-  "totals": { "subtotal": "800.00", "mrp_total": "1000.00", "discount_total": "80.00", "delivery_fee": "0.00",
-              "tax_total": "109.83", "grand_total": "720.00", "savings_vs_mrp": "280.00" },
+  "totals": { "subtotal": "800.00", "mrp_total": "1000.00", "discount_total": "152.00", "offer_discount": "80.00",
+              "coupon_discount": "72.00", "delivery_fee": "0.00", "tax_total": "98.85", "grand_total": "648.00",
+              "savings_vs_mrp": "352.00" },
+  "offers": { "applied": [ { "id": 3, "name": "Tools week", "badge": "10% off", "discount": "80.00", … } ],
+              "missed": [] },
   "address_id": 31,
-  "coupon": { "code": "DEMO10", "description": "…", "discount": "80.00" },        // or null
+  "coupon": { "code": "DEMO10", "description": "…", "discount": "72.00" },        // or null (computed after offers)
   "coupon_error": { "code": "coupon_min_order", "message": "Add ₹451.00 more…", "details": {…} },  // or null
   "delivery": { "available": true, "fee": "0.00", "free_delivery_min_order": "499.00",
                 "amount_to_free_delivery": "0.00", "fast_delivery_possible": true,
@@ -164,7 +180,7 @@ Response:
 |---|---|---|---|
 | POST | `/api/orders/` | customer | Places the order from the cart. Body: `{address_id, payment_method: "cod"\|"online", coupon_code?, customer_note?, expected_total?}`. Header `Idempotency-Key: <8–64 chars [A-Za-z0-9_-]>` (or body `idempotency_key`). **201** new order · **200** + `Idempotent-Replayed: true` when the key was already used by this customer (returns that order, creates nothing) |
 | GET | `/api/orders/` | customer: own · staff: all | Newest first, paginated. `?status=` filter. Items: `order_number, status, payment_method, payment_status, grand_total, item_count` (units), `item_names` (first 3), `image`, `estimated_delivery_at`, `delivery_message`, `created_at` |
-| GET | `/api/orders/{order_number}/` | owner/staff | Snapshots of items (+`image`, `product_slug`) and address, all totals, `status_history`, `payments`, `refunds`, `can_cancel`, `can_retry_payment`, `delivery_message` |
+| GET | `/api/orders/{order_number}/` | owner/staff | Snapshots of items (+`image`, `product_slug`, per-line `offer_discount`) and address, all totals incl. `offer_discount`, `coupon_discount` and `applied_offers[{id, name, badge, discount, skus}]`, `status_history`, `payments`, `refunds`, `can_cancel`, `can_retry_payment`, `delivery_message` |
 | POST | `/api/orders/{order_number}/cancel/` | owner | `{reason}` (required). Only while `pending`/`confirmed`/`processing`, else 409 `invalid_transition`. Releases reserved stock, voids uncaptured payments, creates a **pending** Refund for captured payments, gives the coupon use back |
 | POST | `/api/orders/{order_number}/retry-payment/` | owner | New online payment attempt for a `pending` online order whose last attempt failed/was cancelled (409 otherwise) |
 | POST | `/api/orders/{order_number}/transition/` | staff | `{status, note?}`. Validated by the state machine (409 on invalid). Side effects: cancel → release stock, picked_up → sale |

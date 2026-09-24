@@ -52,7 +52,10 @@ class RegisterView(_PublicAuthView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         user = auth_services.register_customer(
-            email=data["email"], password=data["password"], full_name=data["full_name"], phone=data["phone"],
+            email=data["email"],
+            password=data["password"],
+            full_name=data["full_name"],
+            phone=data["phone"],
             request=request,
         )
         return _auth_response(user, request, status.HTTP_201_CREATED)
@@ -89,9 +92,7 @@ class ForgotPasswordView(_PublicAuthView):
         serializer = ForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         auth_services.request_password_reset(email=serializer.validated_data["email"], request=request)
-        return Response(
-            {"detail": "If an account exists for that email, we've sent a link to reset the password."}
-        )
+        return Response({"detail": "If an account exists for that email, we've sent a link to reset the password."})
 
 
 class ResetPasswordView(_PublicAuthView):
@@ -100,8 +101,9 @@ class ResetPasswordView(_PublicAuthView):
         serializer = ResetPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        auth_services.reset_password(uid=data["uid"], token=data["token"], new_password=data["password"],
-                                     request=request)
+        auth_services.reset_password(
+            uid=data["uid"], token=data["token"], new_password=data["password"], request=request
+        )
         return Response({"detail": "Your password has been reset. You can now log in."})
 
 
@@ -115,7 +117,9 @@ class ChangePasswordView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         tokens = auth_services.change_password(
-            request.user, current_password=data["current_password"], new_password=data["new_password"],
+            request.user,
+            current_password=data["current_password"],
+            new_password=data["new_password"],
             request=request,
         )
         return Response({**tokens, "user": MeSerializer(request.user, context={"request": request}).data})
@@ -169,8 +173,13 @@ class ProfileView(APIView):
             setattr(user.profile, field, value)
         user.profile.save()
         if changed:
-            record_audit(action="profile.update", actor=user, target=user, request=request,
-                         changes={"fields": sorted(set(changed))})
+            record_audit(
+                action="profile.update",
+                actor=user,
+                target=user,
+                request=request,
+                changes={"fields": sorted(set(changed))},
+            )
         return Response(ProfileSerializer(user, context={"request": request}).data)
 
 

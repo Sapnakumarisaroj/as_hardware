@@ -109,7 +109,7 @@ describe('product detail page', () => {
     const { user, router } = renderRoute('/p/fr-pvc-copper-wire')
     await screen.findByRole('heading', { level: 1 })
     await user.click(screen.getAllByRole('button', { name: 'Add to cart' })[0]!)
-    expect(currentUrl(router)).toBe('/login?next=%2Fp%2Ffr-pvc-copper-wire')
+    await waitFor(() => expect(currentUrl(router)).toBe('/login?next=%2Fp%2Ffr-pvc-copper-wire')) // lazy route
     expect(api.post).not.toHaveBeenCalled()
     expect(JSON.parse(window.sessionStorage.getItem('boltrun.pending-action')!)).toMatchObject({
       type: 'cart',

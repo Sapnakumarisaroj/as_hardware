@@ -5,8 +5,8 @@ from rest_framework.views import APIView
 
 from apps.catalog.models import Product
 from apps.catalog.selectors import annotate_listing
-from apps.offers.services import coupon_discount, get_valid_coupon
-from apps.orders.pricing import calculate_totals
+from apps.offers.services import get_valid_coupon
+from apps.orders.pricing import price_lines
 
 from . import services
 from .models import WishlistItem
@@ -69,9 +69,13 @@ class CouponPreviewView(APIView):
         serializer.is_valid(raise_exception=True)
         summary = services.summarize_cart(request.user)
         coupon = get_valid_coupon(serializer.validated_data["code"], request.user)
-        discount = coupon_discount(coupon, summary.priced_lines, summary.totals.subtotal)
-        totals = calculate_totals(summary.priced_lines, discount)
-        payload = {"code": coupon.code, "description": coupon.description, "discount": discount, "totals": totals}
+        totals = price_lines(summary.priced_lines, coupon=coupon).totals  # offers first, then the coupon
+        payload = {
+            "code": coupon.code,
+            "description": coupon.description,
+            "discount": totals.coupon_discount,
+            "totals": totals,
+        }
         return Response(CouponPreviewSerializer(payload).data)
 
 

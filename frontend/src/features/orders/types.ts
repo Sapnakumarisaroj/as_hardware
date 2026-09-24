@@ -45,6 +45,7 @@ export interface OrderItem {
   gst_rate: string
   quantity: number
   line_total: string
+  offer_discount: string
   image: string | null
 }
 
@@ -98,6 +99,10 @@ export interface OrderDetail extends Omit<OrderSummary, 'item_count' | 'item_nam
   subtotal: string
   mrp_total: string
   discount_total: string
+  offer_discount: string
+  coupon_discount: string
+  /** Snapshot of automatic offers applied when the order was placed. */
+  applied_offers: { id: number; name: string; badge: string; discount: string; skus: string[] }[]
   delivery_fee: string
   tax_total: string
   coupon_code: string

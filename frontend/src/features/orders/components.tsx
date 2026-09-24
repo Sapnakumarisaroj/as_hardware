@@ -45,6 +45,8 @@ export interface SummaryTotals {
   mrp_total: string
   subtotal: string
   discount_total: string
+  offer_discount: string
+  coupon_discount: string
   delivery_fee: string
   tax_total: string
   grand_total: string
@@ -54,17 +56,21 @@ export interface SummaryTotals {
 export function PriceSummary({
   totals,
   couponCode,
+  offers,
   heading = 'Price details',
   footer,
 }: {
   totals: SummaryTotals
   couponCode?: string
+  /** Applied automatic offers (name + server discount); shown one row each when given. */
+  offers?: { id: number; name: string; discount: string }[]
   heading?: string
   footer?: ReactNode
 }) {
   const row = 'flex justify-between gap-4 py-1 text-sm'
   const mrpSavings = totals.mrp_total !== totals.subtotal
-  const hasCoupon = totals.discount_total !== '0.00'
+  const hasOffers = totals.offer_discount !== '0.00'
+  const hasCoupon = totals.coupon_discount !== '0.00'
   return (
     <section aria-label={heading}>
       <h2 className="mb-2 text-base font-bold">{heading}</h2>
@@ -79,10 +85,24 @@ export function PriceSummary({
           <dt>Items subtotal</dt>
           <dd>{formatPrice(totals.subtotal)}</dd>
         </div>
+        {hasOffers &&
+          (offers?.length ? (
+            offers.map((offer) => (
+              <div key={offer.id} className={`${row} text-success-600`}>
+                <dt>Offer: {offer.name}</dt>
+                <dd>−{formatPrice(offer.discount)}</dd>
+              </div>
+            ))
+          ) : (
+            <div className={`${row} text-success-600`}>
+              <dt>Offer discount</dt>
+              <dd>−{formatPrice(totals.offer_discount)}</dd>
+            </div>
+          ))}
         {hasCoupon && (
           <div className={`${row} text-success-600`}>
             <dt>Coupon discount{couponCode ? ` (${couponCode})` : ''}</dt>
-            <dd>−{formatPrice(totals.discount_total)}</dd>
+            <dd>−{formatPrice(totals.coupon_discount)}</dd>
           </div>
         )}
         <div className={row}>
@@ -115,6 +135,9 @@ export function OrderItemsList({ items }: { items: OrderItem[] }) {
               <p className="font-semibold text-ink-900">{item.product_name}</p>
             )}
             {item.variant_name && <p className="text-ink-600">{item.variant_name}</p>}
+            {item.offer_discount !== '0.00' && (
+              <p className="text-xs font-medium text-success-600">Offer saving {formatPrice(item.offer_discount)}</p>
+            )}
             <p className="text-xs text-ink-600">
               SKU {item.sku} · Qty {item.quantity} × {formatPrice(item.unit_price)}
               {item.unit_mrp !== item.unit_price && (

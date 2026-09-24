@@ -273,7 +273,7 @@ export function OrderDetailPage() {
         </div>
         <div className="space-y-5">
           <div className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
-            <PriceSummary totals={data} couponCode={data.coupon_code} />
+            <PriceSummary totals={data} couponCode={data.coupon_code} offers={data.applied_offers} />
           </div>
           <section aria-labelledby="payment-heading" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
             <h2 id="payment-heading" className="mb-2 text-base font-bold">

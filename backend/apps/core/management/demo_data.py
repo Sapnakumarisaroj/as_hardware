@@ -515,6 +515,41 @@ STORES = [
     ("DEMO-PUN-WH1", "Demo Warehouse — Chakan", "warehouse", "Chakan", "410501", "18.760600", "73.863600"),
 ]
 
+# Automatic offers (Phase 6). name, description, type, value, max_discount, min_order, priority, category slugs
+# (empty = whole cart). All clearly marked "Demo".
+OFFERS = [
+    (
+        "Demo: Tools week",
+        "Demo offer: 10% off Tools (up to ₹400) when your Tools items total ₹1,500 or more.",
+        "percent",
+        "10",
+        "400",
+        "1500",
+        10,
+        ["tools"],
+    ),
+    (
+        "Demo: Safety first",
+        "Demo offer: ₹50 off Safety gear on ₹500 or more.",
+        "fixed",
+        "50",
+        None,
+        "500",
+        20,
+        ["safety"],
+    ),
+    (
+        "Demo: Plumbing fittings",
+        "Demo offer: 5% off pipes, valves and fittings.",
+        "percent",
+        "5",
+        None,
+        "0",
+        30,
+        ["pipes", "valves", "pvc-fittings", "connectors"],
+    ),
+]
+
 # code, description, type, value, max_discount, min_order
 COUPONS = [
     ("DEMO10", "Demo coupon: 10% off up to ₹200 on orders above ₹500", "percent", "10", "200", "500"),

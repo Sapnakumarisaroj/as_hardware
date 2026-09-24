@@ -1,7 +1,7 @@
-"""Coupons (customer enters a code) and offers (applied automatically, Phase 6).
+"""Coupons (customer enters a code) and offers (applied automatically).
 
-Only the data foundation and coupon validation exist in Phase 2; the automatic offer
-engine is deliberately not built yet.
+Coupon rules live in `offers.services`; the automatic offer engine is `offers.engine`
+(Phase 6). Both are applied by `orders.pricing.price_lines`: offers first, then the coupon.
 """
 
 from decimal import Decimal
@@ -50,6 +50,10 @@ class Coupon(DiscountRuleMixin, TimeStampedModel):
     )
     per_customer_limit = models.PositiveIntegerField(default=1)
     used_count = models.PositiveIntegerField(default=0)
+    show_in_checkout = models.BooleanField(
+        default=False,
+        help_text="List this code under 'Available coupons' at checkout. Leave off for private/partner codes.",
+    )
     # Empty = applies to the whole cart. Otherwise only matching lines count towards the discount.
     products = models.ManyToManyField("catalog.Product", blank=True, related_name="coupons")
     categories = models.ManyToManyField("catalog.Category", blank=True, related_name="coupons")
@@ -86,7 +90,7 @@ class CouponRedemption(models.Model):
 
 
 class Offer(DiscountRuleMixin, TimeStampedModel):
-    """Automatic promotion targeting products and/or categories. Applied by the pricing engine in Phase 6."""
+    """Automatic promotion targeting products and/or categories (none = whole cart). See `offers.engine`."""
 
     name = models.CharField(max_length=120)
     description = models.CharField(max_length=255, blank=True)

@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { useAuth } from '@/features/auth/context'
-import type { Cart, CartTotals } from '@/features/cart/api'
+import type { Cart, CartOffers, CartTotals } from '@/features/cart/api'
 import type { PaymentMethod } from '@/features/orders/types'
 import { api } from '@/lib/api/client'
 
@@ -21,6 +21,8 @@ export interface CheckoutPreview {
     eta_minutes: number | null
     message: string
   }
+  /** Automatic offers applied to (or nearly unlocked by) this checkout. */
+  offers: CartOffers
   blocking_issues: { code: string; message: string }[]
   can_place_order: boolean
   payment_methods: { value: PaymentMethod; label: string; test_mode: boolean }[]

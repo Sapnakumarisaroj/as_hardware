@@ -35,7 +35,7 @@ describe('wishlist', () => {
     const { user, router } = renderRoute('/products')
     await user.click(await screen.findByRole('button', { name: 'Save Impact Drill 650W to wishlist' }))
 
-    expect(currentUrl(router)).toBe('/login?next=%2Fproducts')
+    await waitFor(() => expect(currentUrl(router)).toBe('/login?next=%2Fproducts')) // lazy route
     expect(await screen.findByText(/Login to save items/)).toBeInTheDocument()
     expect(api.post).not.toHaveBeenCalled()
     expect(JSON.parse(window.sessionStorage.getItem('boltrun.pending-action')!)).toMatchObject({

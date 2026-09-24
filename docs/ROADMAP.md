@@ -7,11 +7,11 @@ Every phase respects the hosting constraints in `ARCHITECTURE.md` §1: portable 
 |---|---|---|---|
 | 1 ✅ | Setup & architecture | docs (incl. DEPLOYMENT), Django project with env-driven split settings, vendor-portable DB config (PostgreSQL/MySQL/SQLite), DRF + JWT libs + OpenAPI, core app (base models, soft delete, health, error envelope, request ID, audit log), custom User, Passenger entry point, React/Vite/TS/Tailwind shell, Router, Query, Axios, `.htaccess`, optional compose | backend tests + ruff + `check --deploy`; frontend lint/typecheck/test/build; health endpoint live |
 | 2 ✅ | Database + backend | all domain models (portable), services, core APIs (catalog, addresses, cart, wishlist, orders, inventory), admin, `seed_demo_data` (refuses without DEBUG) | 85 tests, lint, checks, migrations on SQLite; production-vendor run pending hosting info |
-| 3 | Auth + roles | register/login/logout/refresh/forgot/reset, profile, addresses, role permissions, throttles | auth API tests |
-| 4 | Catalog + search | category tree, products/variants/specs/images, filters/sorting, `SearchBackend` (PG FTS+trigram / portable fuzzy), suggestions | search tests on the SQLite path |
-| 5 | Customer frontend | home, listing, detail, category, search, auth pages, profile/addresses (Leaflet + OSM pin picker) | component tests |
-| 6 | Cart, wishlist, checkout | server cart, coupon engine, checkout preview | cart/coupon tests |
-| 7 | Orders + inventory | `place_order` transaction, reservations, state machine, history, cancel/return/reorder | concurrency + transition tests |
+| 3 ✅ | Auth + roles | register/login/logout/refresh/forgot/reset, profile, addresses, role permissions, throttles | auth API tests |
+| 4 ✅ | Catalog + search (delivered with the customer catalogue UI) | category tree, products/variants/specs/images, filters/sorting, portable keyword `SearchBackend`, suggestions | search tests on the SQLite path |
+| 5 ✅ | Checkout + orders UI (delivered: cart, checkout, addresses, COD + mock payment, order history/detail/cancel) | originally "customer frontend"; the Leaflet/OSM pin picker moves to Phase 9 | component + API tests |
+| 6 ✅ | Cart, wishlist, checkout: offer engine | server cart, wishlist and checkout preview (done in 2/5) + automatic offers, offer/coupon stacking, coupon discovery | cart/coupon/offer tests |
+| 7 | Orders + inventory | `place_order` transaction, reservations, state machine, history and cancel exist (2/5); remaining: returns, reorder, concurrency tests | concurrency + transition tests |
 | 8 | Payments | `MockPaymentProvider` (dev), COD, optional Razorpay (order/verify/webhook/refund), idempotency; `run_jobs` cron command | signature/webhook tests |
 | 9 | Stores + delivery engine | stores/zones, fulfillment selection, ETA engine (haversine), Nominatim geocode cache | ETA unit tests |
 | 10 | Delivery partner app | availability, assignments, pickup, OTP, proof upload, earnings, OSM navigation links | flow tests |

@@ -7,6 +7,7 @@ import { useToast } from '@/components/toast'
 import { useAuth } from '@/features/auth/context'
 import { useCart, useRemoveCartItem, useUpdateCartItem, type CartLine } from '@/features/cart/api'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
+import { CartOfferNotes } from '@/features/offers/components'
 import { PriceSummary } from '@/features/orders/components'
 import { useAddToWishlist } from '@/features/wishlist/api'
 import { ApiError, isUnauthorized } from '@/lib/api/errors'
@@ -163,7 +164,7 @@ export function CartPage() {
     )
   }
 
-  const { items, totals, issues, can_checkout } = cart.data
+  const { items, totals, issues, can_checkout, offers } = cart.data
   if (!items.length) {
     return (
       <div className="container-page py-10">
@@ -217,9 +218,11 @@ export function CartPage() {
       </section>
 
       <aside className="h-fit space-y-3 lg:sticky lg:top-32">
+        <CartOfferNotes offers={offers} />
         <div className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
           <PriceSummary
             totals={totals}
+            offers={offers.applied}
             footer={
               totals.savings_vs_mrp !== '0.00' && (
                 <p className="mt-3 rounded-md bg-success-600/10 px-3 py-2 text-sm font-medium text-success-600">

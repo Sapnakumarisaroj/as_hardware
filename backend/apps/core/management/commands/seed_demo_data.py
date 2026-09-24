@@ -1,4 +1,4 @@
-"""Load DEVELOPMENT/DEMO catalog, stores, stock and coupons.
+"""Load DEVELOPMENT/DEMO catalog, stores, stock, coupons and automatic offers.
 
     python manage.py seed_demo_data
 
@@ -20,16 +20,16 @@ from apps.catalog.models import Brand, Category, Product, ProductSpecification, 
 from apps.delivery.models import DeliveryZone
 from apps.inventory.models import Inventory, StockMovement
 from apps.inventory.services import apply_movement
-from apps.offers.models import Coupon
+from apps.offers.models import Coupon, Offer
 from apps.stores.models import Store
 
-from ..demo_data import BRANDS, CATEGORIES, COUPONS, PRODUCTS, STORES
+from ..demo_data import BRANDS, CATEGORIES, COUPONS, OFFERS, PRODUCTS, STORES
 
 DEMO_NOTE = "Demo data for development — not a real product listing."
 
 
 class Command(BaseCommand):
-    help = "Seed development/demo data (categories, brands, products, specs, stores, inventory, coupons)."
+    help = "Seed development/demo data (categories, brands, products, specs, stores, inventory, coupons, offers)."
 
     def add_arguments(self, parser):
         parser.add_argument("--force", action="store_true", help="Allow running with DEBUG=False (staging only).")
@@ -47,13 +47,14 @@ class Command(BaseCommand):
             stores = self._stores()
             created_stock = self._inventory(stores, products)
             self._coupons()
+            self._offers()
         created_images = 0 if no_images else self._images(products)
         self.stdout.write(
             self.style.SUCCESS(
                 f"Demo data ready: {Category.objects.count()} categories, {len(brands)} brands, "
                 f"{len(products)} products, {ProductVariant.objects.filter(sku__startswith='DEMO-').count()} variants, "
                 f"{len(stores)} stores, {created_stock} new stock records, {len(COUPONS)} coupons, "
-                f"{created_images} new demo images."
+                f"{len(OFFERS)} offers, {created_images} new demo images."
             )
         )
 
@@ -194,5 +195,25 @@ class Command(BaseCommand):
                     "ends_at": now + timedelta(days=365),
                     "per_customer_limit": 5,
                     "is_active": True,
+                    "show_in_checkout": True,
                 },
             )
+
+    def _offers(self) -> None:
+        now = timezone.now()
+        for name, description, kind, value, max_discount, min_order, priority, category_slugs in OFFERS:
+            offer, _ = Offer.objects.update_or_create(
+                name=name,
+                defaults={
+                    "description": description,
+                    "discount_type": kind,
+                    "value": Decimal(value),
+                    "max_discount_amount": Decimal(max_discount) if max_discount else None,
+                    "min_order_value": Decimal(min_order),
+                    "priority": priority,
+                    "starts_at": now - timedelta(days=1),
+                    "ends_at": now + timedelta(days=90),
+                    "is_active": True,
+                },
+            )
+            offer.categories.set(Category.objects.filter(slug__in=category_slugs))

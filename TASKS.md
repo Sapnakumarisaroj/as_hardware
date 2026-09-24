@@ -101,9 +101,25 @@ Legend: `[x]` done and verified · `[ ]` open · `[~]` partially done / blocked 
 - [~] Live stock check used the product's order limit; the "stock dropped after adding to cart" path is covered by backend tests (inventory reduced directly), not by the live run
 - [~] Browser testing NOT performed: Chrome again showed an error page for the local server
 
+## Phase 6 — Offer engine + coupon discovery ✅ (2026-09-24)
+Scope: ROADMAP Phase 6 ("server cart, coupon engine, checkout preview"). Cart, wishlist, coupon validation and checkout preview already existed (Phases 2/5); the open item was TASKS' "Offers are stored but not auto-applied (Phase 6)".
+- [x] `offers/engine.py`: automatic offers — live window, product/category targets (categories include subcategories; none = whole cart), one offer per line with lowest `priority` winning, minimum spend on the offer's own lines with fallback to the next offer, percent (capped) or fixed (≤ eligible), Decimal pro-rata spread per line, "add ₹X more" missed offers, customer badges
+- [x] `orders.pricing.price_lines`: single pricing path (cart, checkout preview, coupon preview, available coupons, order placement): offers first, then the coupon on the post-offer amount (coupon minimums evaluated after offers); GST per line on the net amount; `Totals` gains `offer_discount`/`coupon_discount` (`discount_total` = both; old callers unchanged)
+- [x] Orders store `offer_discount`, `coupon_discount`, `applied_offers` snapshot and per-item `offer_discount`; `CouponRedemption.discount_amount` is now the coupon portion only; migration `orders 0003` back-fills `coupon_discount` for existing orders (migration test); an offer starting/ending mid-checkout → 409 `totals_changed`
+- [x] APIs (additive): cart `offers {applied, missed}` + new total fields; checkout preview `offers`; product `offer` badge (one offers query per response); `GET /api/offers/` (public); `GET /api/coupons/available/` (customer; `Coupon.show_in_checkout` opt-in, migration `offers 0003`, usage limits respected, applicability + reason per coupon)
+- [x] Django admin: offer fieldsets with target help text, editable priority/active, "Live now" column; coupon `show_in_checkout` (list-editable)
+- [x] Demo data: 3 "Demo:" offers (Tools week 10% up to ₹400 on ₹1,500 of tools; Safety first ₹50 off ₹500; Plumbing fittings 5%); DEMO10/DEMOFLAT50 advertised at checkout
+- [x] Frontend: offer badge on product cards (text, not colour only; hidden when out of stock), product page callout, homepage "Offers running now" (hidden when none), cart applied-offer notes + unlock hints, per-offer and coupon rows in every price summary, checkout "Available coupons" with one-tap apply and server reasons, order detail offer rows + per-item "Offer saving"; cart/wishlist/login/register routes lazy-loaded (main bundle 327 kB)
+- [x] Tests: backend 187 pass (18 new offer/stacking/API tests in `offers/tests/test_offers.py`, 1 migration back-fill test); frontend 76 pass across 11 files (6 new offer UI tests)
+- [x] Verified: ruff lint clean, `check` clean, `makemigrations --check` clean, migrations applied to the dev DB and demo offers seeded (no reset); frontend lint/typecheck clean, production build OK (no size warning)
+- [x] Live end-to-end (18 checks, dev DB + demo catalogue, temporary customer and 2 cancelled test orders removed afterwards): public offers, badges on targeted products only, minimum-spend hint then capped application, fixed offer, two offers on separate lines, available coupons with verdicts, coupon stacked after offers, totals arithmetic, order breakdown + snapshot + per-item shares, 401/405 checks
+- [~] Browser testing NOT performed (same local-browser limitation as Phases 4–5; not re-attempted)
+- [x] Housekeeping: `ruff format` applied to the 6 Phase 3 accounts/delivery files noted above (formatting only); the whole backend is now format-clean
+
 ## Known limitations carried forward
 - Store selection picks the first store covering all items (distance/zone/ETA selection is Phase 9); `delivery.eta_minutes` is always null until then
-- Offers are stored but not auto-applied (Phase 6); coupons work
+- Offers have no usage limits or per-customer caps, no "buy X get Y"/bundle or free-delivery offer types, and only one coupon per order; offers are managed in Django admin only (dashboard in Phase 11)
+- Product listing prices stay the catalogue price; the offer discount appears in the cart (the badge says so), not as a reduced list price
 - Online payments use the mock gateway; Razorpay, webhooks and refund *processing* are Phase 8 (refunds are recorded as pending)
 - Unpaid online orders keep their stock reserved until paid or cancelled; automatic expiry of abandoned payments needs the Phase 8/20 job queue
 - Notifications are in-app records + email only; there is no in-app notification list screen yet (Phase 20)

@@ -42,6 +42,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "gst_rate",
             "quantity",
             "line_total",
+            "offer_discount",
             "image",
         ]
 
@@ -160,6 +161,9 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "subtotal",
             "mrp_total",
             "discount_total",
+            "offer_discount",
+            "coupon_discount",
+            "applied_offers",
             "delivery_fee",
             "tax_total",
             "grand_total",
@@ -255,6 +259,7 @@ class CheckoutPreviewSerializer(serializers.Serializer):
     coupon = serializers.SerializerMethodField()
     coupon_error = _CouponErrorSerializer(allow_null=True)
     delivery = DeliveryQuoteSerializer()
+    offers = serializers.SerializerMethodField()
     blocking_issues = _IssueSerializer(many=True)
     can_place_order = serializers.BooleanField()
     payment_methods = serializers.SerializerMethodField()
@@ -268,6 +273,11 @@ class CheckoutPreviewSerializer(serializers.Serializer):
         from apps.carts.serializers import TotalsSerializer
 
         return TotalsSerializer(obj.totals).data
+
+    def get_offers(self, obj) -> dict:
+        from apps.carts.serializers import CartOffersSerializer
+
+        return CartOffersSerializer(obj.offers).data
 
     def get_coupon(self, obj) -> dict | None:
         if obj.coupon is None:

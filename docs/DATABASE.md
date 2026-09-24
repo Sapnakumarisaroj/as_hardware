@@ -98,9 +98,9 @@ Movement effects (only via `inventory.services.apply_movement`, which locks the 
 ## offers ✅
 | Table | Key columns | Constraints |
 |---|---|---|
-| `offers_coupon` | code (unique, upper), description, discount_type (percent/fixed), value, max_discount_amount, min_order_value, starts_at, ends_at, usage_limit, per_customer_limit, used_count, is_active, M2M products, M2M categories | CHECK percent ≤ 100; index (is_active, starts_at, ends_at) |
-| `offers_couponredemption` | coupon FK, user FK, order 1:1, discount_amount | index (coupon, user) |
-| `offers_offer` | name, discount_type, value, max_discount_amount, min_order_value, starts_at, ends_at, priority, is_active, M2M products/categories | data only; automatic application is planned for Phase 6 |
+| `offers_coupon` | code (unique, upper), description, discount_type (percent/fixed), value, max_discount_amount, min_order_value, starts_at, ends_at, usage_limit, per_customer_limit, used_count, is_active, show_in_checkout (Phase 6, default off), M2M products, M2M categories | CHECK percent ≤ 100; index (is_active, starts_at, ends_at) |
+| `offers_couponredemption` | coupon FK, user FK, order 1:1, discount_amount (**coupon portion only**) | index (coupon, user) |
+| `offers_offer` | name, description, discount_type, value, max_discount_amount, min_order_value, starts_at, ends_at, priority, is_active, M2M products/categories | CHECK percent ≤ 100; index (is_active, starts_at, ends_at). Applied automatically by `offers.engine` (Phase 6); no usage counters (offers are unlimited while live) |
 
 ## carts ✅
 | Table | Key columns | Constraints |
@@ -113,8 +113,8 @@ Movement effects (only via `inventory.services.apply_movement`, which locks the 
 ## orders ✅
 | Table | Key columns | Constraints / indexes |
 |---|---|---|
-| `orders_order` | public_id UUID, order_number (unique), user FK, store FK, address_snapshot JSON, status (fulfilment), payment_method (cod/online), payment_status, subtotal, mrp_total, discount_total, delivery_fee, tax_total, grand_total, coupon FK, coupon_code, customer_note, estimated_delivery_at, eta_minutes, cancellation_reason, cancelled_at, delivered_at, idempotency_key (Phase 5, nullable) | CHECK grand_total ≥ 0, discount ≥ 0; **unique (user, idempotency_key)**; indexes (user, created_at), (store, status), (status, created_at) |
-| `orders_orderitem` | order FK, variant FK (SET NULL), product FK (SET NULL) + snapshot: product_name, variant_name, sku, brand_name, unit, unit_mrp, unit_price, gst_rate, hsn_code, quantity, line_total | CHECK quantity ≥ 1 |
+| `orders_order` | public_id UUID, order_number (unique), user FK, store FK, address_snapshot JSON, status (fulfilment), payment_method (cod/online), payment_status, subtotal, mrp_total, discount_total, delivery_fee, tax_total, grand_total, coupon FK, coupon_code, customer_note, estimated_delivery_at, eta_minutes, cancellation_reason, cancelled_at, delivered_at, idempotency_key (Phase 5, nullable), offer_discount + coupon_discount (= discount_total) and applied_offers JSON snapshot (Phase 6) | CHECK grand_total ≥ 0, discount ≥ 0; **unique (user, idempotency_key)**; indexes (user, created_at), (store, status), (status, created_at) |
+| `orders_orderitem` | order FK, variant FK (SET NULL), product FK (SET NULL) + snapshot: product_name, variant_name, sku, brand_name, unit, unit_mrp, unit_price, gst_rate, hsn_code, quantity, line_total, offer_discount (Phase 6: this line's share of automatic offers) | CHECK quantity ≥ 1 |
 | `orders_orderstatushistory` | order FK, from_status, to_status, changed_by, note, created_at | index (order, created_at) |
 
 Status flow (`orders/state_machine.py`, the single source of truth):
@@ -131,6 +131,12 @@ reservation into a sale.
 **Idempotency key (Phase 5).** `NULL` rather than an empty string when the client sends none: PostgreSQL, MySQL/MariaDB
 and SQLite all allow repeated NULLs in a unique index, so no partial index is needed (portability rule above). Migration
 `orders 0002_order_idempotency_key` only adds the column and the constraint; existing orders keep `NULL`.
+
+**Discount breakdown (Phase 6).** Migration `orders 0003_order_discount_breakdown` adds `offer_discount`,
+`coupon_discount`, `applied_offers` and `orderitem.offer_discount` (all default 0 / empty) and back-fills
+`coupon_discount = discount_total` for existing orders, since the coupon was the only discount before Phase 6
+(covered by `orders/tests/test_migrations.py`). `offers 0003_coupon_show_in_checkout` adds the opt-in flag (default off,
+so no existing coupon becomes visible).
 
 ## payments ✅
 | Table | Key columns | Constraints |

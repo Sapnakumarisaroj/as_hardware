@@ -18,11 +18,12 @@ from apps.accounts.models import Address
 from apps.carts.services import CartSummary, summarize_cart
 from apps.core.exceptions import ServiceError
 from apps.core.money import ZERO, q
+from apps.offers.engine import OfferResult
 from apps.offers.models import Coupon
-from apps.offers.services import coupon_discount, get_valid_coupon
+from apps.offers.services import get_valid_coupon
 from apps.stores.models import Store
 
-from .pricing import Totals, calculate_totals, delivery_fee_for
+from .pricing import Totals, delivery_fee_for, price_lines
 
 ETA_PENDING_MESSAGE = "Delivery estimate will be confirmed after your order is placed."
 
@@ -49,6 +50,7 @@ class CheckoutSummary:
     coupon_error: dict | None
     delivery: DeliveryQuote
     blocking_issues: list[dict] = field(default_factory=list)
+    offers: OfferResult = field(default_factory=OfferResult)
 
     @property
     def can_place_order(self) -> bool:
@@ -127,17 +129,18 @@ def build_checkout(user, *, address_id: int | None = None, coupon_code: str = ""
         issues.append({"code": "address_required", "message": "Add or choose a delivery address."})
 
     lines = cart.priced_lines
-    subtotal = calculate_totals(lines).subtotal
-    coupon, discount, coupon_error = None, ZERO, None
+    pricing = price_lines(lines)  # automatic offers
+    coupon, coupon_error = None, None
     if coupon_code.strip() and lines:
         try:
             coupon = get_valid_coupon(coupon_code, user)
-            discount = coupon_discount(coupon, lines, subtotal)
+            pricing = price_lines(lines, coupon=coupon)  # coupon on top of offers
         except ServiceError as exc:
             coupon = None
             coupon_error = {"code": exc.error_code, "message": str(exc.detail), "details": exc.details}
             issues.append({"code": "coupon_invalid", "message": str(exc.detail)})
-    totals = calculate_totals(lines, discount)
+    totals = pricing.totals
+    discount = totals.coupon_discount
 
     requirements = {line.item.variant_id: line.item.quantity for line in cart.lines if line.in_stock}
     delivery = quote_delivery(requirements, totals.subtotal - totals.discount_total)
@@ -153,4 +156,5 @@ def build_checkout(user, *, address_id: int | None = None, coupon_code: str = ""
         coupon_error=coupon_error,
         delivery=delivery,
         blocking_issues=issues,
+        offers=pricing.offers,
     )

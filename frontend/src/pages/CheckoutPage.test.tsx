@@ -118,7 +118,7 @@ describe('checkout page', () => {
     signIn()
     const withCoupon = checkoutPreview({
       coupon: { code: 'TOOLS10', description: '10% off tools', discount: '80.00' },
-      totals: { ...checkoutPreview().totals, discount_total: '80.00', grand_total: '720.00' },
+      totals: { ...checkoutPreview().totals, discount_total: '80.00', coupon_discount: '80.00', grand_total: '720.00' },
     })
     const api = mockApi({
       get: baseGet(),

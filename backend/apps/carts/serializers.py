@@ -13,6 +13,30 @@ class TotalsSerializer(serializers.Serializer):
     tax_total = serializers.DecimalField(max_digits=12, decimal_places=2)
     grand_total = serializers.DecimalField(max_digits=12, decimal_places=2)
     savings_vs_mrp = serializers.DecimalField(max_digits=12, decimal_places=2)
+    offer_discount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    coupon_discount = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class AppliedOfferSerializer(serializers.Serializer):
+    id = serializers.IntegerField(source="offer.id")
+    name = serializers.CharField(source="offer.name")
+    description = serializers.CharField(source="offer.description")
+    badge = serializers.CharField(source="offer.badge")
+    discount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    variant_ids = serializers.ListField(child=serializers.IntegerField())
+
+
+class MissedOfferSerializer(serializers.Serializer):
+    id = serializers.IntegerField(source="offer.id")
+    name = serializers.CharField(source="offer.name")
+    badge = serializers.CharField(source="offer.badge")
+    min_order_value = serializers.DecimalField(source="offer.min_order_value", max_digits=12, decimal_places=2)
+    shortfall = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class CartOffersSerializer(serializers.Serializer):
+    applied = AppliedOfferSerializer(many=True)
+    missed = MissedOfferSerializer(many=True)
 
 
 class CartLineSerializer(serializers.Serializer):
@@ -65,6 +89,7 @@ class CartSerializer(serializers.Serializer):
     id = serializers.IntegerField(source="cart.id")
     items = CartLineSerializer(source="lines", many=True)
     totals = TotalsSerializer()
+    offers = CartOffersSerializer()
     issues = serializers.ListField(child=serializers.CharField())
     can_checkout = serializers.BooleanField()
 

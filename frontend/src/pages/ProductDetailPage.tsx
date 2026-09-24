@@ -11,6 +11,7 @@ import { PriceBlock, Rating, StockLabel } from '@/features/catalog/components/ba
 import { ProductRail } from '@/features/catalog/components/ProductCollections'
 import { ProductGallery } from '@/features/catalog/components/ProductGallery'
 import { VariantSelector } from '@/features/catalog/components/VariantSelector'
+import { ProductOfferCallout } from '@/features/offers/components'
 import type { ProductDetail, ProductVariant } from '@/features/catalog/types'
 import { variantLabel } from '@/features/catalog/variants'
 import { WishlistButton } from '@/features/wishlist/WishlistButton'
@@ -215,6 +216,8 @@ export function ProductDetailPage() {
             discountPercent={variant.discount_percent}
             discountAmount={variant.discount_amount}
           />
+
+          {data.offer && !outOfStock && <ProductOfferCallout offer={data.offer} />}
 
           <VariantSelector variants={data.variants} selectedId={variant.id} onSelect={selectVariant} />
 

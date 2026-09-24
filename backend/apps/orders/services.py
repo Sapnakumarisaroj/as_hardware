@@ -20,14 +20,14 @@ from apps.inventory.models import Inventory, StockMovement
 from apps.inventory.services import InsufficientStock, apply_movement
 from apps.notifications.services import notify
 from apps.offers.models import Coupon, CouponRedemption
-from apps.offers.services import coupon_discount, get_valid_coupon
+from apps.offers.services import get_valid_coupon
 from apps.payments.models import Payment, Refund
 from apps.stores.models import Store
 from integrations.payments import get_payment_provider
 
 from .checkout import ETA_PENDING_MESSAGE, find_fulfilment_store
 from .models import Order, OrderItem, OrderStatus, OrderStatusHistory, PaymentMethod
-from .pricing import calculate_totals, line_from_variant
+from .pricing import line_from_variant, price_lines
 from .state_machine import CUSTOMER_CANCELLABLE, STOCK_RESERVED_STATUSES, can_transition
 
 _ORDER_NO_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I ambiguity
@@ -126,13 +126,9 @@ def place_order(
             )
 
     lines = [line_from_variant(item.variant, item.quantity) for item in items]
-    subtotal = calculate_totals(lines).subtotal
-
-    coupon, discount = None, ZERO
-    if coupon_code.strip():
-        coupon = get_valid_coupon(coupon_code, user, lock=True)
-        discount = coupon_discount(coupon, lines, subtotal)
-    totals = calculate_totals(lines, discount)
+    coupon = get_valid_coupon(coupon_code, user, lock=True) if coupon_code.strip() else None
+    pricing = price_lines(lines, coupon=coupon)  # automatic offers, then the coupon
+    totals, offers = pricing.totals, pricing.offers
     if expected_total is not None and q(expected_total) != totals.grand_total:
         raise TotalsChanged(
             "Prices or your order total changed since you last checked. Please review the new total.",
@@ -150,6 +146,18 @@ def place_order(
         subtotal=totals.subtotal,
         mrp_total=totals.mrp_total,
         discount_total=totals.discount_total,
+        offer_discount=totals.offer_discount,
+        coupon_discount=totals.coupon_discount,
+        applied_offers=[
+            {
+                "id": a.offer.id,
+                "name": a.offer.name,
+                "badge": a.offer.badge,
+                "discount": str(a.discount),
+                "skus": [i.variant.sku for i in items if i.variant_id in a.variant_ids],
+            }
+            for a in offers.applied
+        ],
         delivery_fee=totals.delivery_fee,
         tax_total=totals.tax_total,
         grand_total=totals.grand_total,
@@ -175,6 +183,7 @@ def place_order(
                 hsn_code=item.variant.product.hsn_code,
                 quantity=line.quantity,
                 line_total=line.line_total,
+                offer_discount=offers.line_discounts.get(line.variant_id, ZERO),
             )
             for item, line in zip(items, lines, strict=True)
         ]
@@ -197,7 +206,7 @@ def place_order(
         )
 
     if coupon:
-        CouponRedemption.objects.create(coupon=coupon, user=user, order=order, discount_amount=discount)
+        CouponRedemption.objects.create(coupon=coupon, user=user, order=order, discount_amount=totals.coupon_discount)
         type(coupon).objects.filter(pk=coupon.pk).update(used_count=F("used_count") + 1)
 
     _record_status(order, "", OrderStatus.PENDING, user, "Order placed")

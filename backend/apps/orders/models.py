@@ -60,7 +60,11 @@ class Order(TimeStampedModel):
     )
     subtotal = models.DecimalField(**MONEY_FIELD_KWARGS, help_text="Sum of line totals (GST inclusive).")
     mrp_total = models.DecimalField(**MONEY_FIELD_KWARGS)
-    discount_total = models.DecimalField(**MONEY_FIELD_KWARGS)
+    discount_total = models.DecimalField(**MONEY_FIELD_KWARGS, help_text="offer_discount + coupon_discount.")
+    offer_discount = models.DecimalField(**MONEY_FIELD_KWARGS, default=0, help_text="Automatic offers (Phase 6).")
+    coupon_discount = models.DecimalField(**MONEY_FIELD_KWARGS, default=0)
+    # Snapshot of the automatic offers applied: [{"id", "name", "badge", "discount", "skus"}].
+    applied_offers = models.JSONField(default=list, blank=True)
     delivery_fee = models.DecimalField(**MONEY_FIELD_KWARGS)
     tax_total = models.DecimalField(**MONEY_FIELD_KWARGS, help_text="GST contained in the amount payable.")
     grand_total = models.DecimalField(**MONEY_FIELD_KWARGS)
@@ -112,6 +116,9 @@ class OrderItem(models.Model):
     hsn_code = models.CharField(max_length=8, blank=True)
     quantity = models.PositiveIntegerField()
     line_total = models.DecimalField(**MONEY_FIELD_KWARGS)
+    offer_discount = models.DecimalField(
+        **MONEY_FIELD_KWARGS, default=0, help_text="This line's share of automatic offers (for returns/refunds)."
+    )
 
     class Meta:
         ordering = ["id"]

@@ -52,7 +52,7 @@ as_hardware/
 │   │   ├── catalog/         ✅ Category tree (+ SubCategory proxy), Brand, Product, ProductVariant, images, specs (+ API)
 │   │   ├── stores/          ✅ Store (store / dark store / warehouse) + Warehouse proxy
 │   │   ├── inventory/       ✅ Inventory per (store, variant), StockMovement ledger, stock service (+ staff API)
-│   │   ├── offers/          ✅ Coupon, CouponRedemption, Offer; coupon validation service
+│   │   ├── offers/          ✅ Coupon, CouponRedemption, Offer; coupon rules, automatic offer engine (Phase 6)
 │   │   ├── carts/           ✅ Cart, CartItem, Wishlist, WishlistItem (+ API)
 │   │   ├── orders/          ✅ Order, OrderItem (snapshots), OrderStatusHistory, state machine, pricing, placement (+ API)
 │   │   ├── payments/        ✅ Payment, Refund (verification/webhooks in Phase 8)
@@ -138,6 +138,38 @@ Cart ──► POST /checkout/preview/ (orders/checkout.py: build_checkout — r
   without changing the API shape.
 - **Notifications** (`notifications/services.notify`): in-app rows plus email through Django's email backend (console in
   dev), sent only after commit so rolled-back orders never notify. SMS/WhatsApp providers are Phase 20.
+
+### Offers and coupons (Phase 6)
+One pricing path, `orders.pricing.price_lines(lines, coupon=None)`, is used by the cart, checkout preview, coupon
+preview, available-coupon list and order placement, so every screen and the stored order agree to the paisa.
+
+```
+cart lines (current catalogue prices)
+  └─► offers.engine.apply_offers  — automatic, no code
+        · live = is_active and starts_at ≤ now < ends_at (no end = open-ended)
+        · targets: products and/or categories (a category includes its subcategories); none = whole cart
+        · ONE offer per line; overlapping offers → lowest `priority` number wins (tie: older offer)
+        · min_order_value is measured on the lines the offer won; if missed, those lines fall to the
+          next-best offer (repeat until stable) and the offer is reported as "add ₹X more to unlock"
+        · percent (capped by max_discount_amount) or fixed (never above the eligible amount);
+          spread over the offer's lines pro rata (remainder on the last line)
+  └─► coupon (offers.services) on what remains after offers
+        · all existing rules: dates, usage and per-customer limits, product/category scope,
+          and min_order_value — evaluated on the post-offer amount
+  └─► calculate_totals: GST per line on its net amount; delivery fee on the final net
+```
+- **Stacking policy**: offers and one coupon stack; the coupon never discounts money an offer already took off.
+- **Orders** snapshot the result: `offer_discount`, `coupon_discount` (their sum is `discount_total`),
+  `applied_offers` (id, name, badge, discount, SKUs) and each item's `offer_discount`, so later offer edits never change
+  a past order and Phase 7 returns can refund the right amount per line.
+- **Changing offers mid-checkout**: if an offer starts/ends between preview and "Place order", the recalculated total
+  differs from `expected_total` → 409 `totals_changed`; the customer sees the new total first.
+- **Badges**: product cards/pages show the best live offer (`ProductListSerializer.offer`); active offers are loaded
+  once per API response (a few rows + two small prefetches), matched in Python — portable and cheap.
+- **Coupon discovery**: coupons are private by default; admins tick `show_in_checkout` to list one under "Available
+  coupons", where each is evaluated against the customer's cart (applies / why not).
+- Admins manage offers in Django admin (Offers: targets, priority, schedule, "Live now" column). There is no customer
+  or staff write API for offers until the Phase 11 dashboard.
 
 ### Delivery ETA engine (Phase 9)
 `eta = prep_time(store, items) + queue_delay(open orders per available partner) + travel_time(distance)`.
@@ -280,6 +312,13 @@ Routes: `/cart` → `/checkout` → `/orders/:number/pay` (online) → `/order-c
   pages update from the server's response.
 - Mobile: single-column checkout, sticky total/CTA bar, ≥ 44 px touch targets for address and payment choices, bottom-
   sheet dialogs.
+
+### Offers UI (Phase 6)
+`features/offers`: `OfferBadge` on product cards (text "Offer: 10% off", not colour alone), `ProductOfferCallout` on the
+product page ("applied automatically in your cart"), `CartOfferNotes` (applied offers + "add ₹X more to unlock"),
+`AvailableCouponList` at checkout (server verdict per coupon, one-tap apply) and `LiveOffersStrip` on the homepage
+(hidden when no offers run). `PriceSummary` shows one row per applied offer and a separate coupon row. Cart, wishlist
+and login/register routes are now lazy-loaded too (main bundle ≈ 327 kB).
 
 ## 9. Environments
 | | Local (Windows) | Production (existing hosting) |

@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 
 import { AddToCartButton } from '@/features/cart/AddToCartButton'
+import { OfferBadge } from '@/features/offers/components'
 import { WishlistButton } from '@/features/wishlist/WishlistButton'
 import { formatPercent } from '@/lib/format'
 
@@ -44,6 +45,7 @@ export function ProductCard({ product }: { product: ProductSummary }) {
           <StockLabel status={product.stock_status} />
           {product.fast_delivery && !outOfStock && <FastDeliveryBadge />}
         </div>
+        {product.offer && !outOfStock && <OfferBadge offer={product.offer} className="self-start" />}
         <div className="mt-auto pt-2">
           {hasOptions ? (
             <Link to={href} className="btn-secondary w-full">
