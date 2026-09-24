@@ -1,45 +1,35 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import type { CartLine } from '@/features/cart/api'
-import { cart, customer } from '@/test/fixtures'
+import { cart, cartLine, checkoutPreview, customer, address } from '@/test/fixtures'
 import { httpError, mockApi } from '@/test/mockApi'
-import { renderRoute, signIn } from '@/test/utils'
+import { currentUrl, renderRoute, signIn } from '@/test/utils'
 
-const line: CartLine = {
-  id: 9,
-  variant_id: 201,
-  sku: 'DEMO-WIRE-15-10',
-  product_id: 5,
-  product_name: 'FR PVC Insulated Copper Wire',
-  product_slug: 'fr-pvc-copper-wire',
-  variant_name: '1.5 sq mm × 10 m',
-  quantity: 2,
-  unit_price: '400.00',
-  unit_mrp: '500.00',
-  price_at_add: '400.00',
-  price_changed: false,
-  line_total: '800.00',
-  available_quantity: 5,
-  in_stock: true,
-  purchasable: true,
+const line = cartLine({ available_quantity: 5 })
+const TOTALS = {
+  subtotal: '800.00',
+  mrp_total: '1000.00',
+  discount_total: '0.00',
+  delivery_fee: '0.00',
+  tax_total: '122.03',
+  grand_total: '800.00',
+  savings_vs_mrp: '200.00',
+}
+const filled = cart({ items: [line], totals: TOTALS, can_checkout: true })
+
+function routes(cartReply: unknown, extra: Record<string, unknown> = {}) {
+  return {
+    '/categories/': [],
+    '/auth/me/': customer,
+    '/wishlist/': [],
+    '/search/recent/': [],
+    '/cart/': cartReply,
+    ...extra,
+  }
 }
 
-const filled = cart({
-  items: [line],
-  totals: {
-    subtotal: '800.00',
-    mrp_total: '1000.00',
-    discount_total: '0.00',
-    delivery_fee: '0.00',
-    tax_total: '122.03',
-    grand_total: '800.00',
-    savings_vs_mrp: '200.00',
-  },
-})
-
-function routes(cartReply: unknown) {
-  return { '/categories/': [], '/auth/me/': customer, '/wishlist/': [], '/search/recent/': [], '/cart/': cartReply }
+function summary() {
+  return screen.getByRole('region', { name: 'Price details' })
 }
 
 describe('cart page', () => {
@@ -49,7 +39,23 @@ describe('cart page', () => {
     expect(await screen.findByText('Sign in to see your cart and add products.')).toBeInTheDocument()
   })
 
-  it('shows server totals and updates quantity / removes lines through the cart API', async () => {
+  it('shows variant, attributes, MRP, discount, stock and server totals', async () => {
+    signIn()
+    mockApi({ get: routes(filled) })
+    renderRoute('/cart')
+    expect(await screen.findByRole('heading', { name: 'Cart (2 items)' })).toBeInTheDocument()
+    expect(screen.getByText('1.5 sq mm × 10 m')).toBeInTheDocument()
+    expect(screen.getByText('size: 1.5 sq mm · length: 10 m')).toBeInTheDocument()
+    expect(screen.getByText('VoltLine')).toBeInTheDocument()
+    expect(screen.getByText('20% off')).toBeInTheDocument()
+    expect(screen.getByText('Only 5 left')).toBeInTheDocument()
+    expect(within(summary()).getByText('₹1,000')).toBeInTheDocument() // total MRP
+    expect(within(summary()).getByText('Free')).toBeInTheDocument()
+    expect(screen.getByText('You save ₹200 on this order')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Continue shopping' })).toHaveAttribute('href', '/products')
+  })
+
+  it('updates quantity and removes lines through the cart API', async () => {
     signIn()
     const api = mockApi({
       get: routes(filled),
@@ -57,11 +63,7 @@ describe('cart page', () => {
       delete: { '/cart/items/9/': cart() },
     })
     const { user } = renderRoute('/cart')
-    expect(await screen.findByRole('heading', { name: 'Cart (1 item)' })).toBeInTheDocument()
-    expect(screen.getByText('₹800', { selector: 'dd' })).toBeInTheDocument()
-    expect(screen.getByText('−₹200')).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Increase quantity' }))
+    await user.click(await screen.findByRole('button', { name: 'Increase quantity' }))
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/cart/items/9/', { quantity: 3 }))
     expect(await screen.findByText('₹1,200')).toBeInTheDocument()
 
@@ -79,6 +81,47 @@ describe('cart page', () => {
     const { user } = renderRoute('/cart')
     await user.click(await screen.findByRole('button', { name: 'Increase quantity' }))
     expect(await screen.findByText('Only 2 available.')).toBeInTheDocument()
+  })
+
+  it('stock conflict: explains the problem and blocks checkout', async () => {
+    signIn()
+    const conflict = cart({
+      items: [cartLine({ quantity: 4, available_quantity: 2, in_stock: false, line_total: null })],
+      totals: { ...TOTALS, subtotal: '0.00', grand_total: '0.00' },
+      issues: ['Only 2 unit(s) of DEMO-WIRE-15-10 available.'],
+      can_checkout: false,
+    })
+    mockApi({ get: routes(conflict) })
+    renderRoute('/cart')
+    expect(await screen.findByText('Please fix these before checkout:')).toBeInTheDocument()
+    expect(screen.getByText('Only 2 available — reduce the quantity to continue.')).toBeInTheDocument()
+    for (const button of screen.getAllByRole('button', { name: 'Proceed to checkout' })) expect(button).toBeDisabled()
+  })
+
+  it('save for later moves the item to the wishlist', async () => {
+    signIn()
+    const api = mockApi({
+      get: routes(filled),
+      post: { '/wishlist/': null },
+      delete: { '/cart/items/9/': cart() },
+    })
+    const { user } = renderRoute('/cart')
+    await user.click(await screen.findByRole('button', { name: /Save for later/ }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/wishlist/', { product_id: 5 }))
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/cart/items/9/'))
+    expect(await screen.findByText(/Saved for later: FR PVC/)).toBeInTheDocument()
+  })
+
+  it('proceeds to checkout', async () => {
+    signIn()
+    mockApi({
+      get: routes(filled, { '/addresses/': [address()] }),
+      post: { '/checkout/preview/': checkoutPreview() },
+    })
+    const { user, router } = renderRoute('/cart')
+    await user.click((await screen.findAllByRole('button', { name: 'Proceed to checkout' }))[0]!)
+    await waitFor(() => expect(currentUrl(router)).toBe('/checkout')) // lazy route: navigation completes after load
+    expect(await screen.findByRole('heading', { name: 'Checkout' })).toBeInTheDocument()
   })
 
   it('shows an error with retry when the cart cannot load', async () => {

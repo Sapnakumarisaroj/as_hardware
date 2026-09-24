@@ -72,6 +72,10 @@ class Order(TimeStampedModel):
     cancellation_reason = models.CharField(max_length=255, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
+    # Client-generated key for "Place order": a retried/double-clicked request with the same
+    # key returns the first order instead of creating another. NULL (not blank) when absent,
+    # because every supported database lets NULLs repeat in a unique constraint.
+    idempotency_key = models.CharField(max_length=64, null=True, blank=True, editable=False)  # noqa: DJ001
 
     class Meta:
         ordering = ["-created_at"]
@@ -83,6 +87,7 @@ class Order(TimeStampedModel):
         constraints = [
             models.CheckConstraint(condition=Q(grand_total__gte=0), name="order_grand_total_non_negative"),
             models.CheckConstraint(condition=Q(discount_total__gte=0), name="order_discount_non_negative"),
+            models.UniqueConstraint(fields=["user", "idempotency_key"], name="uniq_order_idempotency_key"),
         ]
 
     def __str__(self) -> str:

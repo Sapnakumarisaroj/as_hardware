@@ -2,8 +2,12 @@
 
 AI-powered hardware marketplace with fast (~60-minute) delivery: a Django REST API and a React SPA.
 
-> Status: **Phase 4 complete** (catalog and customer shopping experience: home, categories, search, filters, product
-> pages, variants, wishlist, cart). Checkout is next. See [TASKS.md](TASKS.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
+> Status: **Phase 5 complete** (catalogue, cart, checkout with addresses and coupons, cash on delivery and a development
+> mock online payment, order confirmation, history, detail and cancellation). See [TASKS.md](TASKS.md) and
+> [docs/ROADMAP.md](docs/ROADMAP.md).
+>
+> Try it locally: register on the site, add products, check out with **Cash on delivery** or **Mock online payment**
+> (you choose success / failure / cancellation; no money moves). Demo coupons: `DEMO10`, `DEMOFLAT50`.
 
 | | |
 |---|---|

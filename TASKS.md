@@ -83,12 +83,31 @@ Legend: `[x]` done and verified · `[ ]` open · `[~]` partially done / blocked 
 - [x] Tests: backend 141 pass (new `test_discovery.py`, `test_admin.py`); frontend 44 pass across 8 files (home/header, product card, category listing/filters/sort/pagination/states, product detail/variants/cart, search, wishlist, cart page)
 - [x] Verified: ruff lint clean, `check` clean, `makemigrations --check` clean, migration applied to dev DB; frontend lint/typecheck clean, production build OK; 43 live HTTP checks against the running dev servers (catalog, search, filters, sorting, pagination, detail, wishlist, cart, customer authorization) with a temporary dev customer, deleted afterwards
 - [~] Browser testing NOT performed: the connected Chrome could not load `localhost`/`127.0.0.1` (error page for both the Vite and Django servers), so visual/responsive/console checks were done only through component tests
-- [~] docs/API.md still lacks the Phase 3 auth endpoint table (its Conventions/Planned lines predate Phase 3)
+- [x] docs/API.md Phase 3 auth section added in Phase 5
+
+## Phase 5 — Checkout + order experience ✅ (2026-09-24)
+- [x] Project moved out of OneDrive to `C:\dev\as_hardware` by the owner; backend venv recreated from `requirements\dev.txt`
+- [x] `POST /api/checkout/preview/` (`orders/checkout.py`): server re-prices the cart, validates stock/availability, address, coupon (all existing rules: dates, minimum order, usage + per-customer limits, product/category scope), quotes delivery (availability, fee, free-delivery threshold, fast-delivery store) and lists blocking issues. No ETA is promised (`eta_minutes: null`)
+- [x] `place_order` hardened: per-customer cart-row lock, `Idempotency-Key` (unique `(user, idempotency_key)`, migration `orders 0002`), `expected_total` guard → 409 `totals_changed` (stale prices never charged), notifications on commit; still one transaction (stock reservation, snapshots, history, coupon redemption, payment)
+- [x] Payments: `POST /api/payments/{id}/verify/` + `POST /api/orders/{n}/retry-payment/`; MockPaymentProvider supports success / failed / cancelled (new `VerificationResult.cancelled`); row locks prevent double capture; forged signatures fail. COD confirms immediately. Razorpay stays a Phase 8 stub behind the same interface
+- [x] Cancellation: state-machine rules unchanged (pending/confirmed/processing); now also records a *pending* Refund for captured payments (no fake refund) and releases the coupon use
+- [x] Notifications foundation (`notifications/services.notify`): in-app + email via Django email backend (console in dev), after commit only; events `order.placed`, `order.confirmed`, `order.cancelled`, `payment.failed`
+- [x] API additions (non-breaking): cart lines gain image/brand/attributes/MRP totals/discount/limit; order list gains item names/image/delivery message; order detail gains refunds, `can_cancel`, `can_retry_payment`, item images/slugs, `delivery_message`
+- [x] Frontend: cart page (images, variant attributes, MRP/discount, stock + price-change notices, save for later, blocked checkout on conflicts, sticky mobile bar), checkout (address select/add/edit/delete/default, delivery info, items, coupon apply/remove with server reasons, server order summary, COD / mock online, delivery note, sticky mobile CTA, double-submit safe), mock payment page (success/failure/cancel, retry, cancel order), order confirmation, order history (paginated), order detail (timeline of real statuses, price snapshot, payment/refund info, cancel dialog with reasons), addresses page; checkout/account routes lazy-loaded (main bundle < 500 kB)
+- [x] Django admin verified by test: orders (+ items, status history), payments, refunds, notifications, customers; payments/orders cannot be added or edited by hand
+- [x] Tests: backend 168 pass (new `orders/tests/test_checkout.py` 26, `orders/tests/test_admin.py`); frontend 70 pass across 10 files (new checkout, payment/orders/confirmation/addresses, rewritten cart tests)
+- [x] Verified: ruff lint clean, `check` clean, `makemigrations --check` clean, migration applied to the dev DB (no reset); frontend lint/typecheck clean, production build OK; OpenAPI generates with 0 errors (4 cosmetic enum-name warnings)
+- [x] Live end-to-end (29 checks, real dev DB + demo catalogue, 2 temporary customers deleted afterwards): address required, invalid/minimum-order coupon reasons, valid DEMO10 discount, quantity limit, changed-total rejection, COD order, idempotent replay, double submit, mock success/failure/retry/cancel, cancel unpaid and paid (pending refund), cross-customer 404s, status-change 403/405, history order; notifications recorded and reserved stock back to 0
+- [~] Live stock check used the product's order limit; the "stock dropped after adding to cart" path is covered by backend tests (inventory reduced directly), not by the live run
+- [~] Browser testing NOT performed: Chrome again showed an error page for the local server
 
 ## Known limitations carried forward
-- Store selection picks the first store covering all items (distance/zone/ETA selection is Phase 9)
+- Store selection picks the first store covering all items (distance/zone/ETA selection is Phase 9); `delivery.eta_minutes` is always null until then
 - Offers are stored but not auto-applied (Phase 6); coupons work
-- Online payments create a mock intent only; verification, webhooks and refunds are Phase 8
+- Online payments use the mock gateway; Razorpay, webhooks and refund *processing* are Phase 8 (refunds are recorded as pending)
+- Unpaid online orders keep their stock reserved until paid or cancelled; automatic expiry of abandoned payments needs the Phase 8/20 job queue
+- Notifications are in-app records + email only; there is no in-app notification list screen yet (Phase 20)
+- Cart "save for later" uses the wishlist (per product, not per variant)
 - Search is keyword/substring based (no typo tolerance or synonyms; "tap" also matches "tape"); semantic search is Phase 13
 - Specification filters need consistent spec names/values in the admin; variant-level attributes (e.g. wire length) are shown on the product page but are not yet filterable
 - The location selector only remembers a PIN code; serviceability/ETA per address is Phase 9

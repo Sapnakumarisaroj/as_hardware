@@ -1,6 +1,5 @@
 import type { RouteObject } from 'react-router'
 
-import { AccountPage, OrdersPage } from '@/pages/AccountPages'
 import { LoginPage, RegisterPage } from '@/pages/AuthPages'
 import { CartPage } from '@/pages/CartPage'
 import { CategoryPage } from '@/pages/CategoryPage'
@@ -13,6 +12,9 @@ import { WishlistPage } from '@/pages/WishlistPage'
 
 import { AppProviders } from './AppProviders'
 import { CustomerLayout } from './layouts/CustomerLayout'
+
+/* Checkout and account pages load on demand, so browsing the catalogue doesn't download them. */
+const account = () => import('@/pages/AccountPages')
 
 /**
  * Route table. Readable slug URLs: /c/<category-slug>, /p/<product-slug>.
@@ -32,11 +34,19 @@ export const routes: RouteObject[] = [
           { path: 'c/:slug', element: <CategoryPage /> },
           { path: 'p/:slug', element: <ProductDetailPage /> },
           { path: 'cart', element: <CartPage /> },
+          { path: 'checkout', lazy: async () => ({ Component: (await import('@/pages/CheckoutPage')).CheckoutPage }) },
+          { path: 'orders/:number/pay', lazy: async () => ({ Component: (await import('@/pages/PaymentPage')).PaymentPage }) },
+          {
+            path: 'order-confirmation/:number',
+            lazy: async () => ({ Component: (await import('@/pages/OrderConfirmationPage')).OrderConfirmationPage }),
+          },
           { path: 'wishlist', element: <WishlistPage /> },
           { path: 'login', element: <LoginPage /> },
           { path: 'register', element: <RegisterPage /> },
-          { path: 'account', element: <AccountPage /> },
-          { path: 'account/orders', element: <OrdersPage /> },
+          { path: 'account', lazy: async () => ({ Component: (await account()).AccountPage }) },
+          { path: 'account/orders', lazy: async () => ({ Component: (await account()).OrdersPage }) },
+          { path: 'account/orders/:number', lazy: async () => ({ Component: (await account()).OrderDetailPage }) },
+          { path: 'account/addresses', lazy: async () => ({ Component: (await account()).AddressesPage }) },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

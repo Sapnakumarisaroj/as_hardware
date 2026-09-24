@@ -150,9 +150,7 @@ def test_customer_cancel_releases_stock_and_voids_payment(user, stocked):
     assert payment.status == Payment.Status.CANCELLED
 
 
-def test_orders_api_flow_and_permissions(
-    auth_client, api_client, staff_client, staff_user, user, other_user, stocked
-):
+def test_orders_api_flow_and_permissions(auth_client, api_client, staff_client, staff_user, user, other_user, stocked):
     store, _, tape = stocked
     address = create_address(user)
     auth_client.post("/api/cart/items/", {"variant_id": tape.id, "quantity": 2}, format="json")

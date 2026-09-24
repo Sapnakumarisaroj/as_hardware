@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from apps.catalog.serializers import ProductListSerializer
@@ -27,12 +29,36 @@ class CartLineSerializer(serializers.Serializer):
     price_at_add = serializers.DecimalField(source="item.price_at_add", max_digits=12, decimal_places=2)
     price_changed = serializers.BooleanField()
     line_total = serializers.SerializerMethodField()
+    line_mrp_total = serializers.SerializerMethodField()
+    discount_percent = serializers.SerializerMethodField()
     available_quantity = serializers.IntegerField()
     in_stock = serializers.BooleanField()
     purchasable = serializers.BooleanField()
+    brand_name = serializers.CharField(source="item.variant.product.brand.name", default="")
+    attributes = serializers.JSONField(source="item.variant.attributes")
+    max_order_quantity = serializers.IntegerField(source="item.variant.product.max_order_quantity")
+    image = serializers.SerializerMethodField()
 
     def get_line_total(self, obj) -> str | None:
         return str(obj.priced.line_total) if obj.priced else None
+
+    def get_line_mrp_total(self, obj) -> str | None:
+        return str(obj.priced.line_mrp_total) if obj.priced else None
+
+    def get_discount_percent(self, obj) -> str | None:
+        variant = obj.item.variant
+        if not variant.mrp or variant.price >= variant.mrp:
+            return None
+        return str(((variant.mrp - variant.price) * 100 / variant.mrp).quantize(Decimal("0.01")))
+
+    def get_image(self, obj) -> str | None:
+        images = list(obj.item.variant.product.images.all())
+        if not images:
+            return None
+        # Prefer a picture of this exact variant, else the product's primary image.
+        image = next((img for img in images if img.variant_id == obj.item.variant_id), images[0])
+        request = self.context.get("request")
+        return request.build_absolute_uri(image.image.url) if request else image.image.url
 
 
 class CartSerializer(serializers.Serializer):

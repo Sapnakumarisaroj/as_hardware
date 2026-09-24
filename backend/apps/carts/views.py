@@ -22,7 +22,8 @@ from .serializers import (
 
 
 def _cart_response(request, status_code=status.HTTP_200_OK):
-    return Response(CartSerializer(services.summarize_cart(request.user)).data, status=status_code)
+    data = CartSerializer(services.summarize_cart(request.user), context={"request": request}).data
+    return Response(data, status=status_code)
 
 
 class CartView(APIView):

@@ -43,7 +43,16 @@ and `frontend/package-lock.json`.
 | Demo images | Pillow (already a dependency for `ImageField`) | ✅ HPND | ✅ | No | Drawn locally by `seed_demo_data`; dev only |
 | Icons | Inline SVG components (`components/icons.tsx`) | ✅ project code | ✅ | No | No icon font/CDN |
 
-## Frontend (no new packages in Phase 4)
+## Checkout & orders (Phase 5): no new dependencies
+| Feature | Tool | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Online payments (dev) | In-repo `MockPaymentProvider` (HMAC-signed intents) | ✅ project code | ✅ | No | Simulates success / failure / cancellation; moves no money; blocked in production |
+| Cash on delivery | In-repo | ✅ | ✅ | No | Works without any gateway |
+| Order notifications | Django `Notification` rows (in-app) + `django.core.mail` | ✅ | ✅ | No | Console email backend in dev; the hosting SMTP mailbox in prod |
+| Idempotency / locking | Database unique constraint + `select_for_update` | ✅ | ✅ | No | No Redis or queue needed |
+| Idempotency keys (browser) | `crypto.randomUUID()` | ✅ built into browsers | ✅ | No | |
+
+## Frontend (no new packages in Phases 4–5)
 | Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
 |---|---|---|---|---|---|
 | UI library | React 19 | ✅ MIT | ✅ | No | |

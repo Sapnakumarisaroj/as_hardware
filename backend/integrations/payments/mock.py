@@ -37,7 +37,10 @@ class MockPaymentProvider(PaymentProvider):
         # The signature proves the payload refers to an intent this server created.
         if not hmac.compare_digest(str(payload.get("mock_signature", "")), _sign(provider_order_id)):
             return VerificationResult(success=False, failure_reason="Invalid mock signature.")
-        if payload.get("mock_outcome") != "success":
+        outcome = payload.get("mock_outcome")
+        if outcome == "cancelled":
+            return VerificationResult(success=False, cancelled=True, failure_reason="Payment cancelled by customer.")
+        if outcome != "success":
             return VerificationResult(success=False, failure_reason="Mock payment declined.")
         return VerificationResult(
             success=True, provider_payment_id=f"mock_pay_{secrets.token_hex(8)}", method=payload.get("method", "upi")

@@ -1,8 +1,12 @@
+from django.urls import path
 from rest_framework.routers import SimpleRouter
 
-from .views import OrderViewSet
+from .views import CheckoutPreviewView, OrderViewSet
 
 router = SimpleRouter()
 router.register("orders", OrderViewSet, basename="order")
 
-urlpatterns = router.urls
+urlpatterns = [
+    path("checkout/preview/", CheckoutPreviewView.as_view(), name="checkout-preview"),
+    *router.urls,
+]

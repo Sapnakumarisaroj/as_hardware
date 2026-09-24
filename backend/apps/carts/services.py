@@ -126,7 +126,11 @@ class CartSummary:
 def summarize_cart(user) -> CartSummary:
     """Current prices and stock for every line; totals include only purchasable, in-stock lines."""
     cart = get_cart(user)
-    items = cart.items.select_related("variant__product__brand").order_by("created_at", "id")
+    items = (
+        cart.items.select_related("variant__product__brand")
+        .prefetch_related("variant__product__images")
+        .order_by("created_at", "id")
+    )
     lines, issues = [], []
     for item in items:
         variant, product = item.variant, item.variant.product

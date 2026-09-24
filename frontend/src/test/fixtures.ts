@@ -1,5 +1,8 @@
+import type { Address } from '@/features/addresses/api'
 import type { User } from '@/features/auth/api'
-import type { Cart } from '@/features/cart/api'
+import type { Cart, CartLine } from '@/features/cart/api'
+import type { CheckoutPreview } from '@/features/checkout/api'
+import type { OrderDetail } from '@/features/orders/types'
 import type {
   Category,
   ProductDetail,
@@ -202,6 +205,198 @@ export function facets(overrides: Partial<ProductFacets> = {}): ProductFacets {
     ],
     ...overrides,
   }
+}
+
+export function cartLine(overrides: Partial<CartLine> = {}): CartLine {
+  return {
+    id: 9,
+    variant_id: 201,
+    sku: 'DEMO-WIRE-15-10',
+    product_id: 5,
+    product_name: 'FR PVC Insulated Copper Wire',
+    product_slug: 'fr-pvc-copper-wire',
+    variant_name: '1.5 sq mm × 10 m',
+    quantity: 2,
+    unit_price: '400.00',
+    unit_mrp: '500.00',
+    price_at_add: '400.00',
+    price_changed: false,
+    line_total: '800.00',
+    line_mrp_total: '1000.00',
+    discount_percent: '20.00',
+    available_quantity: 30,
+    in_stock: true,
+    purchasable: true,
+    brand_name: 'VoltLine',
+    attributes: { size: '1.5 sq mm', length: '10 m' },
+    max_order_quantity: 10,
+    image: null,
+    ...overrides,
+  }
+}
+
+export function address(overrides: Partial<Address> = {}): Address {
+  return {
+    id: 31,
+    name: 'Asha Kulkarni',
+    phone: '9876543210',
+    address_line1: '12 MG Road',
+    address_line2: '',
+    area: 'Kothrud',
+    landmark: '',
+    city: 'Pune',
+    state: 'Maharashtra',
+    postal_code: '411038',
+    country: 'IN',
+    latitude: null,
+    longitude: null,
+    address_type: 'home',
+    is_default: true,
+    created_at: '2026-09-20T10:00:00Z',
+    updated_at: '2026-09-20T10:00:00Z',
+    ...overrides,
+  }
+}
+
+const TOTALS_800 = {
+  subtotal: '800.00',
+  mrp_total: '1000.00',
+  discount_total: '0.00',
+  delivery_fee: '0.00',
+  tax_total: '122.03',
+  grand_total: '800.00',
+  savings_vs_mrp: '200.00',
+}
+
+export function checkoutPreview(overrides: Partial<CheckoutPreview> = {}): CheckoutPreview {
+  return {
+    cart: cart({ items: [cartLine()], totals: TOTALS_800, can_checkout: true }),
+    totals: TOTALS_800,
+    address_id: 31,
+    coupon: null,
+    coupon_error: null,
+    delivery: {
+      available: true,
+      fee: '0.00',
+      free_delivery_min_order: '499.00',
+      amount_to_free_delivery: '0.00',
+      fast_delivery_possible: true,
+      eta_minutes: null,
+      message: 'Delivery estimate will be confirmed after your order is placed.',
+    },
+    blocking_issues: [],
+    can_place_order: true,
+    payment_methods: [
+      { value: 'online', label: 'Mock online payment (development — no real money)', test_mode: true },
+      { value: 'cod', label: 'Cash on delivery', test_mode: false },
+    ],
+    ...overrides,
+  }
+}
+
+export function orderDetail(overrides: Partial<OrderDetail> = {}): OrderDetail {
+  return {
+    order_number: 'OD260924ABCDEF',
+    public_id: '7a1c3b0e-0000-4000-8000-000000000001',
+    status: 'confirmed',
+    payment_method: 'cod',
+    payment_status: 'pending',
+    address_snapshot: {
+      name: 'Asha Kulkarni',
+      phone: '9876543210',
+      address_line1: '12 MG Road',
+      address_line2: '',
+      area: 'Kothrud',
+      landmark: '',
+      city: 'Pune',
+      state: 'Maharashtra',
+      postal_code: '411038',
+      address_type: 'home',
+    },
+    store_name: 'Demo Store',
+    subtotal: '800.00',
+    mrp_total: '1000.00',
+    discount_total: '0.00',
+    delivery_fee: '0.00',
+    tax_total: '122.03',
+    grand_total: '800.00',
+    coupon_code: '',
+    customer_note: '',
+    estimated_delivery_at: null,
+    eta_minutes: null,
+    delivery_message: 'Delivery estimate will be confirmed after your order is placed.',
+    cancellation_reason: '',
+    cancelled_at: null,
+    delivered_at: null,
+    created_at: '2026-09-24T10:00:00Z',
+    can_cancel: true,
+    can_retry_payment: false,
+    items: [
+      {
+        id: 1,
+        product: 5,
+        product_slug: 'fr-pvc-copper-wire',
+        variant: 201,
+        product_name: 'FR PVC Insulated Copper Wire',
+        variant_name: '1.5 sq mm × 10 m',
+        sku: 'DEMO-WIRE-15-10',
+        brand_name: 'VoltLine',
+        unit: 'coil',
+        unit_mrp: '500.00',
+        unit_price: '400.00',
+        gst_rate: '18.00',
+        quantity: 2,
+        line_total: '800.00',
+        image: null,
+      },
+    ],
+    status_history: [
+      { from_status: '', to_status: 'pending', note: 'Order placed', created_at: '2026-09-24T10:00:00Z' },
+      { from_status: 'pending', to_status: 'confirmed', note: 'Cash on delivery order confirmed', created_at: '2026-09-24T10:00:01Z' },
+    ],
+    payments: [
+      {
+        public_id: 'pay-cod-1',
+        provider: 'cod',
+        method: 'cod',
+        amount: '800.00',
+        currency: 'INR',
+        status: 'pending',
+        failure_reason: '',
+        captured_at: null,
+        created_at: '2026-09-24T10:00:00Z',
+        client_payload: {},
+      },
+    ],
+    refunds: [],
+    ...overrides,
+  }
+}
+
+/** An online order waiting at the mock gateway. */
+export function pendingOnlineOrder(overrides: Partial<OrderDetail> = {}): OrderDetail {
+  return orderDetail({
+    status: 'pending',
+    payment_method: 'online',
+    payment_status: 'pending',
+    delivery_message: 'Complete the payment to confirm your order.',
+    status_history: [{ from_status: '', to_status: 'pending', note: 'Order placed', created_at: '2026-09-24T10:00:00Z' }],
+    payments: [
+      {
+        public_id: 'pay-mock-1',
+        provider: 'mock',
+        method: 'unknown',
+        amount: '800.00',
+        currency: 'INR',
+        status: 'created',
+        failure_reason: '',
+        captured_at: null,
+        created_at: '2026-09-24T10:00:00Z',
+        client_payload: { mock: true, notice: 'Development mock payment. No real money is charged.', mock_signature: 'sig-1' },
+      },
+    ],
+    ...overrides,
+  })
 }
 
 export function cart(overrides: Partial<Cart> = {}): Cart {

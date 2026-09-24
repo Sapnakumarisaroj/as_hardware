@@ -113,7 +113,7 @@ Movement effects (only via `inventory.services.apply_movement`, which locks the 
 ## orders ✅
 | Table | Key columns | Constraints / indexes |
 |---|---|---|
-| `orders_order` | public_id UUID, order_number (unique), user FK, store FK, address_snapshot JSON, status (fulfilment), payment_method (cod/online), payment_status, subtotal, mrp_total, discount_total, delivery_fee, tax_total, grand_total, coupon FK, coupon_code, customer_note, estimated_delivery_at, eta_minutes, cancellation_reason, cancelled_at, delivered_at | CHECK grand_total ≥ 0, discount ≥ 0; indexes (user, created_at), (store, status), (status, created_at) |
+| `orders_order` | public_id UUID, order_number (unique), user FK, store FK, address_snapshot JSON, status (fulfilment), payment_method (cod/online), payment_status, subtotal, mrp_total, discount_total, delivery_fee, tax_total, grand_total, coupon FK, coupon_code, customer_note, estimated_delivery_at, eta_minutes, cancellation_reason, cancelled_at, delivered_at, idempotency_key (Phase 5, nullable) | CHECK grand_total ≥ 0, discount ≥ 0; **unique (user, idempotency_key)**; indexes (user, created_at), (store, status), (status, created_at) |
 | `orders_orderitem` | order FK, variant FK (SET NULL), product FK (SET NULL) + snapshot: product_name, variant_name, sku, brand_name, unit, unit_mrp, unit_price, gst_rate, hsn_code, quantity, line_total | CHECK quantity ≥ 1 |
 | `orders_orderstatushistory` | order FK, from_status, to_status, changed_by, note, created_at | index (order, created_at) |
 
@@ -123,7 +123,14 @@ Status flow (`orders/state_machine.py`, the single source of truth):
 pending → confirmed → processing → packed → assigned → picked_up → out_for_delivery → delivered → return_requested → returned
    └──────────┴────────────┴──────────┴─────────┴──→ cancelled            (assigned → packed = unassign; return_requested → delivered = rejected)
 ```
-Customers can cancel while `pending`, `confirmed` or `processing`. Cancelling releases reserved stock; `picked_up` converts the reservation into a sale.
+Customers can cancel while `pending`, `confirmed` or `processing`. Cancelling releases reserved stock, voids uncaptured
+payments, records a *pending* `payments_refund` for captured ones (processed by the Phase 8 gateway workflow) and deletes
+the coupon redemption (decrementing `used_count`), so the customer can use the coupon again. `picked_up` converts the
+reservation into a sale.
+
+**Idempotency key (Phase 5).** `NULL` rather than an empty string when the client sends none: PostgreSQL, MySQL/MariaDB
+and SQLite all allow repeated NULLs in a unique index, so no partial index is needed (portability rule above). Migration
+`orders 0002_order_idempotency_key` only adds the column and the constraint; existing orders keep `NULL`.
 
 ## payments ✅
 | Table | Key columns | Constraints |
@@ -149,7 +156,7 @@ Customers can cancel while `pending`, `confirmed` or `processing`. Cancelling re
 ## notifications / support ✅ (foundation)
 | Table | Key columns |
 |---|---|
-| `notifications_notification` | user FK, channel (in_app/email/sms/whatsapp/push), event, title, body, data JSON, status (pending/sent/failed/skipped), provider, provider_message_id, error, sent_at, read_at |
+| `notifications_notification` | user FK, channel (in_app/email/sms/whatsapp/push), event, title, body, data JSON, status (pending/sent/failed/skipped), provider, provider_message_id, error, sent_at, read_at. Phase 5 writes `order.placed`, `order.confirmed`, `order.cancelled`, `payment.failed` (in-app + email via Django's email backend, only after the order transaction commits) |
 | `support_supportconversation` | user FK (nullable), contact_phone, channel, subject, order FK, status, assigned_to, last_message_at |
 | `support_supportmessage` | conversation FK, sender_type (customer/agent/bot/system), sender FK, body, attachments JSON, channel_message_id |
 
@@ -170,7 +177,12 @@ Customers can cancel while `pending`, `confirmed` or `processing`. Cancelling re
 `accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 13–19) · `ai_productembedding` (JSON vectors, Phase 13) · `payments_webhookevent` (idempotency, Phase 8) · `core_job` (DB job queue for cron, Phase 8/20) · `locations geocode cache` (Phase 9) · `orders_returnrequest` (Phase 7) · `django_cache` (prod DB cache, created by `createcachetable`).
 
 ## Transactions
-- `orders.services.place_order` runs in one atomic block. It locks the cart lines and coupon, validates, picks a store, creates the order, items, stock reservations, redemption, status history and payment, then clears the cart. Any failure rolls back everything (tested).
+- `orders.services.place_order` runs in one atomic block. It locks the customer's cart row (so concurrent "Place order"
+  clicks queue), returns the existing order if the idempotency key was already used, locks the cart lines and coupon,
+  validates, recalculates totals (compares them with `expected_total`), picks a store, creates the order, items, stock
+  reservations, redemption, status history and payment, then clears the cart. Any failure rolls back everything, and
+  notifications are only sent on commit (both tested).
+- `payments.services.verify_payment` locks the payment and order rows, so a double submit can't capture twice.
 - `orders.services.transition_order` / `cancel_order_by_customer` lock the order, validate against the state machine, apply stock side effects, and write history.
 - `inventory.services.apply_movement` locks the inventory row, validates non-negativity and writes the ledger row.
 - Cart add/update lock the cart row. Address default changes lock the user's addresses.

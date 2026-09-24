@@ -9,7 +9,7 @@ Base URL: `/api/`. JSON only. The live OpenAPI 3 schema is the source of truth (
 Legend: ✅ implemented & tested · 🔜 planned (phase)
 
 ## Conventions
-- **Auth:** `Authorization: Bearer <access JWT>`. The login/register endpoints that issue tokens arrive in **Phase 3**. Until then, APIs are exercised with tests, or with tokens minted locally.
+- **Auth:** `Authorization: Bearer <access JWT>` from `/api/auth/login/` or `/api/auth/register/` (see *Auth & profile*).
 - **Default permission:** authenticated. Public endpoints are marked *public*.
 - **Roles:** `customer`, `store_staff`, `delivery_partner`, `admin` (superusers count as admin). *Staff* = admin or store_staff.
 - **Pagination:** `?page=&page_size=` (max 100) → `{count, next, previous, results}`. Categories, brands, addresses and the cart are unpaginated.
@@ -123,7 +123,7 @@ Other users' addresses return 404.
 ## Cart & wishlist ✅
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/cart/` | Lines with current price, `price_changed`, `available_quantity`, `in_stock`; `totals` (subtotal, mrp_total, discount_total, delivery_fee, tax_total, grand_total, savings_vs_mrp); `issues[]`; `can_checkout` |
+| GET | `/api/cart/` | Lines with current price, `unit_mrp`, `line_total`, `line_mrp_total`, `discount_percent`, `price_at_add` + `price_changed`, `available_quantity`, `in_stock`, `purchasable`, `brand_name`, `attributes`, `max_order_quantity`, `image`; `totals` (subtotal, mrp_total, discount_total, delivery_fee, tax_total, grand_total, savings_vs_mrp); `issues[]`; `can_checkout` |
 | DELETE | `/api/cart/` | Empty the cart |
 | POST | `/api/cart/items/` | `{variant_id, quantity}`. Adds or increments. Validates purchasable, `max_order_quantity` and stock (409) |
 | PATCH | `/api/cart/items/{id}/` | `{quantity}`, re-validated |
@@ -134,14 +134,60 @@ Other users' addresses return 404.
 
 Delivery fee: `DELIVERY_FEE` (default ₹40), free at or above `FREE_DELIVERY_MIN_ORDER` (default ₹499), after discounts.
 
+## Checkout ✅ (Phase 5)
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| POST | `/api/checkout/preview/` | customer | `{address_id?, coupon_code?}` → server-validated checkout state. Writes nothing, reserves nothing |
+
+Response:
+```json
+{ "cart": { …same as GET /api/cart/… },
+  "totals": { "subtotal": "800.00", "mrp_total": "1000.00", "discount_total": "80.00", "delivery_fee": "0.00",
+              "tax_total": "109.83", "grand_total": "720.00", "savings_vs_mrp": "280.00" },
+  "address_id": 31,
+  "coupon": { "code": "DEMO10", "description": "…", "discount": "80.00" },        // or null
+  "coupon_error": { "code": "coupon_min_order", "message": "Add ₹451.00 more…", "details": {…} },  // or null
+  "delivery": { "available": true, "fee": "0.00", "free_delivery_min_order": "499.00",
+                "amount_to_free_delivery": "0.00", "fast_delivery_possible": true,
+                "eta_minutes": null, "message": "Delivery estimate will be confirmed after your order is placed." },
+  "blocking_issues": [ { "code": "address_required", "message": "Add or choose a delivery address." } ],
+  "can_place_order": false,
+  "payment_methods": [ { "value": "online", "label": "Mock online payment (development — no real money)", "test_mode": true },
+                       { "value": "cod", "label": "Cash on delivery", "test_mode": false } ] }
+```
+`blocking_issues[].code`: `cart_empty`, `cart_item_unavailable` (stock/availability changed — fix in the cart),
+`address_required`, `address_not_found`, `coupon_invalid`, `not_deliverable` (no single store can supply every line).
+`delivery.eta_minutes` stays `null` until the Phase 9 ETA engine; no delivery time is promised before then.
+
 ## Orders ✅
 | Method | Path | Access | Notes |
 |---|---|---|---|
-| POST | `/api/orders/` | customer | `{address_id, payment_method: "cod"\|"online", coupon_code?, customer_note?}` → places the order from the cart (transactional; stock reserved at one store that can fulfil every line). COD orders auto-confirm. Online orders stay `pending` with a **mock** payment intent (`payments[0].client_payload`) until Phase 8 |
-| GET | `/api/orders/` | customer: own · staff: all | `?status=` filter |
-| GET | `/api/orders/{order_number}/` | owner/staff | Items (snapshots), status history, payments |
-| POST | `/api/orders/{order_number}/cancel/` | owner | `{reason}`. Only while pending/confirmed/processing, else 409. Releases stock, voids uncaptured payments |
+| POST | `/api/orders/` | customer | Places the order from the cart. Body: `{address_id, payment_method: "cod"\|"online", coupon_code?, customer_note?, expected_total?}`. Header `Idempotency-Key: <8–64 chars [A-Za-z0-9_-]>` (or body `idempotency_key`). **201** new order · **200** + `Idempotent-Replayed: true` when the key was already used by this customer (returns that order, creates nothing) |
+| GET | `/api/orders/` | customer: own · staff: all | Newest first, paginated. `?status=` filter. Items: `order_number, status, payment_method, payment_status, grand_total, item_count` (units), `item_names` (first 3), `image`, `estimated_delivery_at`, `delivery_message`, `created_at` |
+| GET | `/api/orders/{order_number}/` | owner/staff | Snapshots of items (+`image`, `product_slug`) and address, all totals, `status_history`, `payments`, `refunds`, `can_cancel`, `can_retry_payment`, `delivery_message` |
+| POST | `/api/orders/{order_number}/cancel/` | owner | `{reason}` (required). Only while `pending`/`confirmed`/`processing`, else 409 `invalid_transition`. Releases reserved stock, voids uncaptured payments, creates a **pending** Refund for captured payments, gives the coupon use back |
+| POST | `/api/orders/{order_number}/retry-payment/` | owner | New online payment attempt for a `pending` online order whose last attempt failed/was cancelled (409 otherwise) |
 | POST | `/api/orders/{order_number}/transition/` | staff | `{status, note?}`. Validated by the state machine (409 on invalid). Side effects: cancel → release stock, picked_up → sale |
+| POST | `/api/payments/{public_id}/verify/` | owner | `{payload: {…gateway result…}}` → verified **server-side** by the payment provider; returns the updated order. Mock payload: `{mock_signature (from client_payload), mock_outcome: "success"\|"failed"\|"cancelled"}`. Repeating a successful verification is harmless; a closed attempt → 409 `payment_state_invalid` |
+
+Customers cannot update or delete orders (PUT/PATCH/DELETE → 405) or change status except by cancelling; other
+customers' orders, payments and addresses return 404.
+
+**Placement errors:** `cart_empty` (400), `insufficient_stock` (409), `product_unavailable` / `max_quantity_exceeded`
+(400), coupon codes (`invalid_coupon`, `coupon_expired`, `coupon_min_order`, `coupon_not_applicable`,
+`coupon_exhausted`, `coupon_already_used`: 400), `totals_changed` (409, `details: {expected, grand_total}`: prices,
+stock or coupon changed since the customer saw `expected_total`; nothing is created), address of another user (404).
+
+**Payment/order states:**
+
+| Event | Payment | Order `payment_status` | Order `status` |
+|---|---|---|---|
+| COD placed | `pending` (provider `cod`) | `pending` | `confirmed` |
+| Online placed | `created` (+ `client_payload`) | `pending` | `pending` |
+| Gateway success | `captured` | `paid` | `confirmed` |
+| Gateway failure | `failed` (+ `failure_reason`) | `failed` | `pending` (retry allowed) |
+| Customer closed gateway | `cancelled` | `pending` | `pending` (retry or cancel) |
+| Order cancelled | uncaptured → `cancelled`; captured stays `captured` + Refund `pending` | unchanged | `cancelled` |
 
 ## Inventory ✅ (staff only)
 | Method | Path | Notes |
@@ -152,9 +198,14 @@ Delivery fee: `DELIVERY_FEE` (default ₹40), free at or above `FREE_DELIVERY_MI
 | POST | `/api/inventory/{id}/adjust/` | `{movement_type: purchase\|adjustment\|return, quantity, reason, reference?}`. Adjustments may be negative and need a reason. Never below zero (409) |
 | GET | `/api/inventory/movements/` | Ledger. Filters: `inventory`, `type` |
 
+## Auth & profile ✅ (Phase 3)
+`POST /api/auth/register/` (always role `customer`) · `POST /api/auth/login/` · `POST /api/auth/token/refresh/`
+(rotating) · `POST /api/auth/logout/` (blacklists the refresh token) · `POST /api/auth/password/forgot|reset|change/` ·
+`GET /api/auth/me/` · `GET/PATCH /api/profile/`, `POST /api/profile/avatar/`, `POST /api/profile/deactivate/` ·
+admin only: `/api/admin/users/`. Login/register return `{access, refresh, user}`. See `/api/docs/` for bodies.
+
 ## Planned 🔜
-- **Auth** `/api/auth/` (Phase 3): register, login, token refresh, logout (blacklist), forgot/reset password, `me`.
-- **Payments** (Phase 8): `/api/payments/{id}/verify/` (mock + optional Razorpay), webhooks, refunds.
+- **Payments** (Phase 8): Razorpay provider behind the same `/api/payments/{id}/verify/`, webhooks, refund processing.
 - **Stores / delivery ETA** (Phase 9), **delivery partner** `/api/delivery/…` (Phase 10).
 - **Admin dashboard APIs** `/api/admin/…` (Phase 11). Until then, use the Django admin at `/django-admin/`.
 - **AI** `/api/ai/…` (Phases 12–19). **Notifications/support** (Phase 20).

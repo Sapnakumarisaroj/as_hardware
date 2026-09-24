@@ -1,34 +1,57 @@
-import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router'
+import { useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router'
 
+import { Breadcrumbs } from '@/components/Breadcrumbs'
 import { EmptyState, ErrorState, PageSpinner, SignInPrompt } from '@/components/feedback'
+import { Pagination } from '@/components/Pagination'
+import { useAddresses } from '@/features/addresses/api'
+import { AddressFormModal, AddressList, AddressText } from '@/features/addresses/components'
 import { useAuth } from '@/features/auth/context'
-import type { Paginated } from '@/features/catalog/types'
-import { api } from '@/lib/api/client'
+import { ProductImage } from '@/features/catalog/components/ProductImage'
+import { ORDERS_PAGE_SIZE, useOrder, useOrders, useRetryPayment } from '@/features/orders/api'
+import {
+  CancelOrderDialog,
+  OrderItemsList,
+  OrderStatusBadge,
+  OrderTimeline,
+  PaymentStatusBadge,
+  PriceSummary,
+} from '@/features/orders/components'
+import type { OrderDetail } from '@/features/orders/types'
+import { isNotFound } from '@/lib/api/errors'
 import { formatDate, formatPrice } from '@/lib/format'
 import { usePageMeta } from '@/lib/usePageMeta'
 
-interface OrderSummary {
-  order_number: string
-  status: string
-  payment_method: string
-  grand_total: string
-  item_count: number
-  created_at: string
+import { NotFoundPage } from './NotFoundPage'
+
+function useSignedIn(message: string, next: string) {
+  const { status, user } = useAuth()
+  if (status === 'loading') return { gate: <PageSpinner />, user: null }
+  if (!user) {
+    return {
+      gate: (
+        <div className="container-page py-10">
+          <SignInPrompt message={message} next={next} />
+        </div>
+      ),
+      user: null,
+    }
+  }
+  return { gate: null, user }
 }
 
 export function AccountPage() {
   usePageMeta('My account')
-  const { status, user, logout } = useAuth()
-  if (status === 'loading') return <PageSpinner />
-  if (!user) {
-    return (
-      <div className="container-page py-10">
-        <SignInPrompt message="Sign in to view your account." next="/account" />
-      </div>
-    )
-  }
-  const tile = 'rounded-lg bg-white p-4 ring-1 ring-steel-200 hover:ring-amber-500'
+  const { logout } = useAuth()
+  const { gate, user } = useSignedIn('Sign in to view your account.', '/account')
+  if (gate || !user) return gate
+  const tile = 'block h-full rounded-lg bg-white p-4 ring-1 ring-steel-200 hover:ring-amber-500'
+  const tiles = [
+    { to: '/account/orders', title: 'Orders', text: 'Track, cancel and view past orders' },
+    { to: '/account/addresses', title: 'Addresses', text: 'Manage delivery addresses' },
+    { to: '/wishlist', title: 'Wishlist', text: 'Items you saved' },
+    { to: '/cart', title: 'Cart', text: 'Ready to check out' },
+  ]
   return (
     <div className="container-page max-w-3xl py-8">
       <h1 className="text-2xl font-bold">Hello, {user.full_name.split(' ')[0] || 'there'}</h1>
@@ -46,25 +69,15 @@ export function AccountPage() {
           <dd className="font-medium">{user.phone || '—'}</dd>
         </div>
       </dl>
-      <ul className="mt-6 grid gap-3 sm:grid-cols-3">
-        <li>
-          <Link to="/account/orders" className={`block ${tile}`}>
-            <span className="font-semibold">Orders</span>
-            <span className="block text-xs text-ink-600">Track and view past orders</span>
-          </Link>
-        </li>
-        <li>
-          <Link to="/wishlist" className={`block ${tile}`}>
-            <span className="font-semibold">Wishlist</span>
-            <span className="block text-xs text-ink-600">Items you saved</span>
-          </Link>
-        </li>
-        <li>
-          <Link to="/cart" className={`block ${tile}`}>
-            <span className="font-semibold">Cart</span>
-            <span className="block text-xs text-ink-600">Ready to check out</span>
-          </Link>
-        </li>
+      <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+        {tiles.map((t) => (
+          <li key={t.to}>
+            <Link to={t.to} className={tile}>
+              <span className="font-semibold">{t.title}</span>
+              <span className="block text-xs text-ink-600">{t.text}</span>
+            </Link>
+          </li>
+        ))}
       </ul>
       <button type="button" onClick={() => void logout()} className="btn-secondary mt-6">
         Logout
@@ -75,20 +88,24 @@ export function AccountPage() {
 
 export function OrdersPage() {
   usePageMeta('Your orders')
-  const { status } = useAuth()
-  const orders = useQuery({
-    queryKey: ['orders', 'list'],
-    queryFn: async () => (await api.get<Paginated<OrderSummary>>('/orders/')).data,
-    enabled: status === 'authenticated',
-  })
+  const [params, setParams] = useSearchParams()
+  const page = Math.max(1, Number(params.get('page')) || 1)
+  const orders = useOrders(page)
+  const { gate } = useSignedIn('Sign in to see your orders.', '/account/orders')
+  if (gate) return gate
 
   let body
-  if (status === 'loading') body = <PageSpinner />
-  else if (status === 'anonymous') body = <SignInPrompt message="Sign in to see your orders." next="/account/orders" />
-  else if (orders.isPending) body = <PageSpinner label="Loading orders…" />
-  else if (orders.isError)
+  if (orders.isPending) {
+    body = (
+      <ul aria-label="Loading orders" className="space-y-3">
+        {Array.from({ length: 3 }, (_, i) => (
+          <li key={i} className="h-24 animate-pulse rounded-lg bg-white ring-1 ring-steel-200" />
+        ))}
+      </ul>
+    )
+  } else if (orders.isError) {
     body = <ErrorState error={orders.error} onRetry={() => orders.refetch()} title="Couldn’t load your orders" />
-  else if (!orders.data.results.length)
+  } else if (!orders.data.results.length) {
     body = (
       <EmptyState
         title="No orders yet"
@@ -97,32 +114,234 @@ export function OrdersPage() {
             Start shopping
           </Link>
         }
-      />
+      >
+        When you place an order it will appear here.
+      </EmptyState>
     )
-  else
+  } else {
     body = (
-      <ul className="divide-y divide-steel-100 rounded-lg bg-white px-5 ring-1 ring-steel-200">
-        {orders.data.results.map((order) => (
-          <li key={order.order_number} className="flex flex-wrap items-center justify-between gap-2 py-4 text-sm">
-            <div>
-              <p className="font-semibold">{order.order_number}</p>
-              <p className="text-ink-600">
-                {formatDate(order.created_at)} · {order.item_count} {order.item_count === 1 ? 'item' : 'items'}
-              </p>
-            </div>
-            <span className="rounded-full bg-steel-100 px-2.5 py-1 text-xs font-semibold capitalize">
-              {order.status.replace(/_/g, ' ')}
-            </span>
-            <p className="font-semibold">{formatPrice(order.grand_total)}</p>
-          </li>
-        ))}
-      </ul>
+      <>
+        <ul className="space-y-3" aria-busy={orders.isFetching}>
+          {orders.data.results.map((order) => (
+            <li key={order.order_number}>
+              <Link
+                to={`/account/orders/${order.order_number}`}
+                className="flex gap-3 rounded-lg bg-white p-4 ring-1 ring-steel-200 hover:ring-amber-500"
+              >
+                <ProductImage src={order.image} alt="" className="size-16 shrink-0 rounded" />
+                <div className="min-w-0 flex-1 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold">
+                      <span className="sr-only">Order </span>
+                      {order.order_number}
+                    </p>
+                    <OrderStatusBadge order={order} />
+                  </div>
+                  <p className="truncate text-ink-800">{order.item_names.join(', ')}</p>
+                  <p className="text-ink-600">
+                    {formatDate(order.created_at)} · {order.item_count} {order.item_count === 1 ? 'item' : 'items'} ·{' '}
+                    <span className="font-semibold text-ink-900">{formatPrice(order.grand_total)}</span>
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <PaymentStatusBadge order={order} />
+                    {order.delivery_message && <span className="text-xs text-ink-600">{order.delivery_message}</span>}
+                  </div>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+        <Pagination
+          page={page}
+          pageSize={ORDERS_PAGE_SIZE}
+          total={orders.data.count}
+          onChange={(p) => setParams(p > 1 ? { page: String(p) } : {})}
+        />
+      </>
     )
+  }
 
   return (
     <div className="container-page max-w-3xl py-8">
-      <h1 className="mb-4 text-2xl font-bold">Your orders</h1>
+      <Breadcrumbs items={[{ label: 'Account', to: '/account' }, { label: 'Orders' }]} />
+      <h1 className="mb-4 mt-2 text-2xl font-bold">Your orders</h1>
       {body}
+    </div>
+  )
+}
+
+function PaymentInfo({ order }: { order: OrderDetail }) {
+  const captured = order.payments.find((p) => p.status === 'captured')
+  return (
+    <div className="space-y-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span>{order.payment_method === 'cod' ? 'Cash on delivery' : 'Online payment'}</span>
+        <PaymentStatusBadge order={order} />
+      </div>
+      {captured && (
+        <p className="text-ink-600">
+          Paid {formatPrice(captured.amount)}
+          {captured.provider === 'mock' && ' (development mock payment)'}
+        </p>
+      )}
+      {order.refunds.map((refund) => (
+        <p key={refund.public_id} className="rounded-md bg-amber-100 px-3 py-2 text-ink-900">
+          Refund of {formatPrice(refund.amount)}:{' '}
+          {refund.status === 'pending' ? 'requested — it will be processed to your original payment method.' : refund.status}
+        </p>
+      ))}
+    </div>
+  )
+}
+
+export function OrderDetailPage() {
+  const { number = '' } = useParams()
+  usePageMeta(`Order ${number}`)
+  const order = useOrder(number)
+  const retry = useRetryPayment(number)
+  const [cancelling, setCancelling] = useState(false)
+  const { gate } = useSignedIn('Sign in to see this order.', `/account/orders/${number}`)
+  if (gate) return gate
+  if (order.isPending) return <PageSpinner label="Loading order…" />
+  if (order.isError) {
+    if (isNotFound(order.error)) return <NotFoundPage />
+    return (
+      <div className="container-page py-10">
+        <ErrorState error={order.error} onRetry={() => order.refetch()} title="Couldn’t load this order" />
+      </div>
+    )
+  }
+
+  const data = order.data
+  const awaitingPayment = data.payment_method === 'online' && data.status === 'pending'
+  const openAttempt = data.payments.some((p) => p.status === 'created')
+
+  return (
+    <div className="container-page max-w-5xl py-6">
+      <Breadcrumbs
+        items={[{ label: 'Account', to: '/account' }, { label: 'Orders', to: '/account/orders' }, { label: data.order_number }]}
+      />
+      <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Order {data.order_number}</h1>
+          <p className="text-sm text-ink-600">Placed on {formatDate(data.created_at)}</p>
+        </div>
+        <OrderStatusBadge order={data} />
+      </div>
+
+      {awaitingPayment && (
+        <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-amber-100 p-4 text-sm">
+          <p>
+            <span className="font-semibold">Payment pending.</span> Complete the payment of {formatPrice(data.grand_total)} to
+            confirm this order.
+          </p>
+          {openAttempt ? (
+            <Link to={`/orders/${data.order_number}/pay`} className="btn-primary">
+              Complete payment
+            </Link>
+          ) : (
+            data.can_retry_payment && (
+              <button type="button" onClick={() => retry.mutate()} disabled={retry.isPending} className="btn-primary">
+                {retry.isPending ? 'Starting…' : 'Retry payment'}
+              </button>
+            )
+          )}
+        </div>
+      )}
+      {data.status === 'cancelled' && (
+        <p className="mt-4 rounded-lg bg-danger-600/10 p-4 text-sm text-danger-600">
+          Cancelled{data.cancelled_at && ` on ${formatDate(data.cancelled_at)}`}
+          {data.cancellation_reason && ` — ${data.cancellation_reason}`}
+        </p>
+      )}
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_20rem]">
+        <div className="space-y-5">
+          <section aria-labelledby="progress-heading" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+            <h2 id="progress-heading" className="mb-3 text-base font-bold">
+              Order status
+            </h2>
+            {data.delivery_message && <p className="mb-4 text-sm text-ink-800">{data.delivery_message}</p>}
+            <OrderTimeline order={data} />
+          </section>
+          <section aria-labelledby="items-heading" className="rounded-lg bg-white px-5 py-4 ring-1 ring-steel-200">
+            <h2 id="items-heading" className="text-base font-bold">
+              Items
+            </h2>
+            <OrderItemsList items={data.items} />
+          </section>
+        </div>
+        <div className="space-y-5">
+          <div className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+            <PriceSummary totals={data} couponCode={data.coupon_code} />
+          </div>
+          <section aria-labelledby="payment-heading" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+            <h2 id="payment-heading" className="mb-2 text-base font-bold">
+              Payment
+            </h2>
+            <PaymentInfo order={data} />
+          </section>
+          <section aria-labelledby="address-heading" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+            <h2 id="address-heading" className="mb-2 text-base font-bold">
+              Delivery address
+            </h2>
+            <AddressText address={data.address_snapshot} />
+            {data.customer_note && <p className="mt-2 text-xs text-ink-600">Note: {data.customer_note}</p>}
+          </section>
+          {data.can_cancel && (
+            <button type="button" onClick={() => setCancelling(true)} className="btn-secondary w-full">
+              Cancel order
+            </button>
+          )}
+          {!data.can_cancel && !['cancelled', 'delivered', 'returned'].includes(data.status) && (
+            <p className="text-xs text-ink-600">This order is already being packed or delivered, so it can’t be cancelled online.</p>
+          )}
+        </div>
+      </div>
+      <CancelOrderDialog order={data} open={cancelling} onClose={() => setCancelling(false)} />
+    </div>
+  )
+}
+
+export function AddressesPage() {
+  usePageMeta('Your addresses')
+  const addresses = useAddresses()
+  const [adding, setAdding] = useState(false)
+  const { gate } = useSignedIn('Sign in to manage your addresses.', '/account/addresses')
+  if (gate) return gate
+
+  let body
+  if (addresses.isPending) body = <PageSpinner label="Loading addresses…" />
+  else if (addresses.isError)
+    body = <ErrorState error={addresses.error} onRetry={() => addresses.refetch()} title="Couldn’t load your addresses" />
+  else if (!addresses.data.length)
+    body = (
+      <EmptyState
+        title="No saved addresses"
+        action={
+          <button type="button" onClick={() => setAdding(true)} className="btn-primary">
+            Add an address
+          </button>
+        }
+      >
+        Save an address to check out faster.
+      </EmptyState>
+    )
+  else body = <AddressList addresses={addresses.data} />
+
+  return (
+    <div className="container-page max-w-3xl py-8">
+      <Breadcrumbs items={[{ label: 'Account', to: '/account' }, { label: 'Addresses' }]} />
+      <div className="mb-4 mt-2 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Your addresses</h1>
+        {addresses.data?.length ? (
+          <button type="button" onClick={() => setAdding(true)} className="btn-secondary">
+            + Add new
+          </button>
+        ) : null}
+      </div>
+      {body}
+      <AddressFormModal open={adding} onClose={() => setAdding(false)} />
     </div>
   )
 }

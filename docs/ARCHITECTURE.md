@@ -108,6 +108,37 @@ each transition and writes an `OrderStatusHistory` row in the same transaction.
 Stock is held per `(store, variant)` with `quantity` and `reserved`. Checkout locks rows (`select_for_update`), reserves
 stock, and logs a `StockMovement`, all in one transaction.
 
+### Checkout and order flow (Phase 5)
+```
+Cart ──► POST /checkout/preview/ (orders/checkout.py: build_checkout — read-only)
+         re-prices the cart, validates stock/availability, address, coupon, quotes delivery, lists blocking issues
+     ──► POST /orders/  + Idempotency-Key + expected_total (orders/services.py: place_order — one transaction)
+         lock cart row → same key? return that order → lock cart lines/coupon → validate → recalculate (Decimal)
+         → expected_total differs? 409 totals_changed → choose store → Order + OrderItems (snapshots)
+         → reserve stock (ledger) → coupon redemption → status history → Payment (COD record | gateway intent)
+         → COD: confirm → clear cart → notifications queued with transaction.on_commit
+     ──► online: POST /payments/{id}/verify/ (payments/services.py) → provider verifies → captured/failed/cancelled
+         → paid orders are confirmed; failed/cancelled attempts can be retried (/orders/{n}/retry-payment/)
+```
+- **Money** is recalculated on the server from current catalog prices on every preview and again at placement
+  (`orders/pricing.py`, `Decimal`, half-up to paise). The client's `expected_total` is only *compared*; a mismatch means
+  a price, stock-driven line or coupon changed, and nothing is created.
+- **Idempotency**: the browser creates one key (`crypto.randomUUID()`) per checkout attempt and sends it on every retry.
+  Unique `(user, idempotency_key)` plus the cart-row lock make a double click or network retry return the first order.
+  Without a key, a second submit fails with `cart_empty` because the first order cleared the cart.
+- **Payments**: business code only talks to `integrations.payments.PaymentProvider`. `MockPaymentProvider` (dev) signs
+  each intent with HMAC; the browser returns `{mock_signature, mock_outcome}` and the server verifies it, so a forged
+  "success" is rejected. Razorpay implements the same interface in Phase 8; production refuses to start with the mock.
+- **Cancellation** follows the state machine (`CUSTOMER_CANCELLABLE` = pending/confirmed/processing). It releases stock,
+  voids uncaptured payments, records a *pending* Refund for captured money (no refund is faked; Phase 8 processes it) and
+  returns the coupon use.
+- **Delivery information** (`quote_delivery`) reports availability (one store can supply every line), fee, free-delivery
+  threshold and whether that store has a fast-delivery zone. `eta_minutes` stays `null`; the UI says the estimate is
+  confirmed after ordering. Phase 9 replaces `find_fulfilment_store`/`quote_delivery` with the distance/ETA engine
+  without changing the API shape.
+- **Notifications** (`notifications/services.notify`): in-app rows plus email through Django's email backend (console in
+  dev), sent only after commit so rolled-back orders never notify. SMS/WhatsApp providers are Phase 20.
+
 ### Delivery ETA engine (Phase 9)
 `eta = prep_time(store, items) + queue_delay(open orders per available partner) + travel_time(distance)`.
 The distance is the haversine distance between store and address (free, offline) × a road-factor ÷ the configured average
@@ -233,6 +264,22 @@ src/
   focus rings, text (not colour or icons alone) for stock and discount, `aria-live` for counts and toasts.
 - **Responsive.** Header wraps search to its own row on mobile with a hamburger menu; filters become a drawer; the product
   page gets a sticky add-to-cart bar; product rails scroll horizontally.
+
+### Checkout and orders (Phase 5)
+Routes: `/cart` → `/checkout` → `/orders/:number/pay` (online) → `/order-confirmation/:number`; `/account/orders`,
+`/account/orders/:number`, `/account/addresses`. Checkout, payment and account pages are lazy-loaded route chunks.
+- `features/checkout`: `useCheckoutPreview(addressId, coupon)` — every change of address or coupon asks the server again
+  (`staleTime: 0`, previous result kept on screen while refetching). Coupons are applied only after the server accepts
+  them; its reason is shown when it doesn't.
+- `features/orders`: typed API hooks (place, cancel, retry payment, verify payment), status labels, timeline builder
+  (only statuses the order really reached, then the normal steps still ahead; cancelled orders show no future steps),
+  `PriceSummary` (formats server strings, never adds them), cancel dialog with reasons.
+- `features/addresses`: add/edit modal with the server's field errors, list with select/default/delete; used by checkout
+  and the account page.
+- Cart/checkout mutations invalidate the cart and checkout queries; order results are written into the order cache so
+  pages update from the server's response.
+- Mobile: single-column checkout, sticky total/CTA bar, ≥ 44 px touch targets for address and payment choices, bottom-
+  sheet dialogs.
 
 ## 9. Environments
 | | Local (Windows) | Production (existing hosting) |

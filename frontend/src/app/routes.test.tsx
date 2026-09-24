@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { cart, categories, customer, productPage, productSummary } from '@/test/fixtures'
+import { cart, cartLine, categories, customer, productPage, productSummary } from '@/test/fixtures'
 import { httpError, mockApi, paramsSent } from '@/test/mockApi'
 import { renderRoute, signIn } from '@/test/utils'
 
@@ -79,28 +79,7 @@ describe('header', () => {
         '/auth/me/': customer,
         '/wishlist/': [],
         '/search/recent/': [],
-        '/cart/': cart({
-          items: [
-            {
-              id: 1,
-              variant_id: 101,
-              sku: 'DEMO-DRILL',
-              product_id: 1,
-              product_name: 'Impact Drill 650W',
-              product_slug: 'impact-drill-650w',
-              variant_name: '',
-              quantity: 3,
-              unit_price: '3200.00',
-              unit_mrp: '4000.00',
-              price_at_add: '3200.00',
-              price_changed: false,
-              line_total: '9600.00',
-              available_quantity: 8,
-              in_stock: true,
-              purchasable: true,
-            },
-          ],
-        }),
+        '/cart/': cart({ items: [cartLine({ id: 1, quantity: 3 })] }),
       },
     })
     renderRoute('/')

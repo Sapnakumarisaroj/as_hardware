@@ -18,9 +18,15 @@ export interface CartLine {
   price_at_add: string
   price_changed: boolean
   line_total: string | null
+  line_mrp_total: string | null
+  discount_percent: string | null
   available_quantity: number
   in_stock: boolean
   purchasable: boolean
+  brand_name: string
+  attributes: Record<string, string | number>
+  max_order_quantity: number
+  image: string | null
 }
 
 export interface CartTotals {
@@ -62,7 +68,11 @@ function useCartMutation<TVars>(request: (vars: TVars) => Promise<Cart>) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: request,
-    onSuccess: (cart) => queryClient.setQueryData(cartKeys.cart, cart),
+    onSuccess: (cart) => {
+      queryClient.setQueryData(cartKeys.cart, cart)
+      // Any checkout preview is now out of date.
+      void queryClient.invalidateQueries({ queryKey: ['checkout'] })
+    },
   })
 }
 

@@ -5,25 +5,27 @@ nothing is written.
 """
 
 import secrets
-from collections import defaultdict
+from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
 from apps.accounts.models import Address
-from apps.carts.models import CartItem
+from apps.carts.models import Cart, CartItem
 from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError, NotFoundError, ServiceError
-from apps.core.money import ZERO
+from apps.core.money import ZERO, q
 from apps.inventory.models import Inventory, StockMovement
 from apps.inventory.services import InsufficientStock, apply_movement
-from apps.offers.models import CouponRedemption
+from apps.notifications.services import notify
+from apps.offers.models import Coupon, CouponRedemption
 from apps.offers.services import coupon_discount, get_valid_coupon
-from apps.payments.models import Payment
+from apps.payments.models import Payment, Refund
 from apps.stores.models import Store
 from integrations.payments import get_payment_provider
 
+from .checkout import ETA_PENDING_MESSAGE, find_fulfilment_store
 from .models import Order, OrderItem, OrderStatus, OrderStatusHistory, PaymentMethod
 from .pricing import calculate_totals, line_from_variant
 from .state_machine import CUSTOMER_CANCELLABLE, STOCK_RESERVED_STATUSES, can_transition
@@ -45,27 +47,22 @@ def generate_order_number() -> str:
 
 
 def _choose_store(requirements: dict[int, int]) -> Store:
-    """First active fulfillment store holding every variant in the required quantity.
-    (Distance/zone/ETA-based selection replaces this in Phase 9.)"""
-    rows = Inventory.objects.filter(
-        variant_id__in=requirements.keys(),
-        is_active=True,
-        store__is_active=True,
-        store__is_deleted=False,
-        store__accepts_orders=True,
-        store__kind__in=Store.FULFILLMENT_KINDS,
-    ).values_list("store_id", "variant_id", "available_quantity")
-    coverage: dict[int, set[int]] = defaultdict(set)
-    for store_id, variant_id, available in rows:
-        if available >= requirements[variant_id]:
-            coverage[store_id].add(variant_id)
-    needed = set(requirements)
-    for store_id in sorted(coverage):
-        if coverage[store_id] >= needed:
-            return Store.objects.get(pk=store_id)
-    raise InsufficientStock(
-        "Some items are not available together at any store right now. Please reduce quantities or remove items."
-    )
+    store = find_fulfilment_store(requirements)
+    if store is None:
+        raise InsufficientStock(
+            "Some items are not available together at any store right now. Please reduce quantities or remove items."
+        )
+    return store
+
+
+class TotalsChanged(ConflictError):
+    default_code = "totals_changed"
+
+
+def find_idempotent_order(user, key: str | None) -> Order | None:
+    if not key:
+        return None
+    return Order.objects.filter(user=user, idempotency_key=key).first()
 
 
 def _record_status(order: Order, from_status: str, to_status: str, actor=None, note: str = "") -> None:
@@ -80,10 +77,30 @@ def _record_status(order: Order, from_status: str, to_status: str, actor=None, n
 
 @transaction.atomic
 def place_order(
-    *, user, address_id: int, payment_method: str, coupon_code: str = "", customer_note: str = ""
+    *,
+    user,
+    address_id: int,
+    payment_method: str,
+    coupon_code: str = "",
+    customer_note: str = "",
+    expected_total: Decimal | None = None,
+    idempotency_key: str | None = None,
 ) -> tuple[Order, Payment]:
+    """Create an order from the cart in one transaction (any failure rolls everything back).
+
+    - `idempotency_key`: a repeat with the same key returns the first order unchanged.
+    - `expected_total`: the grand total the customer was shown. If prices, stock-driven
+      totals or the coupon changed since, nothing is created and `totals_changed` (409)
+      returns the new figures for the customer to review.
+    """
     if payment_method not in PaymentMethod.values:
         raise OrderError("Unsupported payment method.", code="invalid_payment_method")
+
+    # Serialize checkouts of the same customer: concurrent "Place order" clicks queue here.
+    Cart.objects.get_or_create(user=user)
+    Cart.objects.select_for_update().get(user=user)
+    if existing := find_idempotent_order(user, idempotency_key):
+        return existing, existing.payments.order_by("-created_at").first()
 
     address = Address.objects.filter(pk=address_id, user=user).first()
     if address is None:
@@ -116,6 +133,11 @@ def place_order(
         coupon = get_valid_coupon(coupon_code, user, lock=True)
         discount = coupon_discount(coupon, lines, subtotal)
     totals = calculate_totals(lines, discount)
+    if expected_total is not None and q(expected_total) != totals.grand_total:
+        raise TotalsChanged(
+            "Prices or your order total changed since you last checked. Please review the new total.",
+            details={"expected": str(q(expected_total)), "grand_total": str(totals.grand_total)},
+        )
 
     store = _choose_store({item.variant_id: item.quantity for item in items})
 
@@ -134,6 +156,7 @@ def place_order(
         coupon=coupon,
         coupon_code=coupon.code if coupon else "",
         customer_note=customer_note[:500],
+        idempotency_key=idempotency_key or None,
     )
     OrderItem.objects.bulk_create(
         [
@@ -178,10 +201,27 @@ def place_order(
         type(coupon).objects.filter(pk=coupon.pk).update(used_count=F("used_count") + 1)
 
     _record_status(order, "", OrderStatus.PENDING, user, "Order placed")
-    payment = _create_payment(order)
+    payment = create_payment_for_order(order)
     if payment_method == PaymentMethod.COD:
         # Cash orders need no online payment step; confirm immediately.
         _apply_transition(order, OrderStatus.CONFIRMED, actor=None, note="Cash on delivery order confirmed")
+        notify(
+            user,
+            event="order.confirmed",
+            title=f"Order {order.order_number} confirmed",
+            body=f"Thank you! Your order of ₹{order.grand_total} (cash on delivery) is confirmed. "
+            f"{ETA_PENDING_MESSAGE}",
+            data={"order_number": order.order_number},
+        )
+    else:
+        notify(
+            user,
+            event="order.placed",
+            title=f"Order {order.order_number} placed — payment pending",
+            body=f"Complete the payment of ₹{order.grand_total} to confirm your order.",
+            data={"order_number": order.order_number},
+            channels=("in_app",),
+        )
 
     CartItem.objects.filter(pk__in=[item.pk for item in items]).delete()
     return order, payment
@@ -195,7 +235,8 @@ def _unique_order_number() -> str:
     raise OrderError("Could not allocate an order number. Please retry.", code="order_number_exhausted")
 
 
-def _create_payment(order: Order) -> Payment:
+def create_payment_for_order(order: Order) -> Payment:
+    """COD: a pending cash record. Online: a new intent at the configured gateway (mock in dev)."""
     if order.payment_method == PaymentMethod.COD:
         return Payment.objects.create(
             order=order,
@@ -238,16 +279,40 @@ def _apply_transition(order: Order, to_status: str, *, actor, note: str = "") ->
         order.cancelled_at = now
         order.cancellation_reason = note[:255]
         fields += ["cancelled_at", "cancellation_reason"]
-        # Uncaptured payments are void. Captured online payments need a Refund (Phase 8 workflow).
+        # Uncaptured payments are void.
         order.payments.filter(status__in=[Payment.Status.CREATED, Payment.Status.PENDING]).update(
             status=Payment.Status.CANCELLED, updated_at=now
         )
+        # Captured money: record a pending refund. It is *not* marked processed here; the
+        # gateway refund workflow (Phase 8) processes it and updates payment_status.
+        for payment in order.payments.filter(status=Payment.Status.CAPTURED):
+            if not payment.refunds.exists():
+                Refund.objects.create(
+                    payment=payment,
+                    amount=payment.amount,
+                    reason=f"Order cancelled: {note}"[:255],
+                    requested_by=actor if getattr(actor, "is_authenticated", False) else None,
+                )
+        _release_coupon(order)
     elif to_status == OrderStatus.DELIVERED and not order.delivered_at:
         order.delivered_at = now
         fields.append("delivered_at")
     order.save(update_fields=fields)
     _record_status(order, from_status, to_status, actor, note)
     return order
+
+
+def apply_locked_transition(order: Order, to_status: str, *, actor, note: str = "") -> Order:
+    """For other services that already hold `select_for_update` on the order (e.g. payments)."""
+    return _apply_transition(order, to_status, actor=actor, note=note)
+
+
+def _release_coupon(order: Order) -> None:
+    """A cancelled order gives the coupon use back (global and per-customer counts)."""
+    redemptions = CouponRedemption.objects.filter(order=order)
+    for redemption in redemptions.select_related("coupon"):
+        Coupon.objects.filter(pk=redemption.coupon_id, used_count__gt=0).update(used_count=F("used_count") - 1)
+    redemptions.delete()
 
 
 def _move_order_stock(order: Order, movement_type: str, actor, reason: str) -> None:
@@ -289,4 +354,18 @@ def cancel_order_by_customer(order: Order, *, user, reason: str) -> Order:
         )
     if not reason.strip():
         raise OrderError("Please tell us why you are cancelling.", code="reason_required")
-    return _apply_transition(locked, OrderStatus.CANCELLED, actor=user, note=reason)
+    order = _apply_transition(locked, OrderStatus.CANCELLED, actor=user, note=reason)
+    refund = Refund.objects.filter(payment__order=order).first()
+    notify(
+        user,
+        event="order.cancelled",
+        title=f"Order {order.order_number} cancelled",
+        body=(
+            f"Your order has been cancelled. A refund of ₹{refund.amount} has been requested and will be "
+            "processed to your original payment method."
+            if refund
+            else "Your order has been cancelled. No payment was taken."
+        ),
+        data={"order_number": order.order_number},
+    )
+    return order

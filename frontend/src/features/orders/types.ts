@@ -1,0 +1,115 @@
+/** Order shapes from the API. Money is a decimal string computed by the server. */
+
+export type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'processing'
+  | 'packed'
+  | 'assigned'
+  | 'picked_up'
+  | 'out_for_delivery'
+  | 'delivered'
+  | 'cancelled'
+  | 'return_requested'
+  | 'returned'
+
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'partially_refunded'
+export type PaymentMethod = 'online' | 'cod'
+
+export interface OrderSummary {
+  order_number: string
+  status: OrderStatus
+  payment_method: PaymentMethod
+  payment_status: PaymentStatus
+  grand_total: string
+  item_count: number
+  item_names: string[]
+  image: string | null
+  estimated_delivery_at: string | null
+  delivery_message: string
+  created_at: string
+}
+
+export interface OrderItem {
+  id: number
+  product: number | null
+  product_slug: string | null
+  variant: number | null
+  product_name: string
+  variant_name: string
+  sku: string
+  brand_name: string
+  unit: string
+  unit_mrp: string
+  unit_price: string
+  gst_rate: string
+  quantity: number
+  line_total: string
+  image: string | null
+}
+
+export interface StatusHistoryEntry {
+  from_status: OrderStatus | ''
+  to_status: OrderStatus
+  note: string
+  created_at: string
+}
+
+export interface OrderPayment {
+  public_id: string
+  provider: 'mock' | 'razorpay' | 'cod'
+  method: string
+  amount: string
+  currency: string
+  status: 'created' | 'pending' | 'authorized' | 'captured' | 'failed' | 'cancelled' | 'refunded' | 'partially_refunded'
+  failure_reason: string
+  captured_at: string | null
+  created_at: string
+  /** Public data needed to open the payment screen (only while status is "created"). */
+  client_payload: { mock?: boolean; notice?: string; mock_signature?: string }
+}
+
+export interface OrderRefund {
+  public_id: string
+  amount: string
+  status: 'pending' | 'processed' | 'failed'
+  reason: string
+  created_at: string
+  processed_at: string | null
+}
+
+export interface AddressSnapshot {
+  name: string
+  phone: string
+  address_line1: string
+  address_line2: string
+  area: string
+  landmark: string
+  city: string
+  state: string
+  postal_code: string
+  address_type: string
+}
+
+export interface OrderDetail extends Omit<OrderSummary, 'item_count' | 'item_names' | 'image'> {
+  public_id: string
+  address_snapshot: AddressSnapshot
+  store_name: string | null
+  subtotal: string
+  mrp_total: string
+  discount_total: string
+  delivery_fee: string
+  tax_total: string
+  coupon_code: string
+  customer_note: string
+  eta_minutes: number | null
+  cancellation_reason: string
+  cancelled_at: string | null
+  delivered_at: string | null
+  can_cancel: boolean
+  can_retry_payment: boolean
+  items: OrderItem[]
+  status_history: StatusHistoryEntry[]
+  payments: OrderPayment[]
+  refunds: OrderRefund[]
+}

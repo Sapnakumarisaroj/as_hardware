@@ -11,6 +11,7 @@ api_patterns = [
     path("", include("apps.inventory.urls")),
     path("", include("apps.carts.urls")),
     path("", include("apps.orders.urls")),
+    path("", include("apps.payments.urls")),
     path("", include("apps.reviews.urls")),
     path("", include("apps.delivery.urls")),
     path("", include("apps.support.urls")),

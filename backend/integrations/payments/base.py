@@ -21,6 +21,8 @@ class VerificationResult:
     provider_payment_id: str | None = None
     method: str = "unknown"
     failure_reason: str = ""
+    # The customer closed/abandoned the payment (not a decline). They may try again.
+    cancelled: bool = False
 
 
 @dataclass(frozen=True)
