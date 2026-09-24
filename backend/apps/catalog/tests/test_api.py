@@ -45,7 +45,9 @@ def test_product_detail_has_variants_specs_and_stock(api_client):
     assert res.status_code == 200
     body = res.json()
     assert body["variants"][0]["sku"] == variant.sku
-    assert body["variants"][0]["available_quantity"] == 12
+    # Exact stock is internal: only a low-stock count ("only 3 left") is ever shown.
+    assert body["variants"][0]["stock_status"] == "in_stock"
+    assert body["variants"][0]["available_quantity"] is None
     assert body["specifications"] == [{"name": "Power", "key": "power", "value": "650", "unit": "W", "sort_order": 0}]
 
 

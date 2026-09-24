@@ -3,24 +3,52 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from .models import Brand, Category, Product, ProductImage, ProductSpecification, ProductVariant
+from .models import Brand, Category, Product, ProductImage, ProductSpecification, ProductVariant, RecentSearch
 from .selectors import stock_status
 
 # --- Categories & brands -----------------------------------------------------------
 
 
-class SubCategorySerializer(serializers.ModelSerializer):
+class _ProductCountMixin:
+    def get_product_count(self, obj) -> int | None:
+        # Annotated by the category views (published, active products); absent on writes.
+        return getattr(obj, "product_count", None)
+
+
+class SubCategorySerializer(_ProductCountMixin, serializers.ModelSerializer):
+    product_count = serializers.SerializerMethodField()
+
     class Meta:
         model = Category
-        fields = ["id", "name", "slug", "description", "image", "sort_order"]
+        fields = ["id", "name", "slug", "description", "image", "sort_order", "product_count"]
 
 
-class CategorySerializer(serializers.ModelSerializer):
+class _ParentRefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ["id", "name", "slug"]
+
+
+class CategorySerializer(_ProductCountMixin, serializers.ModelSerializer):
     children = serializers.SerializerMethodField()
+    product_count = serializers.SerializerMethodField()
+    parent_detail = _ParentRefSerializer(source="parent", read_only=True, allow_null=True)
 
     class Meta:
         model = Category
-        fields = ["id", "name", "slug", "parent", "description", "image", "sort_order", "is_active", "children"]
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "parent",
+            "parent_detail",
+            "description",
+            "image",
+            "sort_order",
+            "is_active",
+            "product_count",
+            "children",
+        ]
         extra_kwargs = {"slug": {"required": False}}
 
     def get_children(self, obj) -> list[dict]:
@@ -69,8 +97,10 @@ class ProductSpecificationSerializer(serializers.ModelSerializer):
 
 class ProductVariantSerializer(serializers.ModelSerializer):
     discount_percent = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    discount_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     available_quantity = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
+    fast_delivery = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductVariant
@@ -82,6 +112,7 @@ class ProductVariantSerializer(serializers.ModelSerializer):
             "mrp",
             "price",
             "discount_percent",
+            "discount_amount",
             "weight_grams",
             "length_mm",
             "width_mm",
@@ -89,13 +120,26 @@ class ProductVariantSerializer(serializers.ModelSerializer):
             "is_default",
             "available_quantity",
             "stock_status",
+            "fast_delivery",
         ]
 
-    def get_available_quantity(self, obj) -> int:
+    def _stock(self, obj) -> int:
         return self.context.get("stock_map", {}).get(obj.id, 0)
 
+    def get_available_quantity(self, obj) -> int | None:
+        # Exact counts are internal; customers only see "only N left" when stock is low.
+        total = self._stock(obj)
+        return total if stock_status(total) == "low_stock" else None
+
     def get_stock_status(self, obj) -> str:
-        return stock_status(self.get_available_quantity(obj))
+        return stock_status(self._stock(obj))
+
+    def get_fast_delivery(self, obj) -> bool:
+        return obj.id in self.context.get("fast_variant_ids", set())
+
+
+def _money(value: Decimal) -> str:
+    return str(value.quantize(Decimal("0.01")))
 
 
 class ProductListSerializer(serializers.ModelSerializer):
@@ -105,8 +149,13 @@ class ProductListSerializer(serializers.ModelSerializer):
     price = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
     mrp = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
     discount_percent = serializers.SerializerMethodField()
+    discount_amount = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
+    fast_delivery = serializers.SerializerMethodField()
+    variant_count = serializers.SerializerMethodField()
+    default_variant_id = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
+    image_alt = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -123,29 +172,58 @@ class ProductListSerializer(serializers.ModelSerializer):
             "price",
             "mrp",
             "discount_percent",
+            "discount_amount",
             "stock_status",
+            "fast_delivery",
+            "variant_count",
+            "default_variant_id",
             "is_featured",
             "rating_avg",
             "rating_count",
             "image",
+            "image_alt",
         ]
+
+    def _has_price(self, obj) -> bool:
+        return bool(getattr(obj, "mrp", None)) and getattr(obj, "price", None) is not None
 
     def get_discount_percent(self, obj) -> str | None:
         # String like every other decimal in the API (never float).
-        if not getattr(obj, "mrp", None) or obj.price is None:
+        if not self._has_price(obj):
             return None
-        return str(((obj.mrp - obj.price) * 100 / obj.mrp).quantize(Decimal("0.01")))
+        return _money((obj.mrp - obj.price) * 100 / obj.mrp)
+
+    def get_discount_amount(self, obj) -> str | None:
+        return _money(obj.mrp - obj.price) if self._has_price(obj) else None
 
     def get_stock_status(self, obj) -> str:
         return stock_status(getattr(obj, "stock_total", 0))
 
+    def get_fast_delivery(self, obj) -> bool:
+        return getattr(obj, "fast_stock", 0) > 0
+
+    def get_variant_count(self, obj) -> int:
+        return getattr(obj, "variant_count", 0)
+
+    def get_default_variant_id(self, obj) -> int | None:
+        """The variant whose price is shown (cheapest active one)."""
+        return getattr(obj, "cheapest_variant_id", None)
+
+    def _primary_image(self, obj):
+        images = list(obj.images.all())  # ordered primary-first
+        return images[0] if images else None
+
     def get_image(self, obj) -> str | None:
-        images = list(obj.images.all())
-        if not images:
+        image = self._primary_image(obj)
+        if image is None:
             return None
         request = self.context.get("request")
-        url = images[0].image.url
+        url = image.image.url
         return request.build_absolute_uri(url) if request else url
+
+    def get_image_alt(self, obj) -> str:
+        image = self._primary_image(obj)
+        return (image.alt_text if image and image.alt_text else obj.name)[:200]
 
 
 class ProductDetailSerializer(ProductListSerializer):
@@ -169,6 +247,80 @@ class ProductDetailSerializer(ProductListSerializer):
     def get_variants(self, obj) -> list[dict]:
         variants = [v for v in obj.variants.all() if v.is_active]
         return ProductVariantSerializer(variants, many=True, context=self.context).data
+
+
+# --- Facets & search helpers --------------------------------------------------------------
+
+
+class _FacetOptionSerializer(serializers.Serializer):
+    slug = serializers.CharField()
+    name = serializers.CharField()
+    count = serializers.IntegerField()
+
+
+class _ThresholdCountSerializer(serializers.Serializer):
+    min = serializers.IntegerField()
+    count = serializers.IntegerField()
+
+
+class _SpecValueSerializer(serializers.Serializer):
+    value = serializers.CharField()
+    count = serializers.IntegerField()
+
+
+class _SpecFacetSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    name = serializers.CharField()
+    unit = serializers.CharField(allow_blank=True)
+    values = _SpecValueSerializer(many=True)
+
+
+class _PriceRangeSerializer(serializers.Serializer):
+    min = serializers.CharField(allow_null=True)
+    max = serializers.CharField(allow_null=True)
+
+
+class _AvailabilityFacetSerializer(serializers.Serializer):
+    in_stock = serializers.IntegerField()
+    fast_delivery = serializers.IntegerField()
+
+
+class ProductFacetsSerializer(serializers.Serializer):
+    """Schema only (the view returns the selector's dict)."""
+
+    total = serializers.IntegerField()
+    categories = _FacetOptionSerializer(many=True)
+    brands = _FacetOptionSerializer(many=True)
+    price = _PriceRangeSerializer()
+    ratings = _ThresholdCountSerializer(many=True)
+    discounts = _ThresholdCountSerializer(many=True)
+    availability = _AvailabilityFacetSerializer()
+    specifications = _SpecFacetSerializer(many=True)
+
+
+class _SuggestedCategorySerializer(serializers.Serializer):
+    name = serializers.CharField()
+    slug = serializers.CharField()
+    parent_name = serializers.CharField(allow_null=True)
+
+
+class _SuggestedBrandSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    slug = serializers.CharField()
+
+
+class SearchSuggestionsSerializer(serializers.Serializer):
+    query = serializers.CharField(allow_blank=True)
+    products = serializers.ListField(child=serializers.DictField())
+    categories = _SuggestedCategorySerializer(many=True)
+    brands = _SuggestedBrandSerializer(many=True)
+
+
+class RecentSearchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RecentSearch
+        fields = ["query", "searched_at"]
+        read_only_fields = ["searched_at"]
 
 
 # --- Products (admin write) -------------------------------------------------------------

@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from .models import Brand, Product, ProductImage, ProductSpecification, ProductVariant, SubCategory, TopCategory
+from .models import (
+    Brand,
+    Product,
+    ProductImage,
+    ProductSpecification,
+    ProductVariant,
+    RecentSearch,
+    SubCategory,
+    TopCategory,
+)
 
 
 class SubCategoryInline(admin.TabularInline):
@@ -51,7 +60,7 @@ class BrandAdmin(admin.ModelAdmin):
 
 class VariantInline(admin.TabularInline):
     model = ProductVariant
-    fields = ("sku", "name", "mrp", "price", "weight_grams", "is_default", "is_active", "sort_order")
+    fields = ("sku", "name", "attributes", "mrp", "price", "weight_grams", "is_default", "is_active", "sort_order")
     extra = 0
     min_num = 1
 
@@ -99,3 +108,19 @@ class ProductVariantAdmin(admin.ModelAdmin):
     list_filter = ("is_active",)
     search_fields = ("sku", "name", "product__name")
     list_select_related = ("product",)
+
+
+@admin.register(RecentSearch)
+class RecentSearchAdmin(admin.ModelAdmin):
+    """Customers' search history: viewable/deletable by admins, never edited."""
+
+    list_display = ("query", "user", "searched_at")
+    search_fields = ("query", "user__email")
+    list_select_related = ("user",)
+    readonly_fields = ("user", "query", "normalized", "searched_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

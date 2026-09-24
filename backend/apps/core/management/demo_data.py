@@ -210,7 +210,7 @@ PRODUCTS = [
         "AquaFlow (Demo)",
         "piece",
         "18",
-        ["tap", "basin"],
+        ["tap", "basin", "water tap"],
         [("TAP-PILLAR", "", "1250", "899", 450)],
         [("Material", "Brass", ""), ("Finish", "Chrome", ""), ("Inlet Size", "1/2", "inch")],
     ),

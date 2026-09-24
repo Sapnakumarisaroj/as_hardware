@@ -65,11 +65,34 @@ Legend: `[x]` done and verified · `[ ]` open · `[~]` partially done / blocked 
 - [~] 7 Phase 3 files are not `ruff format`-clean (lint is clean); 5 drf-spectacular enum-naming warnings remain (cosmetic)
 - [~] Reset emails use the console backend in dev; production needs SMTP settings (`EMAIL_*`)
 
+## Phase 4 — Catalog + customer shopping experience ✅ (2026-09-24)
+- [x] Backend: listing annotated in one query (cheapest-variant price/MRP, Decimal discount, total + fast-delivery stock, units sold, variant count); filters `q`, `category` (incl. subcategories), `subcategory`, `brand`, price range, `rating`, `discount`, availability, `fast_delivery`, `featured`, `bestseller`, `exclude`, `spec_<key>`; orderings relevance/price/-price/newest/rating/discount/popular/name with unique tie-breakers
+- [x] `/products/facets/`: counts per dimension ignoring its own filter; specification filters shown only when shared by ≥ 40 % of results (drills → chuck size/voltage)
+- [x] Pluggable search backend (`CATALOG_SEARCH_BACKEND`), portable keyword engine: name/SKU/brand/category/tags/variant/spec/description, weighted relevance, all-words then any-word fallback (`search.matched`); `/search/suggest/`; per-customer `/search/recent/` (`RecentSearch`, migration `catalog 0002`)
+- [x] Categories return product counts and children; subcategory detail includes its parent
+- [x] Stock shown as in stock / limited / out of stock; exact quantity only when low ("Only 3 left"); no per-store figures
+- [x] Demo product images drawn locally with Pillow by `seed_demo_data` (`--no-images` to skip), clearly marked DEMO
+- [x] Django admin: variant `attributes` editable inline; `RecentSearch` view/delete only; admin pages covered by tests
+- [x] Frontend: sticky header (logo, location PIN, search with type-ahead/recent searches/clear/loading, "Ask AI · Soon" placeholder, wishlist, cart count, account menu or Login/Register, category mega-nav, mobile drawer menu), footer
+- [x] Homepage: hero, categories from API, Today's offers, Best sellers, Featured, Fast delivery, Recently added, "Recommended for you" (from wishlist); empty sections hidden, no fake stats
+- [x] Category (`/c/:slug`) / search (`/search`) / all products (`/products`): URL-driven filters, sort, numbered backend pagination, active-filter chips, mobile filter drawer, loading/error/retry/empty states
+- [x] Product page (`/p/:slug`): gallery with thumbnails + fallback, variant selector (`?variant=`) switching price/MRP/saving/SKU/stock/delivery/attributes/images, quantity capped by stock and order limit, spec table, description, reviews, related products, sticky mobile add-to-cart, honest delivery text (no fixed 60-minute promise)
+- [x] Wishlist and cart wired to existing APIs; logged-out actions saved and completed after login; backend errors ("Only 2 available") shown as toasts
+- [x] Basic SEO (titles, meta descriptions, slug URLs) and accessibility (landmarks, labels, combobox search, radio-group variants, focus states, text not colour-only)
+- [x] Bugs found by live checks and fixed: discount sort/filter used integer division on SQLite (now float ranking, regression test); recent-search order was wrong when timestamps tied on Windows (re-insert, test was flaky)
+- [x] Tests: backend 141 pass (new `test_discovery.py`, `test_admin.py`); frontend 44 pass across 8 files (home/header, product card, category listing/filters/sort/pagination/states, product detail/variants/cart, search, wishlist, cart page)
+- [x] Verified: ruff lint clean, `check` clean, `makemigrations --check` clean, migration applied to dev DB; frontend lint/typecheck clean, production build OK; 43 live HTTP checks against the running dev servers (catalog, search, filters, sorting, pagination, detail, wishlist, cart, customer authorization) with a temporary dev customer, deleted afterwards
+- [~] Browser testing NOT performed: the connected Chrome could not load `localhost`/`127.0.0.1` (error page for both the Vite and Django servers), so visual/responsive/console checks were done only through component tests
+- [~] docs/API.md still lacks the Phase 3 auth endpoint table (its Conventions/Planned lines predate Phase 3)
+
 ## Known limitations carried forward
 - Store selection picks the first store covering all items (distance/zone/ETA selection is Phase 9)
 - Offers are stored but not auto-applied (Phase 6); coupons work
 - Online payments create a mock intent only; verification, webhooks and refunds are Phase 8
-- Keyword `q` search is a basic `icontains`; full-text/typo-tolerant search is Phase 4
+- Search is keyword/substring based (no typo tolerance or synonyms; "tap" also matches "tape"); semantic search is Phase 13
+- Specification filters need consistent spec names/values in the admin; variant-level attributes (e.g. wire length) are shown on the product page but are not yet filterable
+- The location selector only remembers a PIN code; serviceability/ETA per address is Phase 9
+- Product/category pages set title and meta description client-side (no server rendering or sitemap yet)
 - Delivery assignment workflow (accept, pickup, OTP, proof) is Phase 10; partners are verified by admins in Django admin
 - Email verification is not implemented yet (`email_verified` is reset on email change)
 - A local dev server stopped with `Stop-Process -Force` makes Git Bash report exit 127 (the venv `python.exe` launcher loses its child); stop it with Ctrl+C in normal use

@@ -61,6 +61,12 @@ User ─1:1─ CustomerProfile          Category (self-FK: parent → subcategor
 | `catalog_productvariant` | product FK, sku (unique, upper), name, attributes JSON, mrp, price, weight_grams, length/width/height_mm, is_default, is_active, sort_order | CHECK price > 0, CHECK price ≤ mrp; index (product, is_active) |
 | `catalog_productimage` | product FK, variant FK (nullable), image (jpg/png/webp ≤ 5 MB, random filename), alt_text, sort_order, is_primary | |
 | `catalog_productspecification` | product FK, name, key (slug of name), value, unit, numeric_value DECIMAL (auto-parsed), sort_order | unique (product, key); index (key, numeric_value), (key, value) |
+| `catalog_recentsearch` (Phase 4) | user FK, query, normalized (lower-case), searched_at | unique (user, normalized); max 10 rows per user (older ones pruned on write); cascade-deleted with the user |
+
+**Filters and search (Phase 4)** read these tables without new columns. Listing price/MRP/discount, total and
+fast-delivery stock, units sold and variant count are annotated with portable correlated subqueries (one SQL query per
+page). Specification filters use `ProductSpecification.key`/`value`, so new filterable attributes need no migration: add
+the specification in the admin and it appears as a filter once enough products in a listing share it.
 
 **Why variants?** Every purchasable unit (SKU + MRP + price + weight) is a `ProductVariant`. A simple product has one
 variant; a wire in four gauges has four. Inventory, cart and order lines always point at a variant, so there is one code

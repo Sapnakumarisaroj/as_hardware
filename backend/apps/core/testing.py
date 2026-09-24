@@ -45,11 +45,13 @@ def create_product(
     store: Store | None = None,
     published: bool = True,
     gst_rate: str = "18.00",
+    brand: Brand | None = None,
     **product_kwargs,
 ) -> tuple[Product, ProductVariant]:
     n = next(_seq)
     category = category or create_category()
-    brand, _ = Brand.objects.get_or_create(name="Test Brand", defaults={"slug": "test-brand"})
+    if brand is None:
+        brand, _ = Brand.objects.get_or_create(name="Test Brand", defaults={"slug": "test-brand"})
     product = Product.objects.create(
         name=name,
         slug=f"{name.lower().replace(' ', '-')}-{n}",

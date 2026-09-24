@@ -189,6 +189,51 @@ React 19 + TypeScript (strict) + Vite 8 + Tailwind v4 (charcoal + safety-amber i
 TanStack Query, and Axios (normalised `ApiError` matching the backend envelope). Builds to static files, so **Node.js is
 not needed on the server**. `public/.htaccess` gives Apache the SPA fallback and cache headers. Vitest + Testing Library.
 
+### Customer catalog (Phase 4)
+```
+src/
+  app/            routes, AppProviders (toasts, auth, pending-action runner), layouts (Header, Footer)
+  components/     generic UI: feedback states, Drawer, Pagination, QuantityStepper, toasts, icons
+  features/
+    auth/         AuthProvider (mirrors /auth/me/), token store, pending action (wishlist/cart before login)
+    catalog/      API hooks, types, URL listing state, ProductCard/Grid/Rail, FilterPanel, ProductBrowser,
+                  ProductGallery, VariantSelector, badges (price/stock/rating)
+    search/       SearchBar (type-ahead, recent searches), search API hooks
+    cart/ wishlist/ location/
+  pages/          Home, Category (/c/:slug), Search (/search, /products), ProductDetail (/p/:slug), Cart, Wishlist, auth, account
+```
+- **Server is the source of truth.** Price, MRP, discount, stock status, fast-delivery eligibility and cart totals come
+  from the API as decimal strings. The browser only formats them (`lib/format.ts`) and never does money arithmetic. Cart
+  and wishlist buttons send ids and quantities; stock and price are validated by the backend, and its error messages
+  ("Only 2 available") are shown as toasts.
+- **Listing state lives in the URL** (`useListingState`): `q`, filters, `ordering` and `page` are query parameters, so
+  results are shareable and Back/Forward work. The same params go to `/products/` (paginated, 24 per page) and
+  `/products/facets/` (filter options). Nothing is filtered or sorted client-side.
+- **Filters are data-driven.** The facets endpoint decides which brand/price/rating/discount/availability/specification
+  filters apply to the current results, so a drill category shows power and chuck size while wires show area and length.
+- **Variants.** Every sellable unit is a variant. The product page selects one (`?variant=<id>` in the URL); price, MRP,
+  saving, SKU, stock, delivery badge, variant attributes (shown in the spec table) and variant-specific images switch with
+  it. Product cards with more than one variant link to "Choose options" instead of guessing a variant.
+- **Search service.** The UI only calls `/products/?q=` and `/search/suggest/`. The backend search engine is pluggable
+  (`CATALOG_SEARCH_BACKEND`). Phase 13 can switch to semantic/hybrid search without frontend changes. "Ask AI" in the
+  header is a clearly labelled "coming soon" entry point, not a fake assistant.
+- **Delivery honesty.** Product pages say "Fast delivery available from a nearby store" only when the variant is stocked at
+  a store with a fast-delivery zone, and always add that availability/time is confirmed after address selection. No fixed
+  "60 minutes" promise until the Phase 9 ETA engine exists.
+- **Logged-out actions** (wishlist/cart) are saved in `sessionStorage`, the shopper is sent to login with `?next=`, and
+  `PendingActionRunner` completes the action after sign-in, so nothing is silently lost.
+- **Caching.** TanStack Query: categories/brands 10 min stale time, facets 1 min, suggestions 1 min (debounced 250 ms),
+  `keepPreviousData` on listings so the grid stays visible while the next page loads. Wishlist removal is optimistic
+  (safe to roll back); cart updates are not (server reply replaces the cache).
+- **Images.** `ProductImage` files are stored through Django's storage API (local `MEDIA_ROOT` now; S3/Cloudinary later by
+  changing `STORAGES` only). The UI lazy-loads images and shows a labelled placeholder when an image is missing or broken.
+  Demo images are drawn locally with Pillow by `seed_demo_data` and are marked "DEMO IMAGE".
+- **SEO basics.** Readable slug URLs (`/c/<slug>`, `/p/<slug>`), per-page `<title>` and meta description (`usePageMeta`).
+- **Accessibility.** Semantic landmarks, labelled controls, combobox/listbox search, radio-group variant picker, visible
+  focus rings, text (not colour or icons alone) for stock and discount, `aria-live` for counts and toasts.
+- **Responsive.** Header wraps search to its own row on mobile with a hamburger menu; filters become a drawer; the product
+  page gets a sticky add-to-cart bar; product rails scroll horizontally.
+
 ## 9. Environments
 | | Local (Windows) | Production (existing hosting) |
 |---|---|---|

@@ -33,6 +33,14 @@ export class ApiError extends Error {
   }
 }
 
+export function isUnauthorized(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401
+}
+
+export function isNotFound(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404
+}
+
 interface Envelope {
   error?: { code?: string; message?: string; details?: Record<string, unknown> }
   request_id?: string

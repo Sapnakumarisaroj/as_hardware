@@ -34,7 +34,16 @@ and `frontend/package-lock.json`.
 | Lint + formatter | Ruff | ✅ MIT | ✅ | No | `ruff check .`, `ruff format .` |
 | Test data builders | `apps/core/testing.py` (in-repo) | ✅ project code | ✅ | No | No factory library needed |
 
-## Frontend (unchanged in Phase 2)
+## Catalog & search (Phase 4): no new dependencies
+| Feature | Tool | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Product search | In-repo `KeywordSearchBackend` (Django ORM) | ✅ project code | ✅ | No | Portable across SQLite/PostgreSQL/MySQL; replaceable by a semantic backend (Phase 13) via `CATALOG_SEARCH_BACKEND` |
+| Filters / facets | Django ORM aggregates | ✅ | ✅ | No | |
+| Product images | Django storage + local `MEDIA_ROOT` | ✅ | ✅ | No | S3/Cloudinary possible later via `STORAGES`; not used now |
+| Demo images | Pillow (already a dependency for `ImageField`) | ✅ HPND | ✅ | No | Drawn locally by `seed_demo_data`; dev only |
+| Icons | Inline SVG components (`components/icons.tsx`) | ✅ project code | ✅ | No | No icon font/CDN |
+
+## Frontend (no new packages in Phase 4)
 | Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
 |---|---|---|---|---|---|
 | UI library | React 19 | ✅ MIT | ✅ | No | |

@@ -33,8 +33,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--force", action="store_true", help="Allow running with DEBUG=False (staging only).")
+        parser.add_argument("--no-images", action="store_true", help="Skip generating demo product images.")
 
-    def handle(self, *args, force=False, **options):
+    def handle(self, *args, force=False, no_images=False, **options):
         if not settings.DEBUG and not force:
             raise CommandError("Refusing to seed demo data with DEBUG=False. Use --force only on a staging site.")
         with transaction.atomic():
@@ -46,13 +47,28 @@ class Command(BaseCommand):
             stores = self._stores()
             created_stock = self._inventory(stores, products)
             self._coupons()
+        created_images = 0 if no_images else self._images(products)
         self.stdout.write(
             self.style.SUCCESS(
                 f"Demo data ready: {Category.objects.count()} categories, {len(brands)} brands, "
                 f"{len(products)} products, {ProductVariant.objects.filter(sku__startswith='DEMO-').count()} variants, "
-                f"{len(stores)} stores, {created_stock} new stock records, {len(COUPONS)} coupons."
+                f"{len(stores)} stores, {created_stock} new stock records, {len(COUPONS)} coupons, "
+                f"{created_images} new demo images."
             )
         )
+
+    def _images(self, products) -> int:
+        """Locally drawn, clearly-labelled demo pictures (only for products without images)."""
+        from ..demo_images import ensure_demo_images
+
+        specs_by_name = {row[2]: row[8] for row in PRODUCTS}
+        created = 0
+        for product in products:
+            variant_names = list(product.variants.order_by("sort_order").values_list("name", flat=True))
+            created += ensure_demo_images(
+                product, product.category.slug, variant_names, specs_by_name.get(product.name, [])
+            )
+        return created
 
     def _categories(self) -> dict[str, Category]:
         result = {}

@@ -234,6 +234,9 @@ LLM_PROVIDER = env("LLM_PROVIDER", default="none")  # none | ollama | openai_com
 OLLAMA_BASE_URL = env("OLLAMA_BASE_URL", default="http://localhost:11434")
 LLM_MODEL = env("LLM_MODEL", default="")
 BACKGROUND_JOBS_MODE = env("BACKGROUND_JOBS_MODE", default="inline")  # inline | cron (DB queue)
+# Product search backend (dotted path). The portable keyword backend works on every database;
+# Phase 13 adds a semantic/hybrid backend with the same interface.
+CATALOG_SEARCH_BACKEND = env("CATALOG_SEARCH_BACKEND", default="apps.catalog.search.KeywordSearchBackend")
 
 # --- Logging --------------------------------------------------------------------
 LOG_LEVEL = env("LOG_LEVEL", default="INFO")

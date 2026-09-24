@@ -3,7 +3,7 @@ from rest_framework.routers import SimpleRouter
 
 from apps.reviews.views import ProductReviewsView
 
-from .views import BrandViewSet, CategoryViewSet, ProductViewSet
+from .views import BrandViewSet, CategoryViewSet, ProductViewSet, RecentSearchView, SearchSuggestView
 
 router = SimpleRouter(trailing_slash=True)
 router.register("categories", CategoryViewSet, basename="category")
@@ -12,5 +12,7 @@ router.register("products", ProductViewSet, basename="product")
 
 urlpatterns = [
     path("products/<slug:slug>/reviews/", ProductReviewsView.as_view(), name="product-reviews"),
+    path("search/suggest/", SearchSuggestView.as_view(), name="search-suggest"),
+    path("search/recent/", RecentSearchView.as_view(), name="search-recent"),
     *router.urls,
 ]

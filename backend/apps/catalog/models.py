@@ -13,6 +13,7 @@ Design notes
 
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator, MaxValueValidator, MinValueValidator
 from django.db import models
@@ -271,6 +272,24 @@ class ProductImage(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Image {self.pk} of {self.product_id}"
+
+
+class RecentSearch(models.Model):
+    """A signed-in customer's recent search terms (shown as shortcuts; the customer can clear them)."""
+
+    MAX_PER_USER = 10
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="recent_searches")
+    query = models.CharField(max_length=100)
+    normalized = models.CharField(max_length=100)
+    searched_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-searched_at", "-id"]
+        constraints = [models.UniqueConstraint(fields=["user", "normalized"], name="uniq_recent_search_per_user")]
+
+    def __str__(self) -> str:
+        return self.query
 
 
 class ProductSpecification(TimeStampedModel):

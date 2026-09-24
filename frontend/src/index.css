@@ -29,3 +29,34 @@
     @apply outline-2 outline-offset-2 outline-amber-500;
   }
 }
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-amber-500 px-4 py-2.5 text-sm font-semibold text-ink-950 transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-steel-200 disabled:text-ink-600;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-white px-4 py-2.5 text-sm font-semibold text-ink-900 ring-1 ring-steel-200 transition-colors hover:bg-steel-50 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-dark {
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-ink-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-ink-800 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .input {
+    @apply w-full rounded-md border border-steel-200 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-steel-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30;
+  }
+  .label {
+    @apply mb-1 block text-sm font-medium text-ink-800;
+  }
+  .product-grid {
+    @apply grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4;
+  }
+  .container-page {
+    @apply mx-auto w-full max-w-7xl px-4;
+  }
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

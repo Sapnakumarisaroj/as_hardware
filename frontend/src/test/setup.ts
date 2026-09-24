@@ -1,6 +1,17 @@
 import '@testing-library/jest-dom/vitest'
 
 import { cleanup } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 
-afterEach(() => cleanup())
+import { tokenStore } from '@/lib/api/tokens'
+
+// jsdom does not implement scrolling.
+window.scrollTo = vi.fn() as unknown as typeof window.scrollTo
+
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+  tokenStore.clear()
+  window.sessionStorage.clear()
+  window.localStorage.clear()
+})

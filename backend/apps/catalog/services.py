@@ -1,11 +1,13 @@
-"""Catalog write workflows (admin)."""
+"""Catalog write workflows (admin) and customer search history."""
 
 from django.db import transaction
+from django.utils import timezone
 from django.utils.text import slugify
 
 from apps.core.exceptions import ConflictError, ServiceError
 
-from .models import Category, Product, ProductSpecification, ProductVariant
+from .models import Category, Product, ProductSpecification, ProductVariant, RecentSearch
+from .search import normalize_query
 
 
 @transaction.atomic
@@ -62,6 +64,24 @@ def _ensure_single_default_variant(product: Product) -> None:
     product.variants.exclude(pk=getattr(keep, "pk", None)).filter(is_default=True).update(is_default=False)
     if keep and not keep.is_default:
         ProductVariant.objects.filter(pk=keep.pk).update(is_default=True)
+
+
+def record_recent_search(user, query: str) -> RecentSearch | None:
+    """Remember a customer's search (newest first, at most RecentSearch.MAX_PER_USER kept)."""
+    query = normalize_query(query)
+    if len(query) < 2:
+        return None
+    # Re-insert rather than update, so a repeated search also gets the newest id: the clock can
+    # return the same timestamp for quick successive searches (coarse timers on Windows), and
+    # `-id` is the ordering tie-breaker.
+    with transaction.atomic():
+        RecentSearch.objects.filter(user=user, normalized=query.lower()).delete()
+        entry = RecentSearch.objects.create(
+            user=user, query=query, normalized=query.lower(), searched_at=timezone.now()
+        )
+    stale = RecentSearch.objects.filter(user=user).values_list("pk", flat=True)[RecentSearch.MAX_PER_USER :]
+    RecentSearch.objects.filter(pk__in=list(stale)).delete()
+    return entry
 
 
 def delete_category(category: Category) -> None:

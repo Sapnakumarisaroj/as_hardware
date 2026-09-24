@@ -2,7 +2,8 @@
 
 AI-powered hardware marketplace with fast (~60-minute) delivery: a Django REST API and a React SPA.
 
-> Status: **Phase 2 complete** (database + backend foundation). See [TASKS.md](TASKS.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
+> Status: **Phase 4 complete** (catalog and customer shopping experience: home, categories, search, filters, product
+> pages, variants, wishlist, cart). Checkout is next. See [TASKS.md](TASKS.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
 
 | | |
 |---|---|
@@ -20,7 +21,7 @@ cd backend
 py -3.11 -m venv .venv
 .\.venv\Scripts\pip install -r requirements\dev.txt
 .\.venv\Scripts\python manage.py migrate
-.\.venv\Scripts\python manage.py seed_demo_data     # optional: DEMO catalog/stores/stock (dev only)
+.\.venv\Scripts\python manage.py seed_demo_data     # optional: DEMO catalog/stores/stock/images (dev only; --no-images to skip pictures)
 .\.venv\Scripts\python manage.py createsuperuser
 .\.venv\Scripts\python manage.py runserver
 
