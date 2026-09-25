@@ -1,10 +1,23 @@
+from datetime import datetime
+
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.payments.models import Payment, Refund
 
 from .checkout import ETA_PENDING_MESSAGE
-from .models import Order, OrderItem, OrderStatus, OrderStatusHistory, PaymentMethod, PaymentStatus
+from .models import (
+    Order,
+    OrderItem,
+    OrderStatus,
+    OrderStatusHistory,
+    PaymentMethod,
+    PaymentStatus,
+    ReturnItem,
+    ReturnRequest,
+)
+from .returns import can_request_return, counted_quantities, return_deadline, returnable_quantities
 from .state_machine import CUSTOMER_CANCELLABLE
 
 IDEMPOTENCY_KEY_PATTERN = r"^[A-Za-z0-9_\-]{8,64}$"  # e.g. a browser crypto.randomUUID()
@@ -24,6 +37,8 @@ def _image_url(product, request) -> str | None:
 class OrderItemSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
     product_slug = serializers.CharField(source="product.slug", read_only=True, default=None)
+    returnable_quantity = serializers.SerializerMethodField()
+    returned_quantity = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
@@ -44,10 +59,20 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "line_total",
             "offer_discount",
             "image",
+            "returnable_quantity",
+            "returned_quantity",
         ]
 
     def get_image(self, obj) -> str | None:
         return _image_url(obj.product, self.context.get("request"))
+
+    def get_returnable_quantity(self, obj) -> int:
+        """Units the customer can still return now (0 outside the return window)."""
+        return self.context.get("returnable", {}).get(obj.id, 0)
+
+    def get_returned_quantity(self, obj) -> int:
+        """Units already received back by the store."""
+        return self.context.get("returned", {}).get(obj.id, 0)
 
 
 class OrderStatusHistorySerializer(serializers.ModelSerializer):
@@ -138,8 +163,98 @@ def delivery_message(order: Order) -> str:
     return ETA_PENDING_MESSAGE
 
 
+class ReturnItemSerializer(serializers.ModelSerializer):
+    order_item_id = serializers.IntegerField(source="order_item.id", read_only=True)
+    sku = serializers.CharField(source="order_item.sku", read_only=True)
+    product_name = serializers.CharField(source="order_item.product_name", read_only=True)
+    variant_name = serializers.CharField(source="order_item.variant_name", read_only=True)
+    image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReturnItem
+        fields = ["order_item_id", "sku", "product_name", "variant_name", "quantity", "refund_amount", "image"]
+
+    def get_image(self, obj) -> str | None:
+        return _image_url(obj.order_item.product, self.context.get("request"))
+
+
+class ReturnRequestSerializer(serializers.ModelSerializer):
+    order_number = serializers.CharField(source="order.order_number", read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    reason_label = serializers.CharField(source="get_reason_display", read_only=True)
+    refund_method_label = serializers.CharField(source="get_refund_method_display", read_only=True)
+    refund_status = serializers.CharField(source="refund.status", read_only=True, default=None)
+    can_cancel = serializers.SerializerMethodField()
+    items = ReturnItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ReturnRequest
+        fields = [
+            "return_number",
+            "order_number",
+            "status",
+            "status_label",
+            "reason",
+            "reason_label",
+            "details",
+            "refund_amount",
+            "refund_method",
+            "refund_method_label",
+            "refund_status",
+            "restocked",
+            "decision_note",
+            "created_at",
+            "decided_at",
+            "received_at",
+            "cancelled_at",
+            "can_cancel",
+            "items",
+        ]
+
+    def get_can_cancel(self, obj) -> bool:
+        return obj.status == ReturnRequest.Status.REQUESTED
+
+
+class _ReturnLineInputSerializer(serializers.Serializer):
+    order_item_id = serializers.IntegerField(min_value=1)
+    quantity = serializers.IntegerField(min_value=1)
+
+
+class CreateReturnSerializer(serializers.Serializer):
+    """Only which units and why. The refund amount is always calculated by the server."""
+
+    order_number = serializers.CharField(max_length=20)
+    reason = serializers.ChoiceField(choices=ReturnRequest.Reason.choices)
+    details = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+    items = _ReturnLineInputSerializer(many=True, allow_empty=False, max_length=100)
+
+
+class ReturnDecisionSerializer(serializers.Serializer):
+    note = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+
+
+class ReceiveReturnSerializer(ReturnDecisionSerializer):
+    restock = serializers.BooleanField(
+        default=True, help_text="Put the units back into sellable stock. Use false for damaged/defective items."
+    )
+
+
+class _ReorderLineSerializer(serializers.Serializer):
+    sku = serializers.CharField()
+    name = serializers.CharField()
+    requested = serializers.IntegerField()
+    added = serializers.IntegerField()
+    reason = serializers.CharField()
+
+
+class ReorderResultSerializer(serializers.Serializer):
+    added = _ReorderLineSerializer(many=True)
+    skipped = _ReorderLineSerializer(many=True, help_text="Lines added only partly or not at all, with the reason.")
+    cart = serializers.DictField()
+
+
 class OrderDetailSerializer(serializers.ModelSerializer):
-    items = OrderItemSerializer(many=True, read_only=True)
+    items = serializers.SerializerMethodField()
     status_history = OrderStatusHistorySerializer(many=True, read_only=True)
     payments = PaymentSummarySerializer(many=True, read_only=True)
     refunds = serializers.SerializerMethodField()
@@ -147,6 +262,10 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     can_cancel = serializers.SerializerMethodField()
     can_retry_payment = serializers.SerializerMethodField()
     delivery_message = serializers.SerializerMethodField()
+    can_return = serializers.SerializerMethodField()
+    return_window_ends_at = serializers.SerializerMethodField()
+    can_reorder = serializers.SerializerMethodField()
+    returns = ReturnRequestSerializer(many=True, read_only=True)
 
     class Meta:
         model = Order
@@ -178,11 +297,31 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "created_at",
             "can_cancel",
             "can_retry_payment",
+            "can_return",
+            "return_window_ends_at",
+            "can_reorder",
             "items",
             "status_history",
             "payments",
             "refunds",
+            "returns",
         ]
+
+    @extend_schema_field(OrderItemSerializer(many=True))
+    def get_items(self, obj) -> list[dict]:
+        returnable = returnable_quantities(obj) if can_request_return(obj) else {}
+        returned = counted_quantities(obj.returns.all(), statuses=(ReturnRequest.Status.RECEIVED,))
+        context = {**self.context, "returnable": returnable, "returned": returned}
+        return OrderItemSerializer(obj.items.all(), many=True, context=context).data
+
+    def get_can_return(self, obj) -> bool:
+        return can_request_return(obj)
+
+    def get_return_window_ends_at(self, obj) -> datetime | None:
+        return return_deadline(obj)
+
+    def get_can_reorder(self, obj) -> bool:
+        return any(item.variant_id for item in obj.items.all())
 
     def get_refunds(self, obj) -> list[dict]:
         refunds = [refund for payment in obj.payments.all() for refund in payment.refunds.all()]

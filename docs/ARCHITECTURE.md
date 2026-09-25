@@ -90,7 +90,9 @@ The production vendor is unknown, so models use only portable Django features:
 - Uniqueness that needs a condition (e.g. one default address per user) is enforced in the service layer under
   `select_for_update`, backed by a plain unique constraint where possible, because MySQL has no partial indexes.
 - `CheckConstraint` works on PostgreSQL, MySQL 8.0.16+ and MariaDB 10.2+. Services validate the same rules as well.
-- Row locking (`select_for_update`) works on PostgreSQL and MySQL/InnoDB. SQLite serialises writes, which is acceptable locally.
+- Row locking (`select_for_update`) works on PostgreSQL and MySQL/InnoDB. SQLite serialises writes; its transactions run
+  in `IMMEDIATE` mode (Phase 7) so concurrent requests wait for the write lock instead of erroring. The tests use a
+  temporary file database because SQLite's in-memory test database cannot wait on locks across threads.
 - The migration test suite runs against SQLite locally. CI and pre-deploy runs use the production vendor.
 
 ### Dependency direction between apps

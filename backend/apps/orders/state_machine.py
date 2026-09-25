@@ -18,6 +18,9 @@ TRANSITIONS: dict[str, frozenset[str]] = {
 
 # Statuses in which the customer may still cancel on their own (before packing).
 CUSTOMER_CANCELLABLE = frozenset({S.PENDING, S.CONFIRMED, S.PROCESSING})
+# Moves into, out of and within the return statuses happen only through `orders.returns`
+# (which restocks and records refunds); the generic staff transition refuses them.
+RETURN_WORKFLOW_STATUSES = frozenset({S.RETURN_REQUESTED, S.RETURNED})
 # Stock is still reserved (not yet left the store) in these statuses.
 STOCK_RESERVED_STATUSES = frozenset({S.PENDING, S.CONFIRMED, S.PROCESSING, S.PACKED, S.ASSIGNED})
 

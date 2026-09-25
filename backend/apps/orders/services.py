@@ -5,6 +5,7 @@ nothing is written.
 """
 
 import secrets
+from dataclasses import dataclass
 from decimal import Decimal
 
 from django.db import transaction
@@ -17,7 +18,7 @@ from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError, NotFoundError, ServiceError
 from apps.core.money import ZERO, q
 from apps.inventory.models import Inventory, StockMovement
-from apps.inventory.services import InsufficientStock, apply_movement
+from apps.inventory.services import InsufficientStock, apply_movement, total_available
 from apps.notifications.services import notify
 from apps.offers.models import Coupon, CouponRedemption
 from apps.offers.services import get_valid_coupon
@@ -28,7 +29,12 @@ from integrations.payments import get_payment_provider
 from .checkout import ETA_PENDING_MESSAGE, find_fulfilment_store
 from .models import Order, OrderItem, OrderStatus, OrderStatusHistory, PaymentMethod
 from .pricing import line_from_variant, price_lines
-from .state_machine import CUSTOMER_CANCELLABLE, STOCK_RESERVED_STATUSES, can_transition
+from .state_machine import (
+    CUSTOMER_CANCELLABLE,
+    RETURN_WORKFLOW_STATUSES,
+    STOCK_RESERVED_STATUSES,
+    can_transition,
+)
 
 _ORDER_NO_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I ambiguity
 
@@ -100,6 +106,9 @@ def place_order(
     Cart.objects.get_or_create(user=user)
     Cart.objects.select_for_update().get(user=user)
     if existing := find_idempotent_order(user, idempotency_key):
+        # A concurrent request with this key committed first (it held the cart lock). Callers
+        # that report "created vs replayed" (the API: 201 vs 200) read this flag.
+        existing.idempotent_replay = True
         return existing, existing.payments.order_by("-created_at").first()
 
     address = Address.objects.filter(pk=address_id, user=user).first()
@@ -346,6 +355,11 @@ def _move_order_stock(order: Order, movement_type: str, actor, reason: str) -> N
 def transition_order(order: Order, to_status: str, *, actor, note: str = "") -> Order:
     """Staff/system status change (validated against the state machine)."""
     locked = Order.objects.select_for_update().get(pk=order.pk)
+    if to_status in RETURN_WORKFLOW_STATUSES or locked.status in RETURN_WORKFLOW_STATUSES:
+        raise InvalidTransition(
+            "Returns are handled through the return request (approve, reject or receive it).",
+            details={"from": locked.status, "to": to_status},
+        )
     _apply_transition(locked, to_status, actor=actor, note=note)
     record_audit(action="order.transition", actor=actor, target=locked, changes={"to": to_status, "note": note})
     return locked
@@ -378,3 +392,59 @@ def cancel_order_by_customer(order: Order, *, user, reason: str) -> Order:
         data={"order_number": order.order_number},
     )
     return order
+
+
+# --- Buy again ------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ReorderLine:
+    sku: str
+    name: str
+    requested: int
+    added: int = 0
+    reason: str = ""  # why fewer (or none) were added
+
+
+@transaction.atomic
+def reorder(order: Order, *, user) -> list[ReorderLine]:
+    """Put a past order's items back in the cart ("Buy again").
+
+    Items are priced like any cart line (today's price, offers applied at checkout), never at
+    the old order price. Each line is capped by current stock and the product's order limit,
+    counting what is already in the cart; unavailable items are reported, not fatal.
+    """
+    if order.user_id != user.id:
+        raise NotFoundError("Order not found.")
+    cart, _ = Cart.objects.get_or_create(user=user)
+    cart = Cart.objects.select_for_update().get(pk=cart.pk)
+    in_cart = {item.variant_id: item for item in CartItem.objects.filter(cart=cart)}
+
+    results = []
+    for item in order.items.select_related("variant__product").order_by("id"):
+        name = f"{item.product_name} — {item.variant_name}" if item.variant_name else item.product_name
+        variant = item.variant
+        if variant is None or not (variant.is_active and variant.product.is_purchasable):
+            results.append(ReorderLine(item.sku, name, item.quantity, reason="No longer sold."))
+            continue
+        existing = in_cart.get(variant.id)
+        current = existing.quantity if existing else 0
+        available = total_available(variant.id)
+        target = min(current + item.quantity, variant.product.max_order_quantity, available)
+        added = max(target - current, 0)
+        if added == 0:
+            reason = "Out of stock right now." if available == 0 else "Your cart already has the most you can order."
+        elif added < item.quantity:
+            reason = f"Only {added} added (stock or order limit)."
+        else:
+            reason = ""
+        if added:
+            if existing:
+                existing.quantity = target
+                existing.save(update_fields=["quantity", "updated_at"])
+            else:
+                in_cart[variant.id] = CartItem.objects.create(
+                    cart=cart, variant=variant, quantity=target, price_at_add=variant.price
+                )
+        results.append(ReorderLine(variant.sku, name, item.quantity, added, reason))
+    return results

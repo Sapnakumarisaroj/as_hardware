@@ -8,7 +8,7 @@ import { useAddresses } from '@/features/addresses/api'
 import { AddressFormModal, AddressList, AddressText } from '@/features/addresses/components'
 import { useAuth } from '@/features/auth/context'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
-import { ORDERS_PAGE_SIZE, useOrder, useOrders, useRetryPayment } from '@/features/orders/api'
+import { ORDERS_PAGE_SIZE, useOrder, useOrders, useRetryPayment, useReturns } from '@/features/orders/api'
 import {
   CancelOrderDialog,
   OrderItemsList,
@@ -17,6 +17,7 @@ import {
   PaymentStatusBadge,
   PriceSummary,
 } from '@/features/orders/components'
+import { BuyAgainButton, ReturnCard, ReturnDialog } from '@/features/orders/returns'
 import type { OrderDetail } from '@/features/orders/types'
 import { isNotFound } from '@/lib/api/errors'
 import { formatDate, formatPrice } from '@/lib/format'
@@ -47,7 +48,8 @@ export function AccountPage() {
   if (gate || !user) return gate
   const tile = 'block h-full rounded-lg bg-white p-4 ring-1 ring-steel-200 hover:ring-amber-500'
   const tiles = [
-    { to: '/account/orders', title: 'Orders', text: 'Track, cancel and view past orders' },
+    { to: '/account/orders', title: 'Orders', text: 'Track, cancel, return and buy again' },
+    { to: '/account/returns', title: 'Returns', text: 'Return requests and refunds' },
     { to: '/account/addresses', title: 'Addresses', text: 'Manage delivery addresses' },
     { to: '/wishlist', title: 'Wishlist', text: 'Items you saved' },
     { to: '/cart', title: 'Cart', text: 'Ready to check out' },
@@ -200,6 +202,7 @@ export function OrderDetailPage() {
   const order = useOrder(number)
   const retry = useRetryPayment(number)
   const [cancelling, setCancelling] = useState(false)
+  const [returning, setReturning] = useState(false)
   const { gate } = useSignedIn('Sign in to see this order.', `/account/orders/${number}`)
   if (gate) return gate
   if (order.isPending) return <PageSpinner label="Loading order…" />
@@ -270,6 +273,16 @@ export function OrderDetailPage() {
             </h2>
             <OrderItemsList items={data.items} />
           </section>
+          {data.returns.length > 0 && (
+            <section aria-labelledby="returns-heading" className="space-y-3">
+              <h2 id="returns-heading" className="text-base font-bold">
+                Returns
+              </h2>
+              {data.returns.map((ret) => (
+                <ReturnCard key={ret.return_number} ret={ret} />
+              ))}
+            </section>
+          )}
         </div>
         <div className="space-y-5">
           <div className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
@@ -288,6 +301,17 @@ export function OrderDetailPage() {
             <AddressText address={data.address_snapshot} />
             {data.customer_note && <p className="mt-2 text-xs text-ink-600">Note: {data.customer_note}</p>}
           </section>
+          {data.can_reorder && <BuyAgainButton orderNumber={data.order_number} />}
+          {data.can_return && (
+            <div>
+              <button type="button" onClick={() => setReturning(true)} className="btn-secondary w-full">
+                Return items
+              </button>
+              {data.return_window_ends_at && (
+                <p className="mt-1 text-xs text-ink-600">Returns open until {formatDate(data.return_window_ends_at)}</p>
+              )}
+            </div>
+          )}
           {data.can_cancel && (
             <button type="button" onClick={() => setCancelling(true)} className="btn-secondary w-full">
               Cancel order
@@ -299,6 +323,58 @@ export function OrderDetailPage() {
         </div>
       </div>
       <CancelOrderDialog order={data} open={cancelling} onClose={() => setCancelling(false)} />
+      {data.can_return && <ReturnDialog order={data} open={returning} onClose={() => setReturning(false)} />}
+    </div>
+  )
+}
+
+export function ReturnsPage() {
+  usePageMeta('Your returns')
+  const [params, setParams] = useSearchParams()
+  const page = Math.max(1, Number(params.get('page')) || 1)
+  const returns = useReturns(page)
+  const { gate } = useSignedIn('Sign in to see your returns.', '/account/returns')
+  if (gate) return gate
+
+  let body
+  if (returns.isPending) body = <PageSpinner label="Loading returns…" />
+  else if (returns.isError)
+    body = <ErrorState error={returns.error} onRetry={() => returns.refetch()} title="Couldn’t load your returns" />
+  else if (!returns.data.results.length)
+    body = (
+      <EmptyState
+        title="No returns"
+        action={
+          <Link to="/account/orders" className="btn-primary">
+            Go to your orders
+          </Link>
+        }
+      >
+        You can return items from a delivered order’s page.
+      </EmptyState>
+    )
+  else
+    body = (
+      <>
+        <div className="space-y-3" aria-busy={returns.isFetching}>
+          {returns.data.results.map((ret) => (
+            <ReturnCard key={ret.return_number} ret={ret} showOrder />
+          ))}
+        </div>
+        <Pagination
+          page={page}
+          pageSize={ORDERS_PAGE_SIZE}
+          total={returns.data.count}
+          onChange={(p) => setParams(p > 1 ? { page: String(p) } : {})}
+        />
+      </>
+    )
+
+  return (
+    <div className="container-page max-w-3xl py-8">
+      <Breadcrumbs items={[{ label: 'Account', to: '/account' }, { label: 'Returns' }]} />
+      <h1 className="mb-4 mt-2 text-2xl font-bold">Your returns</h1>
+      {body}
     </div>
   )
 }

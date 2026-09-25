@@ -116,6 +116,11 @@ if DB_VENDOR == "mysql":
     DATABASES["default"].setdefault("OPTIONS", {}).update(
         {"charset": "utf8mb4", "init_command": "SET sql_mode='STRICT_TRANS_TABLES'"}
     )
+elif DB_VENDOR == "sqlite":
+    # SQLite ignores SELECT … FOR UPDATE and locks the whole file instead. IMMEDIATE makes every
+    # transaction take the write lock up front, so concurrent writers wait (up to `timeout`
+    # seconds) instead of failing with "database is locked" halfway through (Phase 7).
+    DATABASES["default"].setdefault("OPTIONS", {}).update({"transaction_mode": "IMMEDIATE", "timeout": 20})
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Auth ---------------------------------------------------------------------
@@ -223,6 +228,8 @@ SPECTACULAR_SETTINGS = {
 FAST_DELIVERY_MAX_MINUTES = env.int("FAST_DELIVERY_MAX_MINUTES", default=60)
 DELIVERY_FEE = Decimal(env.str("DELIVERY_FEE", default="") or "40.00")
 FREE_DELIVERY_MIN_ORDER = Decimal(env.str("FREE_DELIVERY_MIN_ORDER", default="") or "499.00")
+# Days after delivery during which a customer may request a return (Phase 7).
+RETURN_WINDOW_DAYS = env.int("RETURN_WINDOW_DAYS", default=7)
 
 # --- Provider selection (implemented from Phase 8 onwards) ------------------------------
 # Every external service sits behind an interface; these choose the implementation.

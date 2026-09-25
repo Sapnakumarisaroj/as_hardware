@@ -180,10 +180,11 @@ Response:
 |---|---|---|---|
 | POST | `/api/orders/` | customer | Places the order from the cart. Body: `{address_id, payment_method: "cod"\|"online", coupon_code?, customer_note?, expected_total?}`. Header `Idempotency-Key: <8–64 chars [A-Za-z0-9_-]>` (or body `idempotency_key`). **201** new order · **200** + `Idempotent-Replayed: true` when the key was already used by this customer (returns that order, creates nothing) |
 | GET | `/api/orders/` | customer: own · staff: all | Newest first, paginated. `?status=` filter. Items: `order_number, status, payment_method, payment_status, grand_total, item_count` (units), `item_names` (first 3), `image`, `estimated_delivery_at`, `delivery_message`, `created_at` |
-| GET | `/api/orders/{order_number}/` | owner/staff | Snapshots of items (+`image`, `product_slug`, per-line `offer_discount`) and address, all totals incl. `offer_discount`, `coupon_discount` and `applied_offers[{id, name, badge, discount, skus}]`, `status_history`, `payments`, `refunds`, `can_cancel`, `can_retry_payment`, `delivery_message` |
+| GET | `/api/orders/{order_number}/` | owner/staff | Snapshots of items (+`image`, `product_slug`, per-line `offer_discount`) and address, all totals incl. `offer_discount`, `coupon_discount` and `applied_offers[{id, name, badge, discount, skus}]`, `status_history`, `payments`, `refunds`, `can_cancel`, `can_retry_payment`, `delivery_message`. Phase 7: `can_return`, `return_window_ends_at`, `can_reorder`, `returns[]` (see Returns), per item `returnable_quantity` (0 outside the window) and `returned_quantity` |
 | POST | `/api/orders/{order_number}/cancel/` | owner | `{reason}` (required). Only while `pending`/`confirmed`/`processing`, else 409 `invalid_transition`. Releases reserved stock, voids uncaptured payments, creates a **pending** Refund for captured payments, gives the coupon use back |
 | POST | `/api/orders/{order_number}/retry-payment/` | owner | New online payment attempt for a `pending` online order whose last attempt failed/was cancelled (409 otherwise) |
-| POST | `/api/orders/{order_number}/transition/` | staff | `{status, note?}`. Validated by the state machine (409 on invalid). Side effects: cancel → release stock, picked_up → sale |
+| POST | `/api/orders/{order_number}/transition/` | staff | `{status, note?}`. Validated by the state machine (409 on invalid). Side effects: cancel → release stock, picked_up → sale. Return statuses (`return_requested`, `returned`, and leaving `return_requested`) are refused here (409 `invalid_transition`): they move only through the return endpoints |
+| POST | `/api/orders/{order_number}/reorder/` | owner | **Buy again** (Phase 7). Adds the order's items to the cart at **today's** prices (never the old price). Each line is capped by current stock and the product's order limit, counting what is already in the cart. Returns `{added[], skipped[], cart}`; each line is `{sku, name, requested, added, reason}` and `skipped` lists lines added partly or not at all (`"No longer sold."`, `"Out of stock right now."`, `"Only N added (stock or order limit)."`, `"Your cart already has the most you can order."`). Works for any order status; a store manager viewing a customer's order gets 404 |
 | POST | `/api/payments/{public_id}/verify/` | owner | `{payload: {…gateway result…}}` → verified **server-side** by the payment provider; returns the updated order. Mock payload: `{mock_signature (from client_payload), mock_outcome: "success"\|"failed"\|"cancelled"}`. Repeating a successful verification is harmless; a closed attempt → 409 `payment_state_invalid` |
 
 Customers cannot update or delete orders (PUT/PATCH/DELETE → 405) or change status except by cancelling; other
@@ -204,6 +205,40 @@ stock or coupon changed since the customer saw `expected_total`; nothing is crea
 | Gateway failure | `failed` (+ `failure_reason`) | `failed` | `pending` (retry allowed) |
 | Customer closed gateway | `cancelled` | `pending` | `pending` (retry or cancel) |
 | Order cancelled | uncaptured → `cancelled`; captured stays `captured` + Refund `pending` | unchanged | `cancelled` |
+
+## Returns ✅ (Phase 7)
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET | `/api/returns/` | customer: own · store manager: returns of their stores' orders (+ own) · admin: all | Newest first, paginated. `?status=` filter |
+| GET | `/api/returns/{return_number}/` | as above | |
+| POST | `/api/returns/` | order owner | `{order_number, reason, details?, items: [{order_item_id, quantity}]}`. `reason`: `damaged`, `defective`, `wrong_item`, `not_as_described`, `no_longer_needed`, `other` (needs `details`). **201** with the return. The refund amount is calculated by the server |
+| POST | `/api/returns/{return_number}/cancel/` | owner | Only while `requested` (409 `return_state_invalid` afterwards) |
+| POST | `/api/returns/{return_number}/approve/` | staff of the order's store / admin | `{note?}`. `requested` → `approved` |
+| POST | `/api/returns/{return_number}/reject/` | staff / admin | `{note}` (**required**, shown to the customer). `requested`/`approved` → `rejected` |
+| POST | `/api/returns/{return_number}/receive/` | staff / admin | `{note?, restock: true}`. `approved` → `received`. `restock: false` for damaged items (no stock movement). Records a **pending** Refund |
+
+Return fields: `return_number, order_number, status (+status_label), reason (+reason_label), details, refund_amount,
+refund_method (original_payment | manual), refund_method_label, refund_status (null until received), restocked,
+decision_note, created_at, decided_at, received_at, cancelled_at, can_cancel, items[{order_item_id, sku, product_name,
+variant_name, quantity, refund_amount, image}]`.
+
+**Rules.**
+- Only `delivered` orders can be returned, within `RETURN_WINDOW_DAYS` (default 7) of `delivered_at`, and only products
+  with `is_returnable`. One request per order may be open at a time (409 `return_open`); the order is
+  `return_requested` meanwhile.
+- Partial returns are allowed. After a partial return is received, the order goes back to `delivered` and the remaining
+  units can still be returned within the window. Once every unit has been received, the order becomes `returned`.
+  A rejected or cancelled request also returns the order to `delivered`.
+- **Refund** = what the customer paid for those units: line total, minus the line's offer discount, minus its pro-rata
+  share of the coupon (spread over post-offer amounts, like GST). Cumulative rounding makes the returns of a whole line
+  add up exactly to what was paid for it. The delivery fee is not refunded. Online orders refund to the captured
+  payment (`original_payment`); COD orders get a `manual` refund recorded against the COD payment. Refunds stay
+  `pending` until Phase 8 processes them.
+- Errors: `order_not_delivered` / `return_open` / `return_state_invalid` (409); `return_window_closed`,
+  `quantity_not_returnable`, `invalid_item`, `invalid_quantity`, `details_required`, `note_required` (400); another
+  customer's order or return → 404; a customer calling approve/reject/receive → 403; a manager of another store → 404.
+- Customer notifications (in-app; email as well from `approved` onwards): `return.requested`, `return.approved`,
+  `return.rejected`, `return.received`.
 
 ## Inventory ✅ (staff only)
 | Method | Path | Notes |

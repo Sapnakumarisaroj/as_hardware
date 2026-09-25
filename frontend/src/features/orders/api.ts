@@ -1,16 +1,17 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '@/features/auth/context'
-import { cartKeys } from '@/features/cart/api'
+import { cartKeys, type Cart } from '@/features/cart/api'
 import type { Paginated } from '@/features/catalog/types'
 import { api } from '@/lib/api/client'
 
-import type { OrderDetail, OrderSummary, PaymentMethod } from './types'
+import type { OrderDetail, OrderSummary, PaymentMethod, ReorderLine, ReturnReason, ReturnRequest } from './types'
 
 export const orderKeys = {
   all: ['orders'] as const,
   list: (page: number) => ['orders', 'list', page] as const,
   detail: (number: string) => ['orders', 'detail', number] as const,
+  returns: (page: number) => ['returns', 'list', page] as const,
 }
 
 export const ORDERS_PAGE_SIZE = 10
@@ -113,4 +114,72 @@ export function useVerifyPayment() {
 export function newIdempotencyKey(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
   return `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`
+}
+
+// --- Buy again ------------------------------------------------------------------------------
+
+export interface ReorderResult {
+  added: ReorderLine[]
+  /** Lines added only partly or not at all, with the server's reason. */
+  skipped: ReorderLine[]
+  cart: Cart
+}
+
+/** Adds a past order's items to the cart at today's prices; the server caps by stock and limits. */
+export function useReorder(number: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => (await api.post<ReorderResult>(`/orders/${encodeURIComponent(number)}/reorder/`)).data,
+    onSuccess: (result) => {
+      queryClient.setQueryData(cartKeys.cart, result.cart)
+      void queryClient.invalidateQueries({ queryKey: ['checkout'] })
+    },
+  })
+}
+
+// --- Returns --------------------------------------------------------------------------------
+
+export function useReturns(page: number) {
+  const { status } = useAuth()
+  return useQuery({
+    queryKey: orderKeys.returns(page),
+    queryFn: async () =>
+      (await api.get<Paginated<ReturnRequest>>('/returns/', { params: { page, page_size: ORDERS_PAGE_SIZE } })).data,
+    enabled: status === 'authenticated',
+    placeholderData: keepPreviousData,
+  })
+}
+
+export interface CreateReturnInput {
+  reason: ReturnReason
+  details: string
+  items: { order_item_id: number; quantity: number }[]
+}
+
+/** The order changes too (status, returnable quantities), so it is refetched after every return action. */
+function useReturnResult(orderNumber: string) {
+  const queryClient = useQueryClient()
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: orderKeys.detail(orderNumber) })
+    void queryClient.invalidateQueries({ queryKey: ['orders', 'list'] })
+    void queryClient.invalidateQueries({ queryKey: ['returns'] })
+  }
+}
+
+export function useCreateReturn(orderNumber: string) {
+  const refresh = useReturnResult(orderNumber)
+  return useMutation({
+    mutationFn: async (input: CreateReturnInput) =>
+      (await api.post<ReturnRequest>('/returns/', { order_number: orderNumber, ...input })).data,
+    onSuccess: refresh,
+  })
+}
+
+export function useCancelReturn(orderNumber: string) {
+  const refresh = useReturnResult(orderNumber)
+  return useMutation({
+    mutationFn: async (returnNumber: string) =>
+      (await api.post<ReturnRequest>(`/returns/${encodeURIComponent(returnNumber)}/cancel/`)).data,
+    onSuccess: refresh,
+  })
 }

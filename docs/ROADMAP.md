@@ -11,7 +11,7 @@ Every phase respects the hosting constraints in `ARCHITECTURE.md` §1: portable 
 | 4 ✅ | Catalog + search (delivered with the customer catalogue UI) | category tree, products/variants/specs/images, filters/sorting, portable keyword `SearchBackend`, suggestions | search tests on the SQLite path |
 | 5 ✅ | Checkout + orders UI (delivered: cart, checkout, addresses, COD + mock payment, order history/detail/cancel) | originally "customer frontend"; the Leaflet/OSM pin picker moves to Phase 9 | component + API tests |
 | 6 ✅ | Cart, wishlist, checkout: offer engine | server cart, wishlist and checkout preview (done in 2/5) + automatic offers, offer/coupon stacking, coupon discovery | cart/coupon/offer tests |
-| 7 | Orders + inventory | `place_order` transaction, reservations, state machine, history and cancel exist (2/5); remaining: returns, reorder, concurrency tests | concurrency + transition tests |
+| 7 ✅ | Orders + inventory: returns, reorder, concurrency | `place_order`, reservations, state machine, history and cancel already existed (2/5). Added: returns (request/approve/reject/receive, restock, pending refund, partial returns), "Buy again", threaded concurrency tests, full transition matrix | concurrency + transition tests |
 | 8 | Payments | `MockPaymentProvider` (dev), COD, optional Razorpay (order/verify/webhook/refund), idempotency; `run_jobs` cron command | signature/webhook tests |
 | 9 | Stores + delivery engine | stores/zones, fulfillment selection, ETA engine (haversine), Nominatim geocode cache | ETA unit tests |
 | 10 | Delivery partner app | availability, assignments, pickup, OTP, proof upload, earnings, OSM navigation links | flow tests |

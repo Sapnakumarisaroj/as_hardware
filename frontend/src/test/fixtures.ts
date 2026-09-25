@@ -340,6 +340,9 @@ export function orderDetail(overrides: Partial<OrderDetail> = {}): OrderDetail {
     created_at: '2026-09-24T10:00:00Z',
     can_cancel: true,
     can_retry_payment: false,
+    can_return: false,
+    return_window_ends_at: null,
+    can_reorder: true,
     items: [
       {
         id: 1,
@@ -358,6 +361,8 @@ export function orderDetail(overrides: Partial<OrderDetail> = {}): OrderDetail {
         line_total: '800.00',
         offer_discount: '0.00',
         image: null,
+        returnable_quantity: 0,
+        returned_quantity: 0,
       },
     ],
     status_history: [
@@ -379,6 +384,7 @@ export function orderDetail(overrides: Partial<OrderDetail> = {}): OrderDetail {
       },
     ],
     refunds: [],
+    returns: [],
     ...overrides,
   }
 }

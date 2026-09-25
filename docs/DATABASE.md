@@ -38,6 +38,7 @@ User ─1:1─ CustomerProfile          Category (self-FK: parent → subcategor
   ├─1:1─ Wishlist ─< WishlistItem          ├─< ProductSpecification (name/value/unit)     └─< StockMovement
   ├─< Order ─< OrderItem (snapshot)         └─< ProductImage
   │     ├─< OrderStatusHistory
+  │     ├─< ReturnRequest ─< ReturnItem >─ OrderItem      (ReturnRequest ─1:1─ Refund)
   │     ├─< Payment ─< Refund               Coupon ─< CouponRedemption >─ Order
   │     └─< DeliveryAssignment ─< DeliveryStatusHistory >── DeliveryPartner ─1:1─ User
   ├─< Review >─ Product                     Store ─< DeliveryZone
@@ -116,6 +117,8 @@ Movement effects (only via `inventory.services.apply_movement`, which locks the 
 | `orders_order` | public_id UUID, order_number (unique), user FK, store FK, address_snapshot JSON, status (fulfilment), payment_method (cod/online), payment_status, subtotal, mrp_total, discount_total, delivery_fee, tax_total, grand_total, coupon FK, coupon_code, customer_note, estimated_delivery_at, eta_minutes, cancellation_reason, cancelled_at, delivered_at, idempotency_key (Phase 5, nullable), offer_discount + coupon_discount (= discount_total) and applied_offers JSON snapshot (Phase 6) | CHECK grand_total ≥ 0, discount ≥ 0; **unique (user, idempotency_key)**; indexes (user, created_at), (store, status), (status, created_at) |
 | `orders_orderitem` | order FK, variant FK (SET NULL), product FK (SET NULL) + snapshot: product_name, variant_name, sku, brand_name, unit, unit_mrp, unit_price, gst_rate, hsn_code, quantity, line_total, offer_discount (Phase 6: this line's share of automatic offers) | CHECK quantity ≥ 1 |
 | `orders_orderstatushistory` | order FK, from_status, to_status, changed_by, note, created_at | index (order, created_at) |
+| `orders_returnrequest` (Phase 7) | return_number (unique), order FK (PROTECT), user FK, status (requested/approved/rejected/received/cancelled), reason, details, refund_amount (fixed at request time), refund_method (original_payment/manual), refund 1:1 → `payments_refund` (set when received), decision_note, decided_by, decided_at, received_at, restocked, cancelled_at | CHECK refund_amount ≥ 0; indexes (order, status), (status, created_at) |
+| `orders_returnitem` (Phase 7) | return_request FK (CASCADE), order_item FK (PROTECT), quantity, refund_amount | CHECK quantity ≥ 1; unique (return_request, order_item) |
 
 Status flow (`orders/state_machine.py`, the single source of truth):
 
@@ -137,6 +140,13 @@ and SQLite all allow repeated NULLs in a unique index, so no partial index is ne
 `coupon_discount = discount_total` for existing orders, since the coupon was the only discount before Phase 6
 (covered by `orders/tests/test_migrations.py`). `offers 0003_coupon_show_in_checkout` adds the opt-in flag (default off,
 so no existing coupon becomes visible).
+
+**Returns (Phase 7).** Migration `orders 0004_return_requests` only creates the two new tables (no data changes).
+The order row lock serialises requests, so there is never more than one open request per order. Units in
+requested, approved or received returns are no longer returnable. A line's returned refunds are computed
+cumulatively (`q(paid × returned_so_far / qty)` differences), so they add up exactly to what was paid for the line.
+`receive` writes a `return` stock movement (`reference_type="return"`, `reference_id=<return_number>`) when restocking,
+and creates the pending `payments_refund`.
 
 ## payments ✅
 | Table | Key columns | Constraints |
@@ -180,7 +190,7 @@ so no existing coupon becomes visible).
 | `core_auditlog` | append-only admin/sensitive action log (actor, action, target, changes JSON, IP, request_id) |
 
 ## Planned tables 🔜
-`accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 13–19) · `ai_productembedding` (JSON vectors, Phase 13) · `payments_webhookevent` (idempotency, Phase 8) · `core_job` (DB job queue for cron, Phase 8/20) · `locations geocode cache` (Phase 9) · `orders_returnrequest` (Phase 7) · `django_cache` (prod DB cache, created by `createcachetable`).
+`accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 13–19) · `ai_productembedding` (JSON vectors, Phase 13) · `payments_webhookevent` (idempotency, Phase 8) · `core_job` (DB job queue for cron, Phase 8/20) · `locations geocode cache` (Phase 9) · `django_cache` (prod DB cache, created by `createcachetable`).
 
 ## Transactions
 - `orders.services.place_order` runs in one atomic block. It locks the customer's cart row (so concurrent "Place order"
@@ -190,5 +200,11 @@ so no existing coupon becomes visible).
   notifications are only sent on commit (both tested).
 - `payments.services.verify_payment` locks the payment and order rows, so a double submit can't capture twice.
 - `orders.services.transition_order` / `cancel_order_by_customer` lock the order, validate against the state machine, apply stock side effects, and write history.
+- `orders.returns` (Phase 7): `request_return` locks the order; `cancel/approve/reject/receive_return` lock the return and then the order (always in that order), so concurrent receives restock and refund exactly once.
+- `orders.services.reorder` locks the cart row while it merges the order's lines into the cart.
 - `inventory.services.apply_movement` locks the inventory row, validates non-negativity and writes the ledger row.
+- **SQLite (local/tests)** has no row locks. Settings open every transaction with `BEGIN IMMEDIATE` (`transaction_mode`,
+  20 s busy timeout), so concurrent writers wait their turn instead of failing with "database is locked". The
+  concurrency tests (`orders/tests/test_concurrency.py`, real threads) prove the invariants on SQLite. PostgreSQL/MySQL
+  get the same guarantees from the `select_for_update` row locks above.
 - Cart add/update lock the cart row. Address default changes lock the user's addresses.

@@ -2,8 +2,9 @@
 
 AI-powered hardware marketplace with fast (~60-minute) delivery: a Django REST API and a React SPA.
 
-> Status: **Phase 6 complete** (catalogue, cart, checkout with addresses, automatic offers and coupons, cash on delivery
-> and a development mock online payment, order confirmation, history, detail and cancellation). See [TASKS.md](TASKS.md)
+> Status: **Phase 7 complete** (catalogue, cart, checkout with addresses, automatic offers and coupons, cash on delivery
+> and a development mock online payment, order confirmation, history, detail and cancellation, returns with refunds
+> recorded, and "Buy again"). See [TASKS.md](TASKS.md)
 > and [docs/ROADMAP.md](docs/ROADMAP.md).
 >
 > Try it locally: run `seed_demo_data`, register on the site, add products, check out with **Cash on delivery** or

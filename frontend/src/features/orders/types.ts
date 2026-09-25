@@ -47,6 +47,52 @@ export interface OrderItem {
   line_total: string
   offer_discount: string
   image: string | null
+  /** Units the customer can return right now (0 outside the return window). */
+  returnable_quantity: number
+  /** Units the store has already received back. */
+  returned_quantity: number
+}
+
+export type ReturnStatus = 'requested' | 'approved' | 'rejected' | 'received' | 'cancelled'
+export type ReturnReason = 'damaged' | 'defective' | 'wrong_item' | 'not_as_described' | 'no_longer_needed' | 'other'
+
+export interface ReturnRequest {
+  return_number: string
+  order_number: string
+  status: ReturnStatus
+  status_label: string
+  reason: ReturnReason
+  reason_label: string
+  details: string
+  /** Server-calculated: what was paid for these units (delivery fee excluded). */
+  refund_amount: string
+  refund_method: 'original_payment' | 'manual'
+  refund_method_label: string
+  refund_status: 'pending' | 'processed' | 'failed' | null
+  restocked: boolean
+  decision_note: string
+  created_at: string
+  decided_at: string | null
+  received_at: string | null
+  cancelled_at: string | null
+  can_cancel: boolean
+  items: {
+    order_item_id: number
+    sku: string
+    product_name: string
+    variant_name: string
+    quantity: number
+    refund_amount: string
+    image: string | null
+  }[]
+}
+
+export interface ReorderLine {
+  sku: string
+  name: string
+  requested: number
+  added: number
+  reason: string
 }
 
 export interface StatusHistoryEntry {
@@ -113,8 +159,12 @@ export interface OrderDetail extends Omit<OrderSummary, 'item_count' | 'item_nam
   delivered_at: string | null
   can_cancel: boolean
   can_retry_payment: boolean
+  can_return: boolean
+  return_window_ends_at: string | null
+  can_reorder: boolean
   items: OrderItem[]
   status_history: StatusHistoryEntry[]
   payments: OrderPayment[]
   refunds: OrderRefund[]
+  returns: ReturnRequest[]
 }

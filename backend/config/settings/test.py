@@ -25,3 +25,14 @@ FRONTEND_URL = "http://testserver-frontend"
 from .base import MIDDLEWARE  # noqa: E402
 
 MIDDLEWARE = [m for m in MIDDLEWARE if m != "whitenoise.middleware.WhiteNoiseMiddleware"]
+
+# Concurrency tests (orders/tests/test_concurrency.py) run real threads. SQLite's default
+# in-memory test database uses shared-cache locking, which fails at once instead of waiting,
+# so tests use a temporary file database (created and destroyed by the test runner).
+from .base import DATABASES, DB_VENDOR  # noqa: E402
+
+if DB_VENDOR == "sqlite":
+    import os
+    import tempfile
+
+    DATABASES["default"]["TEST"] = {"NAME": os.path.join(tempfile.gettempdir(), f"boltrun_test_{os.getpid()}.sqlite3")}

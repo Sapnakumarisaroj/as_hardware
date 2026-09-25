@@ -145,3 +145,82 @@ class OrderStatusHistory(models.Model):
 
     def __str__(self) -> str:
         return f"{self.order_id}: {self.from_status or '∅'} → {self.to_status}"
+
+
+class ReturnRequest(TimeStampedModel):
+    """A customer's request to return some or all items of a delivered order (Phase 7).
+
+    Flow (orders.returns): requested → approved → received (restocked, refund recorded)
+                           requested/approved → rejected · requested → cancelled (by the customer)
+    `refund_amount` is what the customer actually paid for the returned units (after offers
+    and coupon), fixed when the request is made. Delivery fees are not refunded.
+    """
+
+    class Status(models.TextChoices):
+        REQUESTED = "requested", "Requested"
+        APPROVED = "approved", "Approved — awaiting pickup/drop"
+        REJECTED = "rejected", "Rejected"
+        RECEIVED = "received", "Received — refund initiated"
+        CANCELLED = "cancelled", "Cancelled by customer"
+
+    class Reason(models.TextChoices):
+        DAMAGED = "damaged", "Arrived damaged"
+        DEFECTIVE = "defective", "Defective / not working"
+        WRONG_ITEM = "wrong_item", "Wrong item delivered"
+        NOT_AS_DESCRIBED = "not_as_described", "Not as described"
+        NO_LONGER_NEEDED = "no_longer_needed", "No longer needed"
+        OTHER = "other", "Other"
+
+    class RefundMethod(models.TextChoices):
+        ORIGINAL_PAYMENT = "original_payment", "To the original online payment"
+        MANUAL = "manual", "Manual (cash on delivery orders)"
+
+    OPEN_STATUSES = (Status.REQUESTED, Status.APPROVED)
+    COUNTED_STATUSES = (Status.REQUESTED, Status.APPROVED, Status.RECEIVED)  # units no longer returnable
+
+    return_number = models.CharField(max_length=20, unique=True)
+    order = models.ForeignKey(Order, on_delete=models.PROTECT, related_name="returns")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="return_requests")
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.REQUESTED, db_index=True)
+    reason = models.CharField(max_length=20, choices=Reason.choices)
+    details = models.CharField(max_length=500, blank=True)
+    refund_amount = models.DecimalField(**MONEY_FIELD_KWARGS)
+    refund_method = models.CharField(max_length=20, choices=RefundMethod.choices)
+    refund = models.OneToOneField(
+        "payments.Refund", null=True, blank=True, on_delete=models.PROTECT, related_name="return_request"
+    )
+    decision_note = models.CharField(max_length=255, blank=True)
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    received_at = models.DateTimeField(null=True, blank=True)
+    restocked = models.BooleanField(
+        default=False, help_text="Received units went back into sellable stock (not for damaged items)."
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["order", "status"]), models.Index(fields=["status", "-created_at"])]
+        constraints = [models.CheckConstraint(condition=Q(refund_amount__gte=0), name="return_refund_non_negative")]
+
+    def __str__(self) -> str:
+        return self.return_number
+
+
+class ReturnItem(models.Model):
+    return_request = models.ForeignKey(ReturnRequest, on_delete=models.CASCADE, related_name="items")
+    order_item = models.ForeignKey(OrderItem, on_delete=models.PROTECT, related_name="return_items")
+    quantity = models.PositiveIntegerField()
+    refund_amount = models.DecimalField(**MONEY_FIELD_KWARGS)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.CheckConstraint(condition=Q(quantity__gte=1), name="returnitem_quantity_positive"),
+            models.UniqueConstraint(fields=["return_request", "order_item"], name="uniq_return_order_item"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.quantity} × {self.order_item.sku}"

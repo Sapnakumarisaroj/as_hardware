@@ -150,6 +150,11 @@ export function OrderItemsList({ items }: { items: OrderItem[] }) {
                 </>
               )}
             </p>
+            {item.returned_quantity > 0 && (
+              <p className="text-xs font-medium text-ink-800">
+                Returned: {item.returned_quantity} of {item.quantity}
+              </p>
+            )}
           </div>
           <p className="shrink-0 text-sm font-semibold">{formatPrice(item.line_total)}</p>
         </li>
