@@ -27,12 +27,14 @@ export function useOrders(page: number) {
   })
 }
 
-export function useOrder(number: string) {
+/** `pollMs`: refetch periodically (e.g. while the gateway is still confirming a payment). */
+export function useOrder(number: string, pollMs: number | false = false) {
   const { status } = useAuth()
   return useQuery({
     queryKey: orderKeys.detail(number),
     queryFn: async () => (await api.get<OrderDetail>(`/orders/${encodeURIComponent(number)}/`)).data,
     enabled: status === 'authenticated' && Boolean(number),
+    refetchInterval: pollMs,
   })
 }
 
@@ -98,13 +100,13 @@ export function useRetryPayment(number: string) {
   })
 }
 
-export type MockOutcome = 'success' | 'failed' | 'cancelled'
+export type MockOutcome = 'success' | 'failed' | 'cancelled' | 'pending'
 
 /** Sends the gateway's result to the backend, which verifies it and decides the order status. */
 export function useVerifyPayment() {
   const store = useOrderResult()
   return useMutation({
-    mutationFn: async ({ paymentId, payload }: { paymentId: string; payload: Record<string, string> }) =>
+    mutationFn: async ({ paymentId, payload }: { paymentId: string; payload: Record<string, string | boolean> }) =>
       (await api.post<OrderDetail>(`/payments/${encodeURIComponent(paymentId)}/verify/`, { payload })).data,
     onSuccess: store,
   })

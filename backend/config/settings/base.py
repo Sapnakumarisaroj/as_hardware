@@ -234,6 +234,15 @@ RETURN_WINDOW_DAYS = env.int("RETURN_WINDOW_DAYS", default=7)
 # --- Provider selection (implemented from Phase 8 onwards) ------------------------------
 # Every external service sits behind an interface; these choose the implementation.
 PAYMENT_PROVIDER = env("PAYMENT_PROVIDER", default="mock")  # mock | razorpay
+# Razorpay (Phase 8). The key id is public (sent to Checkout); the key and webhook secrets never leave the server.
+RAZORPAY_KEY_ID = env("RAZORPAY_KEY_ID", default="")
+RAZORPAY_KEY_SECRET = env("RAZORPAY_KEY_SECRET", default="")
+RAZORPAY_WEBHOOK_SECRET = env("RAZORPAY_WEBHOOK_SECRET", default="")
+RAZORPAY_API_BASE = env("RAZORPAY_API_BASE", default="https://api.razorpay.com/v1")
+# Unpaid online orders are cancelled (stock released) after this many minutes, once the gateway
+# confirms nothing was paid. `run_jobs` also asks the gateway about attempts left open this long.
+PAYMENT_EXPIRY_MINUTES = env.int("PAYMENT_EXPIRY_MINUTES", default=30)
+PAYMENT_RECONCILE_AFTER_MINUTES = env.int("PAYMENT_RECONCILE_AFTER_MINUTES", default=10)
 WHATSAPP_PROVIDER = env("WHATSAPP_PROVIDER", default="mock")  # mock | meta
 SMS_PROVIDER = env("SMS_PROVIDER", default="mock")  # mock | msg91 | twilio
 MAPS_PROVIDER = env("MAPS_PROVIDER", default="osm")  # osm (Nominatim + haversine) | google

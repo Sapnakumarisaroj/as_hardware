@@ -127,7 +127,7 @@ pending → confirmed → processing → packed → assigned → picked_up → o
    └──────────┴────────────┴──────────┴─────────┴──→ cancelled            (assigned → packed = unassign; return_requested → delivered = rejected)
 ```
 Customers can cancel while `pending`, `confirmed` or `processing`. Cancelling releases reserved stock, voids uncaptured
-payments, records a *pending* `payments_refund` for captured ones (processed by the Phase 8 gateway workflow) and deletes
+payments, records a *pending* `payments_refund` for captured ones (submitted to the gateway by the Phase 8 refund job) and deletes
 the coupon redemption (decrementing `used_count`), so the customer can use the coupon again. `picked_up` converts the
 reservation into a sale.
 
@@ -152,7 +152,18 @@ and creates the pending `payments_refund`.
 | Table | Key columns | Constraints |
 |---|---|---|
 | `payments_payment` | public_id, order FK, provider (mock/razorpay/cod), method, amount, currency, status, provider_order_id, provider_payment_id (unique, nullable), failure_reason, metadata JSON (sanitised), captured_at | CHECK amount > 0 |
-| `payments_refund` | public_id, payment FK, amount, status, reason, provider_refund_id (unique, nullable), requested_by, processed_at | CHECK amount > 0 |
+| `payments_refund` | public_id, payment FK, amount, status (pending/processed/failed), reason, provider_refund_id (unique, nullable), requested_by, processed_at. Phase 8: provider_reference (idempotency reference sent to the gateway, `<public_id hex>-<n>`), attempts, last_attempt_at, failure_reason, manual_reference + processed_by (manual/COD refunds) | CHECK amount > 0; refunds of a payment never exceed its amount (service rule) |
+| `payments_webhookevent` (Phase 8) | provider, event_id, event_type, payload JSON (**sanitised**: ids, amounts, statuses, error text only), status (received/processed/ignored/failed), note, deliveries, created_at, processed_at | **unique (provider, event_id)**: each gateway event is applied once |
+
+**Payment statuses in practice (Phase 8):** online attempts `created → captured` (or `failed`/`cancelled`, and a
+closed attempt can still become `captured` if the gateway says so); captured money → `partially_refunded`/`refunded`
+once refunds are *processed*. COD records are `pending` until delivery, then `captured` (cash collected).
+Order `payment_status` follows: `pending/failed → paid → partially_refunded/refunded`.
+
+Migrations: `payments 0002_refund_gateway_and_webhooks` adds the refund columns (defaults) and the webhook table;
+`payments 0003_backfill_refund_reference_and_cod_collection` gives existing refunds their reference, and marks the COD
+payment of orders already delivered/returned as captured and the order `paid`, since delivery now records the cash
+(tested in `payments/tests/test_consistency_and_migration.py`).
 
 **No card numbers, CVV, UPI PINs or bank credentials are ever stored.**
 
@@ -185,12 +196,17 @@ and creates the pending `payments_refund`.
 | `ai_projectitem` | project FK, variant FK (nullable), label, quantity DECIMAL, unit, is_optional, is_estimate, rationale, sort_order |
 
 ## core ✅
+`core_job` (Phase 8): the background job queue, with name, payload JSON, status (queued/running/done/failed),
+dedupe_key, run_after, attempts/max_attempts, last_error, locked_at, finished_at, and an index on (status, run_after).
+Claimed with a conditional `UPDATE … WHERE status='queued'`, so it is portable (no `SKIP LOCKED` needed). Jobs stuck
+in `running` for more than 10 minutes are re-queued.
+
 | Table | Purpose |
 |---|---|
 | `core_auditlog` | append-only admin/sensitive action log (actor, action, target, changes JSON, IP, request_id) |
 
 ## Planned tables 🔜
-`accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 13–19) · `ai_productembedding` (JSON vectors, Phase 13) · `payments_webhookevent` (idempotency, Phase 8) · `core_job` (DB job queue for cron, Phase 8/20) · `locations geocode cache` (Phase 9) · `django_cache` (prod DB cache, created by `createcachetable`).
+`accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 13–19) · `ai_productembedding` (JSON vectors, Phase 13) · `locations geocode cache` (Phase 9) · `django_cache` (prod DB cache, created by `createcachetable`).
 
 ## Transactions
 - `orders.services.place_order` runs in one atomic block. It locks the customer's cart row (so concurrent "Place order"
@@ -198,7 +214,14 @@ and creates the pending `payments_refund`.
   validates, recalculates totals (compares them with `expected_total`), picks a store, creates the order, items, stock
   reservations, redemption, status history and payment, then clears the cart. Any failure rolls back everything, and
   notifications are only sent on commit (both tested).
-- `payments.services.verify_payment` locks the payment and order rows, so a double submit can't capture twice.
+- `payments.services` (Phase 8): checkout verification, webhooks and reconciliation all call the gateway **outside** any
+  transaction, then lock payment → order and apply the result through the same `_record_capture` / `_record_failure`,
+  so concurrent reports capture once. Webhook rows are created under the unique constraint and locked while
+  checked, so concurrent redeliveries are applied once (tested with threads).
+- `payments.refunds.process_refund` claims the refund (attempts +1) in one transaction, calls the gateway with no lock
+  held, then writes the result under a new lock. A repeated or concurrent call reuses the same reference, so the
+  gateway returns the same refund.
+- Lock order everywhere: refund → payment → order.
 - `orders.services.transition_order` / `cancel_order_by_customer` lock the order, validate against the state machine, apply stock side effects, and write history.
 - `orders.returns` (Phase 7): `request_return` locks the order; `cancel/approve/reject/receive_return` lock the return and then the order (always in that order), so concurrent receives restock and refund exactly once.
 - `orders.services.reorder` locks the cart row while it merges the order's lines into the cart.

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router'
 
 import { ErrorState, PageSpinner, SignInPrompt } from '@/components/feedback'
@@ -6,28 +6,42 @@ import { useToast } from '@/components/toast'
 import { useAuth } from '@/features/auth/context'
 import { useOrder, useRetryPayment, useVerifyPayment, type MockOutcome } from '@/features/orders/api'
 import { CancelOrderDialog } from '@/features/orders/components'
+import { openRazorpayCheckout } from '@/features/orders/razorpay'
+import type { OrderDetail } from '@/features/orders/types'
 import { ApiError, isNotFound } from '@/lib/api/errors'
 import { formatPrice } from '@/lib/format'
 import { usePageMeta } from '@/lib/usePageMeta'
 
 import { NotFoundPage } from './NotFoundPage'
 
+const CONFIRM_POLL_MS = 3000
+const CONFIRM_GIVE_UP_MS = 120_000
+
 /**
- * Online payment step. In development the configured gateway is the MockPaymentProvider:
- * the shopper chooses the outcome, and the backend verifies the signed payload and decides
- * the payment/order status. Phase 8 swaps this screen's buttons for the real gateway widget.
+ * Online payment step. The gateway widget (Razorpay Checkout, or the development mock) only
+ * *reports* an outcome; the backend verifies it with the gateway and decides the payment and
+ * order status. If the gateway is still processing, the page waits for the server to confirm.
  */
 export function PaymentPage() {
   usePageMeta('Payment')
   const { number = '' } = useParams()
   const { status } = useAuth()
-  const order = useOrder(number)
+  const [confirming, setConfirming] = useState<'waiting' | 'slow' | null>(null)
+  const order = useOrder(number, confirming === 'waiting' ? CONFIRM_POLL_MS : false)
   const verify = useVerifyPayment()
   const retry = useRetryPayment(number)
   const navigate = useNavigate()
   const toast = useToast()
   const [result, setResult] = useState<'failed' | 'cancelled' | null>(null)
+  const [gatewayMessage, setGatewayMessage] = useState('')
+  const [opening, setOpening] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+
+  useEffect(() => {
+    if (confirming !== 'waiting') return
+    const timer = window.setTimeout(() => setConfirming('slow'), CONFIRM_GIVE_UP_MS)
+    return () => window.clearTimeout(timer)
+  }, [confirming])
 
   if (status === 'loading') return <PageSpinner />
   if (status === 'anonymous') {
@@ -56,23 +70,48 @@ export function PaymentPage() {
   const attempt = data.payments.find((p) => p.status === 'created')
   const lastClosed = data.payments.find((p) => p.status === 'failed' || p.status === 'cancelled')
   const outcome = result ?? (lastClosed?.status === 'failed' ? 'failed' : lastClosed?.status === 'cancelled' ? 'cancelled' : null)
+  const busy = verify.isPending || opening
 
-  function pay(choice: MockOutcome) {
-    if (!attempt?.client_payload.mock_signature) return
+  function report(payload: Record<string, string | boolean>, fallback: 'failed' | 'cancelled') {
+    if (!attempt) return
     verify.mutate(
-      { paymentId: attempt.public_id, payload: { mock_signature: attempt.client_payload.mock_signature, mock_outcome: choice } },
+      { paymentId: attempt.public_id, payload },
       {
-        onSuccess: (updated) => {
+        onSuccess: (updated: OrderDetail) => {
           if (updated.payment_status === 'paid') {
             navigate(`/order-confirmation/${updated.order_number}`, { replace: true })
+          } else if (updated.payments.some((p) => p.public_id === attempt.public_id && p.status === 'created')) {
+            setConfirming('waiting') // genuine but not final yet: the server will confirm it
           } else {
-            setResult(choice === 'cancelled' ? 'cancelled' : 'failed')
+            setResult(fallback)
           }
         },
         onError: (error) =>
           toast.show(error instanceof ApiError ? error.message : 'Could not verify the payment.', { tone: 'error' }),
       },
     )
+  }
+
+  async function payWithRazorpay() {
+    if (!attempt) return
+    setOpening(true)
+    setGatewayMessage('')
+    try {
+      await openRazorpayCheckout(attempt.client_payload, {
+        onSuccess: (response) => report({ ...response }, 'failed'),
+        onDismiss: () => report({ cancelled: true }, 'cancelled'),
+        onFailure: (message) => setGatewayMessage(message),
+      })
+    } catch (error) {
+      toast.show(error instanceof Error ? error.message : 'Could not open the payment window.', { tone: 'error' })
+    } finally {
+      setOpening(false)
+    }
+  }
+
+  function payMock(choice: MockOutcome) {
+    if (!attempt?.client_payload.mock_signature) return
+    report({ mock_signature: attempt.client_payload.mock_signature, mock_outcome: choice }, choice === 'cancelled' ? 'cancelled' : 'failed')
   }
 
   return (
@@ -84,6 +123,24 @@ export function PaymentPage() {
           <p className="mt-1 text-sm text-ink-600">Amount payable</p>
         </div>
 
+        {confirming && (
+          <div role="status" className="rounded-lg bg-amber-100 p-4 text-sm text-ink-900">
+            {confirming === 'waiting' ? (
+              <>
+                <p className="font-semibold">Confirming your payment…</p>
+                <p>Your bank is still processing it. This page updates by itself — please don’t pay again.</p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold">Still waiting for your bank</p>
+                <p>
+                  If money was taken, your order is confirmed automatically and you’ll get a notification. If not, it is
+                  released within a few minutes and nothing is charged.
+                </p>
+              </>
+            )}
+          </div>
+        )}
         {outcome === 'failed' && !attempt && (
           <div role="alert" className="rounded-lg bg-danger-600/10 p-4 text-sm text-danger-600">
             <p className="font-semibold">Payment failed</p>
@@ -96,9 +153,29 @@ export function PaymentPage() {
             <p>Your order is saved and waiting for payment. You can pay now or cancel the order.</p>
           </div>
         )}
+        {gatewayMessage && attempt && (
+          <p role="alert" className="rounded-lg bg-danger-600/10 p-3 text-sm text-danger-600">
+            {gatewayMessage} You can try another method in the payment window.
+          </p>
+        )}
 
-        {attempt ? (
-          attempt.client_payload.mock ? (
+        {attempt && !confirming ? (
+          attempt.client_payload.razorpay ? (
+            <section aria-labelledby="pay-heading" className="rounded-xl bg-white p-5 ring-1 ring-steel-200">
+              <h2 id="pay-heading" className="font-bold">
+                Pay securely
+              </h2>
+              <p className="mt-1 text-sm text-ink-600">UPI, cards, net banking and wallets via Razorpay.</p>
+              {attempt.client_payload.test_mode && (
+                <p className="mt-2 rounded-md bg-amber-100 px-3 py-2 text-xs text-ink-900">
+                  Razorpay test mode: use test cards/UPI only. No real money is charged.
+                </p>
+              )}
+              <button type="button" onClick={() => void payWithRazorpay()} disabled={busy} className="btn-primary mt-4 w-full py-3">
+                {opening ? 'Opening…' : `Pay ${formatPrice(attempt.amount)}`}
+              </button>
+            </section>
+          ) : attempt.client_payload.mock ? (
             <section aria-labelledby="mock-heading" className="rounded-xl bg-white p-5 ring-1 ring-steel-200">
               <h2 id="mock-heading" className="font-bold">
                 Mock payment gateway
@@ -108,45 +185,47 @@ export function PaymentPage() {
                 test each path.
               </p>
               <div className="mt-4 grid gap-2">
-                <button type="button" onClick={() => pay('success')} disabled={verify.isPending} className="btn-primary py-3">
+                <button type="button" onClick={() => payMock('success')} disabled={busy} className="btn-primary py-3">
                   Pay {formatPrice(attempt.amount)} (simulate success)
                 </button>
-                <button type="button" onClick={() => pay('failed')} disabled={verify.isPending} className="btn-secondary py-3">
+                <button type="button" onClick={() => payMock('failed')} disabled={busy} className="btn-secondary py-3">
                   Simulate failed payment
                 </button>
-                <button type="button" onClick={() => pay('cancelled')} disabled={verify.isPending} className="btn-secondary py-3">
+                <button type="button" onClick={() => payMock('cancelled')} disabled={busy} className="btn-secondary py-3">
                   Cancel payment
                 </button>
               </div>
-              {verify.isPending && (
-                <p role="status" className="mt-3 text-center text-sm text-ink-600">
-                  Verifying payment…
-                </p>
-              )}
             </section>
           ) : (
             <p className="rounded-lg bg-white p-5 text-sm ring-1 ring-steel-200">
-              Online payment is not available yet. Please cancel this order and choose cash on delivery.
+              Online payment is not available right now. Please cancel this order and choose cash on delivery.
             </p>
           )
         ) : (
-          <div className="grid gap-2">
-            {data.can_retry_payment && (
-              <button
-                type="button"
-                onClick={() => retry.mutate(undefined, { onSuccess: () => setResult(null) })}
-                disabled={retry.isPending}
-                className="btn-primary py-3"
-              >
-                {retry.isPending ? 'Starting…' : 'Try payment again'}
-              </button>
-            )}
-            {data.can_cancel && (
-              <button type="button" onClick={() => setCancelling(true)} className="btn-secondary py-3">
-                Cancel order
-              </button>
-            )}
-          </div>
+          !attempt && (
+            <div className="grid gap-2">
+              {data.can_retry_payment && (
+                <button
+                  type="button"
+                  onClick={() => retry.mutate(undefined, { onSuccess: () => setResult(null) })}
+                  disabled={retry.isPending}
+                  className="btn-primary py-3"
+                >
+                  {retry.isPending ? 'Starting…' : 'Try payment again'}
+                </button>
+              )}
+              {data.can_cancel && (
+                <button type="button" onClick={() => setCancelling(true)} className="btn-secondary py-3">
+                  Cancel order
+                </button>
+              )}
+            </div>
+          )
+        )}
+        {verify.isPending && (
+          <p role="status" className="text-center text-sm text-ink-600">
+            Verifying payment…
+          </p>
         )}
 
         <p className="text-center text-sm">

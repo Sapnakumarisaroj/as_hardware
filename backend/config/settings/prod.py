@@ -1,7 +1,7 @@
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F401,F403
-from .base import PAYMENT_PROVIDER, env
+from .base import PAYMENT_PROVIDER, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET, env
 
 DEBUG = False
 
@@ -10,6 +10,10 @@ if PAYMENT_PROVIDER == "mock" and not env.bool("ALLOW_MOCK_PAYMENTS_IN_PROD", de
     raise ImproperlyConfigured(
         "PAYMENT_PROVIDER=mock in production. Set PAYMENT_PROVIDER=razorpay (COD works regardless), "
         "or explicitly set ALLOW_MOCK_PAYMENTS_IN_PROD=true for a staging site."
+    )
+if PAYMENT_PROVIDER == "razorpay" and not (RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET):
+    raise ImproperlyConfigured(
+        "PAYMENT_PROVIDER=razorpay needs RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET."
     )
 
 # Shared hosting has no Redis: a DB cache keeps throttling consistent across Passenger processes.

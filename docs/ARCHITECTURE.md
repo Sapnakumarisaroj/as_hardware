@@ -55,14 +55,14 @@ as_hardware/
 │   │   ├── offers/          ✅ Coupon, CouponRedemption, Offer; coupon rules, automatic offer engine (Phase 6)
 │   │   ├── carts/           ✅ Cart, CartItem, Wishlist, WishlistItem (+ API)
 │   │   ├── orders/          ✅ Order, OrderItem (snapshots), OrderStatusHistory, state machine, pricing, placement (+ API)
-│   │   ├── payments/        ✅ Payment, Refund (verification/webhooks in Phase 8)
+│   │   ├── payments/        ✅ Payment, Refund, WebhookEvent; verification, webhooks, refunds, reconciliation, jobs
 │   │   ├── delivery/        ✅ DeliveryZone, DeliveryPartner, DeliveryAssignment, DeliveryStatusHistory (logic Phase 9–10)
 │   │   ├── reviews/         ✅ Review (verified buyers only, moderation) (+ API)
 │   │   ├── notifications/   ✅ Notification (sending in Phase 20)
 │   │   ├── support/         ✅ SupportConversation, SupportMessage (channels in Phase 20)
 │   │   ├── ai/              ✅ AIConversation, AIMessage, Project, ProjectItem (AI logic Phases 12–19)
 │   │   └── analytics/       🔜 whitelisted reporting queries + business assistant (Phase 21)
-│   ├── integrations/        payments/ ✅ (PaymentProvider + MockPaymentProvider); llm/, messaging/, maps/ 🔜
+│   ├── integrations/        payments/ ✅ (PaymentProvider, MockPaymentProvider, RazorpayPaymentProvider); llm/, messaging/, maps/ 🔜
 │   ├── passenger_wsgi.py    shared-hosting entry point
 │   └── requirements/        base / dev / prod / mysql
 ├── frontend/                React 19 + TS + Vite + Tailwind v4; builds to static dist/
@@ -119,7 +119,10 @@ Cart ──► POST /checkout/preview/ (orders/checkout.py: build_checkout — r
          → expected_total differs? 409 totals_changed → choose store → Order + OrderItems (snapshots)
          → reserve stock (ledger) → coupon redemption → status history → Payment (COD record | gateway intent)
          → COD: confirm → clear cart → notifications queued with transaction.on_commit
-     ──► online: POST /payments/{id}/verify/ (payments/services.py) → provider verifies → captured/failed/cancelled
+     ──► online: Razorpay Checkout (or the dev mock) in the browser → POST /payments/{id}/verify/
+         → signature check + server-side fetch from the gateway → captured / failed / cancelled / still pending
+     ──► gateway → POST /payments/webhooks/razorpay/ (HMAC over raw body, event id unique) → same state change
+     ──► cron run_jobs: reconcile open attempts with the gateway · expire unpaid orders · submit/poll refunds
          → paid orders are confirmed; failed/cancelled attempts can be retried (/orders/{n}/retry-payment/)
 ```
 - **Money** is recalculated on the server from current catalog prices on every preview and again at placement
@@ -128,11 +131,24 @@ Cart ──► POST /checkout/preview/ (orders/checkout.py: build_checkout — r
 - **Idempotency**: the browser creates one key (`crypto.randomUUID()`) per checkout attempt and sends it on every retry.
   Unique `(user, idempotency_key)` plus the cart-row lock make a double click or network retry return the first order.
   Without a key, a second submit fails with `cart_empty` because the first order cleared the cart.
-- **Payments**: business code only talks to `integrations.payments.PaymentProvider`. `MockPaymentProvider` (dev) signs
-  each intent with HMAC; the browser returns `{mock_signature, mock_outcome}` and the server verifies it, so a forged
-  "success" is rejected. Razorpay implements the same interface in Phase 8; production refuses to start with the mock.
+- **Payments** (Phase 8): business code only talks to `integrations.payments.PaymentProvider` (create order, verify,
+  fetch attempts, capture, idempotent refund, refund status, parse webhook). `RazorpayPaymentProvider` uses Razorpay's
+  REST API over the standard library (`urllib`), with no SDK. `MockPaymentProvider` implements the same interface for
+  development and tests (HMAC-signed intents and webhooks, instant refunds). **The browser never decides**: a checkout
+  response is trusted only after its HMAC signature matches *and* the payment fetched from the gateway has the right
+  order, amount and currency. Webhooks and reconciliation are gateway-originated. All three paths end in the same
+  `_record_capture` / `_record_failure`, which are idempotent and never un-capture. Money that arrives for a cancelled
+  or already-paid order, or with the wrong amount, is refunded automatically. The Razorpay key secret and webhook
+  secret stay in `.env`; the browser only gets the public key id and order id. No card/UPI/bank details are stored:
+  webhook payloads are whitelisted to ids, amounts, statuses and error text. Production refuses to start with the mock,
+  or with Razorpay but missing credentials; the API base must be `https://`.
+- **Refunds** (`payments/refunds.py`): recorded `pending`, submitted by a job, polled or updated by webhook until
+  `processed`. Payment and order `payment_status` change only then. COD money is refunded by staff (`mark-processed`
+  with a reference), because it can't go back through a gateway. Delivery of a COD order records the cash as captured.
+- **Unpaid orders** expire after `PAYMENT_EXPIRY_MINUTES` (default 30): `run_jobs` asks the gateway first, then cancels,
+  which releases stock and notifies the customer.
 - **Cancellation** follows the state machine (`CUSTOMER_CANCELLABLE` = pending/confirmed/processing). It releases stock,
-  voids uncaptured payments, records a *pending* Refund for captured money (no refund is faked; Phase 8 processes it) and
+  voids uncaptured payments, records a *pending* Refund for captured money (queued for the gateway; never faked) and
   returns the coupon use.
 - **Delivery information** (`quote_delivery`) reports availability (one store can supply every line), fee, free-delivery
   threshold and whether that store has a fast-delivery zone. `eta_minutes` stays `null`; the UI says the estimate is
@@ -180,11 +196,17 @@ speed, flagged `eta_source: "estimate"`. A routing API can be plugged in later. 
 `eta ≤ FAST_DELIVERY_MAX_MINUTES`; otherwise the engine returns the next available slot.
 
 ### Background jobs without Celery/Redis
-`core.Job` table (Phase 8/20) plus `enqueue(job_name, payload)`.
-- `BACKGROUND_JOBS_MODE=inline`: the job runs immediately (local dev, simplest).
-- `BACKGROUND_JOBS_MODE=cron`: cron runs `python manage.py run_jobs --max-seconds 50` every minute, claims rows with
-  `select_for_update(skip_locked=True)` (falling back to an optimistic claim on MariaDB < 10.6), and retries with backoff.
-Payment and order correctness **never** depend on a background job; notifications and AI batch work do.
+`core.Job` table (built in Phase 8) plus `enqueue(name, payload, dedupe_key=…)`, `@job` handlers and `@periodic`
+maintenance tasks, discovered from each app's `jobs.py` (`apps/core/jobs.py`).
+- `BACKGROUND_JOBS_MODE=inline` (dev default): a job also runs right after the transaction commits; if it fails it stays
+  queued for `run_jobs`.
+- `BACKGROUND_JOBS_MODE=cron`: jobs are only queued. Cron runs `python manage.py run_jobs --max-seconds 240` every 5
+  minutes: periodic tasks first (payment reconciliation, unpaid-order expiry, refund housekeeping, consistency log),
+  then due jobs. Rows are claimed with a conditional `UPDATE … WHERE status='queued'` (portable to SQLite/MySQL/
+  PostgreSQL, no `SKIP LOCKED` needed), retried with exponential backoff (30 s … 1 h, 5 attempts), and re-queued if
+  a worker died mid-run.
+Payment and order state is decided synchronously by checkout verification and webhooks; the jobs are **recovery**
+(lost confirmations, abandoned orders, refund submission/polling), so a late cron run only delays them.
 
 ## 5. AI architecture
 

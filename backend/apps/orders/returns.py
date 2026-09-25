@@ -31,7 +31,8 @@ from apps.core.money import ZERO, q
 from apps.inventory.models import Inventory, StockMovement
 from apps.inventory.services import apply_movement
 from apps.notifications.services import notify
-from apps.payments.models import Payment, Refund
+from apps.payments.models import Payment
+from apps.payments.refunds import create_refund
 
 from .models import Order, OrderItem, OrderStatus, ReturnItem, ReturnRequest
 from .services import apply_locked_transition
@@ -191,8 +192,8 @@ def request_return(order: Order, *, user, items: list[dict], reason: str, detail
         refund_amount=q(sum((amount for _, _, amount in lines), ZERO)),
         refund_method=(
             ReturnRequest.RefundMethod.ORIGINAL_PAYMENT
-            if payment is not None and payment.status == Payment.Status.CAPTURED
-            else ReturnRequest.RefundMethod.MANUAL
+            if payment is not None and payment.provider != Payment.Provider.COD
+            else ReturnRequest.RefundMethod.MANUAL  # COD cash is paid back by the store
         ),
     )
     ReturnItem.objects.bulk_create(
@@ -309,11 +310,12 @@ def receive_return(ret: ReturnRequest, *, actor, note: str = "", restock: bool =
 
     payment = _refund_payment(order)
     if ret.refund_amount > 0 and payment is not None:
-        ret.refund = Refund.objects.create(
-            payment=payment,
-            amount=ret.refund_amount,
-            reason=f"Return {ret.return_number} ({ret.get_reason_display()})"[:255],
-            requested_by=actor if getattr(actor, "is_authenticated", False) else None,
+        # Queued for the gateway right away (online); COD refunds wait for staff to pay them back.
+        ret.refund = create_refund(
+            payment,
+            ret.refund_amount,
+            reason=f"Return {ret.return_number} ({ret.get_reason_display()})",
+            requested_by=actor,
         )
     ret.status, ret.received_at, ret.restocked = RS.RECEIVED, timezone.now(), restock
     if note.strip():

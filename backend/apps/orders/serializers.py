@@ -107,9 +107,13 @@ class PaymentSummarySerializer(serializers.ModelSerializer):
 
 
 class RefundSummarySerializer(serializers.ModelSerializer):
+    manual = serializers.BooleanField(
+        source="is_manual", read_only=True, help_text="Cash-on-delivery money, paid back by the store."
+    )
+
     class Meta:
         model = Refund
-        fields = ["public_id", "amount", "status", "reason", "created_at", "processed_at"]
+        fields = ["public_id", "amount", "status", "reason", "manual", "created_at", "processed_at"]
 
 
 class OrderListSerializer(serializers.ModelSerializer):

@@ -1,5 +1,7 @@
 /** Order shapes from the API. Money is a decimal string computed by the server. */
 
+import type { RazorpayPayload } from './razorpay'
+
 export type OrderStatus =
   | 'pending'
   | 'confirmed'
@@ -112,8 +114,8 @@ export interface OrderPayment {
   failure_reason: string
   captured_at: string | null
   created_at: string
-  /** Public data needed to open the payment screen (only while status is "created"). */
-  client_payload: { mock?: boolean; notice?: string; mock_signature?: string }
+  /** Public data needed to open the payment screen (only while status is "created"). Never secrets. */
+  client_payload: { mock?: boolean; notice?: string; mock_signature?: string } & RazorpayPayload
 }
 
 export interface OrderRefund {
@@ -121,6 +123,8 @@ export interface OrderRefund {
   amount: string
   status: 'pending' | 'processed' | 'failed'
   reason: string
+  /** Cash-on-delivery money: paid back by the store, not through the gateway. */
+  manual: boolean
   created_at: string
   processed_at: string | null
 }

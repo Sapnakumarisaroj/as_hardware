@@ -23,11 +23,12 @@ from apps.notifications.services import notify
 from apps.offers.models import Coupon, CouponRedemption
 from apps.offers.services import get_valid_coupon
 from apps.payments.models import Payment, Refund
+from apps.payments.refunds import create_refund
 from apps.stores.models import Store
 from integrations.payments import get_payment_provider
 
 from .checkout import ETA_PENDING_MESSAGE, find_fulfilment_store
-from .models import Order, OrderItem, OrderStatus, OrderStatusHistory, PaymentMethod
+from .models import Order, OrderItem, OrderStatus, OrderStatusHistory, PaymentMethod, PaymentStatus
 from .pricing import line_from_variant, price_lines
 from .state_machine import (
     CUSTOMER_CANCELLABLE,
@@ -264,7 +265,13 @@ def create_payment_for_order(order: Order) -> Payment:
             status=Payment.Status.PENDING,
         )
     provider = get_payment_provider()
-    intent = provider.create_payment(reference=order.order_number, amount=order.grand_total)
+    user = order.user
+    intent = provider.create_payment(
+        reference=order.order_number,
+        amount=order.grand_total,
+        # Prefills the gateway form for the customer only; nothing here is secret.
+        customer={"name": user.full_name, "email": user.email, "contact": getattr(user, "phone", "") or ""},
+    )
     return Payment.objects.create(
         order=order,
         provider=provider.name,
@@ -301,20 +308,23 @@ def _apply_transition(order: Order, to_status: str, *, actor, note: str = "") ->
         order.payments.filter(status__in=[Payment.Status.CREATED, Payment.Status.PENDING]).update(
             status=Payment.Status.CANCELLED, updated_at=now
         )
-        # Captured money: record a pending refund. It is *not* marked processed here; the
-        # gateway refund workflow (Phase 8) processes it and updates payment_status.
+        # Captured money goes back: a pending refund is recorded and queued for the gateway
+        # (payments.refunds). payment_status changes only once the gateway confirms it.
         for payment in order.payments.filter(status=Payment.Status.CAPTURED):
             if not payment.refunds.exists():
-                Refund.objects.create(
-                    payment=payment,
-                    amount=payment.amount,
-                    reason=f"Order cancelled: {note}"[:255],
-                    requested_by=actor if getattr(actor, "is_authenticated", False) else None,
-                )
+                create_refund(payment, payment.amount, reason=f"Order cancelled: {note}", requested_by=actor)
         _release_coupon(order)
     elif to_status == OrderStatus.DELIVERED and not order.delivered_at:
         order.delivered_at = now
         fields.append("delivered_at")
+        if order.payment_method == PaymentMethod.COD:
+            # Cash is collected at the door: the COD record becomes captured money (refundable on return).
+            collected = order.payments.filter(provider=Payment.Provider.COD, status=Payment.Status.PENDING).update(
+                status=Payment.Status.CAPTURED, captured_at=now, method=Payment.Method.COD, updated_at=now
+            )
+            if collected:
+                order.payment_status = PaymentStatus.PAID
+                fields.append("payment_status")
     order.save(update_fields=fields)
     _record_status(order, from_status, to_status, actor, note)
     return order

@@ -171,11 +171,19 @@ Recommended layout: SPA on `yourdomain.com`, API on the `api.yourdomain.com` sub
 
 Without SSH, run the same commands through the panel's "Run script" / "Execute python script" feature, or ask the host's support.
 
-Background jobs (if cron exists), every minute:
+Background jobs (Phase 8), every 5 minutes. Set `BACKGROUND_JOBS_MODE=cron`. This submits refunds, recovers
+payments whose confirmation never arrived, and cancels unpaid online orders after `PAYMENT_EXPIRY_MINUTES`:
 ```
-* * * * * cd ~/boltrun_api && ~/virtualenv/boltrun_api/3.11/bin/python manage.py run_jobs --max-seconds 50 >> ~/logs/boltrun_jobs.log 2>&1
+*/5 * * * * cd ~/boltrun_api && ~/virtualenv/boltrun_api/3.11/bin/python manage.py run_jobs --max-seconds 240 >> ~/logs/boltrun_jobs.log 2>&1
 ```
-(`run_jobs` ships with the job queue in Phase 8/20.)
+`python manage.py payments_check` lists any payment/order/refund records that disagree (exit code 1), which is useful
+after a deploy. Without cron, payments still work (checkout verification + webhooks), but refunds are only submitted
+inline and unpaid orders don't expire.
+
+Razorpay go-live: put the live keys in `.env` (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`), then create a webhook in the
+Razorpay dashboard for `https://api.yourdomain.com/api/payments/webhooks/razorpay/` with a secret
+(`RAZORPAY_WEBHOOK_SECRET`) and the events `payment.captured`, `payment.failed`, `order.paid`, `refund.processed` and
+`refund.failed`. Enable auto-capture in the dashboard; authorised-only payments are captured by the server anyway.
 
 **Alternative, single domain** (if subdomains aren't possible): mount the Python app at `yourdomain.com/api`. That needs a
 small URL-prefix change; ask before choosing this.

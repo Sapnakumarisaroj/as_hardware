@@ -1,6 +1,10 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 
-from .models import Payment, Refund
+from apps.core.exceptions import ServiceError
+from integrations.payments import GatewayError
+
+from . import refunds
+from .models import Payment, Refund, WebhookEvent
 
 
 class ReadOnlyAdmin(admin.ModelAdmin):
@@ -24,8 +28,39 @@ class PaymentAdmin(ReadOnlyAdmin):
     list_select_related = ("order",)
 
 
+def _refund_action(name: str, label: str, run):
+    def action(modeladmin, request, queryset):
+        for refund in queryset.select_related("payment"):
+            try:
+                outcome = run(refund, request.user)
+                modeladmin.message_user(request, f"{refund.public_id}: {outcome}")
+            except (ServiceError, GatewayError) as exc:
+                modeladmin.message_user(request, f"{refund.public_id}: {exc}", level=messages.WARNING)
+
+    action.__name__ = name
+    action.short_description = label
+    return action
+
+
 @admin.register(Refund)
 class RefundAdmin(ReadOnlyAdmin):
-    list_display = ("public_id", "payment", "amount", "status", "created_at")
-    list_filter = ("status",)
-    search_fields = ("public_id", "payment__order__order_number", "provider_refund_id")
+    """Manual (COD) refunds are recorded through the API (`mark-processed`) with the payment reference."""
+
+    list_display = ("public_id", "payment", "amount", "status", "attempts", "provider_refund_id", "created_at")
+    list_filter = ("status", "payment__provider")
+    search_fields = ("public_id", "payment__order__order_number", "provider_refund_id", "manual_reference")
+    list_select_related = ("payment",)
+    actions = [
+        _refund_action(
+            "submit", "Submit pending refunds to the gateway now", lambda r, u: refunds.process_refund(r.pk)
+        ),
+        _refund_action("sync", "Check refund status with the gateway", lambda r, u: refunds.sync_refund(r.pk)),
+        _refund_action("retry", "Retry failed gateway refunds", lambda r, u: refunds.retry_refund(r, actor=u).status),
+    ]
+
+
+@admin.register(WebhookEvent)
+class WebhookEventAdmin(ReadOnlyAdmin):
+    list_display = ("event_id", "provider", "event_type", "status", "deliveries", "created_at", "processed_at")
+    list_filter = ("provider", "status", "event_type")
+    search_fields = ("event_id", "note")

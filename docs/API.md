@@ -185,7 +185,7 @@ Response:
 | POST | `/api/orders/{order_number}/retry-payment/` | owner | New online payment attempt for a `pending` online order whose last attempt failed/was cancelled (409 otherwise) |
 | POST | `/api/orders/{order_number}/transition/` | staff | `{status, note?}`. Validated by the state machine (409 on invalid). Side effects: cancel → release stock, picked_up → sale. Return statuses (`return_requested`, `returned`, and leaving `return_requested`) are refused here (409 `invalid_transition`): they move only through the return endpoints |
 | POST | `/api/orders/{order_number}/reorder/` | owner | **Buy again** (Phase 7). Adds the order's items to the cart at **today's** prices (never the old price). Each line is capped by current stock and the product's order limit, counting what is already in the cart. Returns `{added[], skipped[], cart}`; each line is `{sku, name, requested, added, reason}` and `skipped` lists lines added partly or not at all (`"No longer sold."`, `"Out of stock right now."`, `"Only N added (stock or order limit)."`, `"Your cart already has the most you can order."`). Works for any order status; a store manager viewing a customer's order gets 404 |
-| POST | `/api/payments/{public_id}/verify/` | owner | `{payload: {…gateway result…}}` → verified **server-side** by the payment provider; returns the updated order. Mock payload: `{mock_signature (from client_payload), mock_outcome: "success"\|"failed"\|"cancelled"}`. Repeating a successful verification is harmless; a closed attempt → 409 `payment_state_invalid` |
+| POST | `/api/payments/{public_id}/verify/` | owner | `{payload: {…what the gateway widget returned…}}`. The server verifies it **with the gateway** and returns the updated order. **Razorpay:** `{razorpay_order_id, razorpay_payment_id, razorpay_signature}`: HMAC-SHA256(`order_id\|payment_id`, key secret) is checked, then the payment is fetched from Razorpay (order id, amount and currency must match; `authorized` → captured). `{cancelled: true}` when the customer closes the window. **Mock:** `{mock_signature (from client_payload), mock_outcome: "success"\|"failed"\|"cancelled"\|"pending"}`. Still processing at the gateway → the attempt stays `created` and the order is confirmed later by webhook/reconciliation. Repeating a successful verification is harmless. A closed attempt → 409 `payment_state_invalid`, unless the gateway confirms it was captured (a retry inside the Razorpay window after a failure). Gateway unreachable → 409 `payment_verification_unavailable`, with nothing changed |
 
 Customers cannot update or delete orders (PUT/PATCH/DELETE → 405) or change status except by cancelling; other
 customers' orders, payments and addresses return 404.
@@ -204,7 +204,11 @@ stock or coupon changed since the customer saw `expected_total`; nothing is crea
 | Gateway success | `captured` | `paid` | `confirmed` |
 | Gateway failure | `failed` (+ `failure_reason`) | `failed` | `pending` (retry allowed) |
 | Customer closed gateway | `cancelled` | `pending` | `pending` (retry or cancel) |
-| Order cancelled | uncaptured → `cancelled`; captured stays `captured` + Refund `pending` | unchanged | `cancelled` |
+| Order cancelled | uncaptured → `cancelled`; captured stays `captured` + Refund `pending` → submitted to the gateway | unchanged until the refund is processed | `cancelled` |
+| Refund processed (Phase 8) | `partially_refunded` / `refunded` | `partially_refunded` / `refunded` | unchanged |
+| Online order unpaid after `PAYMENT_EXPIRY_MINUTES` (30) | open attempts → `cancelled` (after asking the gateway) | unchanged | `cancelled` (stock released, customer notified) |
+| Money captured after cancellation/expiry, a second paid attempt, or wrong amount | `captured` + automatic full Refund | unchanged | unchanged (never confirmed on it) |
+| COD order delivered (Phase 8) | COD record → `captured` (cash collected) | `paid` | `delivered` |
 
 ## Returns ✅ (Phase 7)
 | Method | Path | Access | Notes |
@@ -233,12 +237,36 @@ variant_name, quantity, refund_amount, image}]`.
   share of the coupon (spread over post-offer amounts, like GST). Cumulative rounding makes the returns of a whole line
   add up exactly to what was paid for it. The delivery fee is not refunded. Online orders refund to the captured
   payment (`original_payment`); COD orders get a `manual` refund recorded against the COD payment. Refunds stay
-  `pending` until Phase 8 processes them.
+  `pending` until processed: online refunds go to the gateway automatically, COD refunds wait for staff to record them
+  (see Payments & refunds).
 - Errors: `order_not_delivered` / `return_open` / `return_state_invalid` (409); `return_window_closed`,
   `quantity_not_returnable`, `invalid_item`, `invalid_quantity`, `details_required`, `note_required` (400); another
   customer's order or return → 404; a customer calling approve/reject/receive → 403; a manager of another store → 404.
 - Customer notifications (in-app; email as well from `approved` onwards): `return.requested`, `return.approved`,
   `return.rejected`, `return.received`.
+
+## Payments, webhooks & refunds ✅ (Phase 8)
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| POST | `/api/payments/webhooks/{provider}/` | gateway (no login) | Only the configured `PAYMENT_PROVIDER` (others → 404). **Razorpay:** header `X-Razorpay-Signature` = HMAC-SHA256(raw body, `RAZORPAY_WEBHOOK_SECRET`), de-duplicated by `X-Razorpay-Event-Id`. Events: `payment.captured`, `order.paid`, `payment.authorized` (captured), `payment.failed`, `refund.processed`, `refund.failed`; others are stored as `ignored`. Bad signature → 400 `invalid_webhook` (nothing stored). Each event is applied **once**: a redelivery → 200 without side effects (`deliveries` is counted). A processing error → 500 so the gateway redelivers. Not throttled. **Mock:** `X-Mock-Signature` = HMAC-SHA256(body, `SECRET_KEY + ":mock-webhook"`), `X-Mock-Event-Id`, same body format |
+| GET | `/api/payments/refunds/` | store manager (their stores) / admin | `?status=pending\|processed\|failed`. Fields: `public_id, order_number, payment_provider, amount, status, reason, is_manual, provider_refund_id, attempts, failure_reason, manual_reference, created_at, processed_at` |
+| POST | `/api/payments/refunds/{public_id}/mark-processed/` | staff / admin | `{reference}` (required: UPI/bank ref or cash receipt). For **COD refunds** (`is_manual`), or gateway refunds that **failed** and were paid another way. A pending gateway refund → 409 `refund_state_invalid` |
+| POST | `/api/payments/refunds/{public_id}/retry/` | staff / admin | Failed gateway refund → pending again with a **new** gateway reference and queued. Anything else → 409 |
+
+**Refund lifecycle.** Created `pending` (cancellation of a paid order, return received, late/duplicate/mismatched
+payment), then a `payments.process_refund` job submits it to the gateway. Every submission carries the refund's
+`provider_reference`, and Razorpay is first asked for an existing refund with that reference, so a retry after a
+timeout never refunds twice. Result: `processed` (payment and order move to `partially_refunded`/`refunded`, customer
+notified `refund.processed`), `failed` (audit-logged; staff retry or pay manually), or still `pending` at the
+gateway (polled by `run_jobs` every 15 min and by `refund.*` webhooks). Temporary gateway errors retry with backoff.
+Refunds can never exceed the captured amount (`refund_exceeds_payment`). Customers see each refund on the order
+(`refunds[]`: `status`, `manual`, `processed_at`).
+
+**Background (`python manage.py run_jobs`, cron every 5 min; `BACKGROUND_JOBS_MODE=inline` also runs jobs right after
+commit):** submit queued refunds · ask the gateway about online attempts left open ≥ `PAYMENT_RECONCILE_AFTER_MINUTES`
+(recovers payments whose confirmation never arrived) · expire unpaid online orders after `PAYMENT_EXPIRY_MINUTES`
+(the gateway is asked first; an order paid at the last minute is confirmed instead) · poll pending gateway refunds ·
+log consistency issues. `python manage.py payments_check` lists orders/payments/refunds that disagree (exit code 1).
 
 ## Inventory ✅ (staff only)
 | Method | Path | Notes |
@@ -256,7 +284,6 @@ variant_name, quantity, refund_amount, image}]`.
 admin only: `/api/admin/users/`. Login/register return `{access, refresh, user}`. See `/api/docs/` for bodies.
 
 ## Planned 🔜
-- **Payments** (Phase 8): Razorpay provider behind the same `/api/payments/{id}/verify/`, webhooks, refund processing.
 - **Stores / delivery ETA** (Phase 9), **delivery partner** `/api/delivery/…` (Phase 10).
 - **Admin dashboard APIs** `/api/admin/…` (Phase 11). Until then, use the Django admin at `/django-admin/`.
 - **AI** `/api/ai/…` (Phases 12–19). **Notifications/support** (Phase 20).

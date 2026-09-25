@@ -134,15 +134,38 @@ Scope: ROADMAP Phase 7 ("remaining: returns, reorder, concurrency tests"). `plac
 - [x] Live end-to-end: 40/40 checks over real HTTP with JWT logins, run on a **copy** of the dev DB (demo catalogue; 2 temporary customers + 1 temporary manager lived only in the copy): concurrent same-key orders, fulfilment to delivered, over-quantity rejection, concurrent return requests, refund math, 403/404 access rules, generic-transition refusal, concurrent receive, restock + ledger, partial return, cancel, reject, full return → `returned`, total refunded = total − delivery fee, return lists, buy again ×2, online order with concurrent double verify → refund to original payment, anonymous 401
 - [~] Browser testing NOT performed: Chrome again showed an error page for `localhost:5173` (tried once)
 
+## Phase 8 — Payments and refunds ✅ (2026-09-25)
+Scope: ROADMAP Phase 8 (Razorpay order/verify/webhook/refund, idempotency, `run_jobs` cron) plus the items TASKS had deferred to it: refund *processing*, expiry of unpaid online orders, and the `core.Job` queue.
+- [x] Provider interface extended (`integrations/payments/base.py`): create order, verify, fetch attempts, capture, idempotent refund, refund status, parse webhook; `GatewayError` (retryable) vs `GatewayRejected` (final) vs `InvalidSignature`
+- [x] `RazorpayPaymentProvider` over Razorpay's REST API with the standard library only (no SDK/dependency): orders in paise with receipt/notes; checkout HMAC `order_id|payment_id`, then a server-side fetch checking order, amount and currency, capturing `authorized` payments; webhook HMAC over the raw body plus event id; refunds carry our reference and look for an existing one first (no double refunds after timeouts); https-only API base; test/live detection from the key id
+- [x] `MockPaymentProvider` kept for dev/tests and extended (pending outcome, signed webhooks in Razorpay format, deterministic idempotent refunds)
+- [x] One server-side path for every report (checkout, webhook, reconciliation): capture is idempotent and never undone by a late failure; a closed attempt still counts if the gateway captured it; money for a cancelled/expired order, a second paid attempt or a wrong amount is refunded automatically and audit-logged; gateway outage during verify → 409, nothing changed; still processing → attempt stays open
+- [x] Webhooks: `POST /api/payments/webhooks/{provider}/` (configured provider only, no auth/throttle, signature required); `WebhookEvent` unique per (provider, event id) with delivery count; duplicates are no-ops; processing errors → 500 + `failed` row so the gateway's redelivery retries; sanitised payload (no card/VPA/bank/email/phone)
+- [x] Refunds (`payments/refunds.py`): `create_refund` (never more than captured), job submission outside DB transactions, sync/polling, webhook updates, `failed` + audit, staff retry with a new reference, manual processing with a reference (COD, or after a gateway failure); payment/order become `partially_refunded`/`refunded` only when processed; customer notified. Cancellations, return refunds and automatic refunds all use it
+- [x] COD: delivering a COD order records the cash (payment captured, order `paid`); COD return refunds are manual (`mark-processed`); data migration `payments 0003` does the same for orders delivered before Phase 8 and gives old refunds their reference
+- [x] Recovery (`run_jobs`): reconcile online attempts open ≥ 10 min with the gateway (lost confirmations, closed tabs); expire unpaid online orders after 30 min (gateway asked first; stock released; `order.expired` notification); queue unsubmitted refunds, poll pending ones; log consistency issues
+- [x] `core.Job` queue (`core/jobs.py`): `enqueue` with dedupe/delay, portable atomic claim, exponential backoff, 5 attempts, stuck-job recovery, inline mode runs after commit; `manage.py run_jobs` (cron) and `manage.py payments_check`; Job admin with "run again"
+- [x] Staff API `/api/payments/refunds/` (store-scoped list, `retry`, `mark-processed`); Django admin: refund actions (submit / sync / retry), read-only webhook events
+- [x] Settings: `RAZORPAY_KEY_ID/KEY_SECRET/WEBHOOK_SECRET/API_BASE`, `PAYMENT_EXPIRY_MINUTES`, `PAYMENT_RECONCILE_AFTER_MINUTES`; prod refuses Razorpay without all three secrets (verified); `.env.example` documents the webhook URL and events
+- [x] Frontend: Razorpay Checkout (script loaded only on the payment page; public key id + order id only) reporting to `/verify/`; dismiss = cancelled; in-window failures shown; "Confirming your payment…" with polling when the bank is still processing (no second Pay button); mock buttons kept; refund texts for requested / processed (date) / delayed / COD-by-store
+- [x] Bug found by tests and fixed: in inline mode, asking again for a job that was already queued (e.g. staff retry of a refund) didn't run it until cron
+- [x] Tests: backend 433 pass (79 new): Razorpay provider against recorded API fakes (29: requests, signatures, forgeries, amount/order checks, capture, idempotent refunds, sanitising, HTTP error mapping, https-only), payment flows (24), refunds + COD (13), jobs (6), consistency + migration (3), real-thread races (4: concurrent webhook redeliveries, verify racing webhook, double refund processing, expiry racing late payment); frontend 88 pass across 13 files (5 new)
+- [x] Verified: ruff lint + format clean, `check` clean, `check --deploy` (prod + Razorpay settings) only the 4 known cosmetic schema warnings, `makemigrations --check` clean, migrations applied to the dev DB (backup first) and `payments_check` clean; OpenAPI 0 errors; frontend lint/typecheck clean, build OK (main bundle 327 kB)
+- [x] Live end-to-end: 22/22 checks on a copy of the dev DB with the mock gateway and inline jobs: public-only client payload, forged success → failed, retry + success, bad-signature webhook 400, wrong provider 404, one webhook delivered 3× concurrently → applied once (sanitised, 3 deliveries), paid cancel → refund processed + order refunded, capture after cancel → auto refund, pending → confirmed by webhook, COD delivered → paid, COD return → manual refund with reference → partially refunded, staff API 403/401, the `run_jobs` cron command expiring an aged unpaid order and releasing its stock, `payments_check` clean
+- [~] Razorpay **not** exercised against Razorpay's servers: no credentials in this environment (and none should be committed). Covered by recorded-API tests; a test-mode run with the owner's `rzp_test_` keys is the first go-live step
+- [~] Browser testing not performed (same localhost limitation; not re-attempted)
+
 ## Known limitations carried forward
 - Store selection picks the first store covering all items (distance/zone/ETA selection is Phase 9); `delivery.eta_minutes` is always null until then
 - Offers have no usage limits or per-customer caps, no "buy X get Y"/bundle or free-delivery offer types, and only one coupon per order; offers are managed in Django admin only (dashboard in Phase 11)
 - Product listing prices stay the catalogue price; the offer discount appears in the cart (the badge says so), not as a reduced list price
-- Online payments use the mock gateway; Razorpay, webhooks and refund *processing* are Phase 8 (refunds, including return refunds, are recorded as pending; `payment_status` is not changed to refunded yet)
+- Razorpay is implemented but inactive until the owner adds keys and registers the webhook (DEPLOYMENT.md). Only one gateway at a time; switching providers leaves older attempts with their original provider
+- Refund speed is Razorpay's `normal`; instant refunds, partial captures, EMI/offers configuration and payment links aren't used. Automatic refunds of *duplicate* payments refund the second payment in full
+- Cron is needed in production for refund polling, reconciliation and expiry (inline mode covers refund submission only)
 - Returns: no pickup scheduling (the delivery partner flow is Phase 10), no photo upload with the request, no exchanges or replacements, and no per-product return window (one global `RETURN_WINDOW_DAYS`). Staff handle returns through the API or Django admin (dashboard in Phase 11); admin "reject" uses a generic note, so give specific reasons through the API
-- COD refunds are recorded against the COD payment record with method `manual`. Delivering a COD order does not yet mark the cash as collected (Phase 10)
+- COD refunds are paid back by staff and recorded with a reference; there is no cash-drawer reconciliation or delivery-partner cash handover yet (Phase 10)
 - Concurrency is proven with real threads on SQLite (serialised writes). PostgreSQL/MySQL rely on the same `select_for_update` locks but the suite has not yet run against those servers (Phase 23)
-- Unpaid online orders keep their stock reserved until paid or cancelled; automatic expiry of abandoned payments needs the Phase 8/20 job queue
+- Unpaid online orders keep their stock reserved for up to `PAYMENT_EXPIRY_MINUTES` (+ the cron interval) before expiry releases it
 - Notifications are in-app records + email only; there is no in-app notification list screen yet (Phase 20)
 - Cart "save for later" uses the wishlist (per product, not per variant)
 - Search is keyword/substring based (no typo tolerance or synonyms; "tap" also matches "tape"); semantic search is Phase 13
@@ -152,7 +175,7 @@ Scope: ROADMAP Phase 7 ("remaining: returns, reorder, concurrency tests"). `plac
 - Delivery assignment workflow (accept, pickup, OTP, proof) is Phase 10; partners are verified by admins in Django admin
 - Email verification is not implemented yet (`email_verified` is reset on email change)
 - A local dev server stopped with `Stop-Process -Force` makes Git Bash report exit 127 (the venv `python.exe` launcher loses its child); stop it with Ctrl+C in normal use
-- `core.Job` DB queue deferred to Phase 8/20, when the first background job exists
+- Refund failures are audit-logged and visible in the staff API/admin, but nobody is emailed about them yet (Phase 20 notifications)
 
 ## Later phases
 See docs/ROADMAP.md (Phases 3–24).

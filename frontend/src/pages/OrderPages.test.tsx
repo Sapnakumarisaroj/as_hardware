@@ -187,13 +187,21 @@ describe('order history and detail', () => {
           status: 'cancelled',
           can_cancel: false,
           refunds: [
-            { public_id: 'r1', amount: '800.00', status: 'pending', reason: 'Order cancelled', created_at: '', processed_at: null },
+            {
+              public_id: 'r1',
+              amount: '800.00',
+              status: 'pending',
+              reason: 'Order cancelled',
+              manual: false,
+              created_at: '',
+              processed_at: null,
+            },
           ],
         },
       }),
     })
     renderRoute(`/account/orders/${NUMBER}`)
-    expect(await screen.findByText(/Refund of ₹800: requested/)).toBeInTheDocument()
+    expect(await screen.findByText(/Refund of ₹800 requested — it is being processed to your original payment/)).toBeInTheDocument()
   })
 
   it('another customer’s order number shows not found', async () => {

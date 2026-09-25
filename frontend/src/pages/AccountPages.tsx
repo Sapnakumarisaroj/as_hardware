@@ -172,6 +172,22 @@ export function OrdersPage() {
   )
 }
 
+function refundText(refund: OrderDetail['refunds'][number]): string {
+  const amount = formatPrice(refund.amount)
+  if (refund.status === 'processed') {
+    const when = refund.processed_at ? ` on ${formatDate(refund.processed_at)}` : ''
+    return refund.manual
+      ? `Refunded ${amount} by the store${when}.`
+      : `Refunded ${amount}${when} to your original payment method. Banks can take 5–7 working days to show it.`
+  }
+  if (refund.status === 'failed') {
+    return `Refund of ${amount} is delayed. Our team has been alerted and will complete it; no action is needed from you.`
+  }
+  return refund.manual
+    ? `Refund of ${amount} requested — the store will pay it back to you.`
+    : `Refund of ${amount} requested — it is being processed to your original payment method.`
+}
+
 function PaymentInfo({ order }: { order: OrderDetail }) {
   const captured = order.payments.find((p) => p.status === 'captured')
   return (
@@ -187,9 +203,11 @@ function PaymentInfo({ order }: { order: OrderDetail }) {
         </p>
       )}
       {order.refunds.map((refund) => (
-        <p key={refund.public_id} className="rounded-md bg-amber-100 px-3 py-2 text-ink-900">
-          Refund of {formatPrice(refund.amount)}:{' '}
-          {refund.status === 'pending' ? 'requested — it will be processed to your original payment method.' : refund.status}
+        <p
+          key={refund.public_id}
+          className={`rounded-md px-3 py-2 ${refund.status === 'processed' ? 'bg-success-600/10 text-success-600' : 'bg-amber-100 text-ink-900'}`}
+        >
+          {refundText(refund)}
         </p>
       ))}
     </div>

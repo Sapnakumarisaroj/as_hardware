@@ -77,6 +77,18 @@ class Refund(TimeStampedModel):
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
     processed_at = models.DateTimeField(null=True, blank=True)
+    # Phase 8: gateway submission. The reference is sent with the refund so a retried call after a
+    # timeout finds the first attempt instead of refunding twice; a manual retry of a *failed*
+    # refund gets a new reference (the gateway would otherwise return the failed one).
+    provider_reference = models.CharField(max_length=64, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    failure_reason = models.CharField(max_length=255, blank=True)
+    # Manual refunds (cash-on-delivery money, or paid outside the gateway): who and how.
+    manual_reference = models.CharField(max_length=100, blank=True, help_text="UPI/bank reference or cash receipt.")
+    processed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -84,3 +96,39 @@ class Refund(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Refund {self.amount} for {self.payment_id} ({self.status})"
+
+    @property
+    def is_manual(self) -> bool:
+        """Cash-on-delivery money can't go back through a gateway; staff refund it and record it."""
+        return self.payment.provider == Payment.Provider.COD
+
+
+class WebhookEvent(models.Model):
+    """Every signature-verified gateway webhook, once (unique per provider + event id).
+
+    A redelivered event finds its row and is not processed again. Only a sanitised payload is kept
+    (ids, amounts, statuses, error text): never card, VPA, bank, email or phone details.
+    """
+
+    class Status(models.TextChoices):
+        RECEIVED = "received", "Received"
+        PROCESSED = "processed", "Processed"
+        IGNORED = "ignored", "Ignored (not relevant)"
+        FAILED = "failed", "Failed (will be retried by the gateway)"
+
+    provider = models.CharField(max_length=20)
+    event_id = models.CharField(max_length=100)
+    event_type = models.CharField(max_length=60)
+    payload = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.RECEIVED, db_index=True)
+    note = models.CharField(max_length=255, blank=True)
+    deliveries = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [models.UniqueConstraint(fields=["provider", "event_id"], name="uniq_webhook_event")]
+
+    def __str__(self) -> str:
+        return f"{self.provider}:{self.event_type} {self.event_id}"

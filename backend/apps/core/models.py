@@ -58,6 +58,40 @@ class SoftDeleteModel(TimeStampedModel):
         self.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
 
 
+class Job(models.Model):
+    """DB-backed background job queue (no Redis/Celery on shared hosting). See `core.jobs`.
+
+    `run_jobs` (cron) claims due rows with a conditional UPDATE, so two cron runs never execute
+    the same job; failures are retried with exponential backoff up to `max_attempts`.
+    """
+
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        DONE = "done", "Done"
+        FAILED = "failed", "Failed"
+
+    name = models.CharField(max_length=100)
+    payload = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.QUEUED)
+    # Same key + still queued/running → enqueue() returns the existing job instead of a duplicate.
+    dedupe_key = models.CharField(max_length=120, blank=True, db_index=True)
+    run_after = models.DateTimeField(default=timezone.now)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    max_attempts = models.PositiveSmallIntegerField(default=5)
+    last_error = models.TextField(blank=True)
+    locked_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["run_after", "id"]
+        indexes = [models.Index(fields=["status", "run_after"])]
+
+    def __str__(self) -> str:
+        return f"{self.name} #{self.pk} ({self.status})"
+
+
 class AuditLog(models.Model):
     """Append-only record of sensitive / administrative actions."""
 

@@ -56,7 +56,15 @@ and `frontend/package-lock.json`.
 The offer engine is plain Python/`Decimal` over Django ORM reads (`apps/offers/engine.py`); offers are managed in the
 free Django admin. No promotion/pricing SaaS, no Redis cache.
 
-## Frontend (no new packages in Phases 4–6)
+## Payments, refunds & jobs (Phase 8): no new dependencies
+| Feature | Tool | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Gateway HTTP client | Python `urllib.request` + `json` | ✅ PSF | ✅ | No | Replaces the Razorpay SDK (which would pull in `requests`) |
+| Checkout/webhook signatures | Python `hmac` + `hashlib` (SHA-256, constant-time compare) | ✅ PSF | ✅ | No | |
+| Background jobs | In-repo `core.Job` queue + `manage.py run_jobs` via the hosting's **cron** | ✅ project code | ✅ | No | No Redis/Celery; portable claim with a conditional UPDATE |
+| Tests for the gateway | Recorded fakes of Razorpay's REST API + `unittest.mock` | ✅ | ✅ | No | Runs without network or credentials |
+
+## Frontend (no new packages in Phases 4–8)
 | Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
 |---|---|---|---|---|---|
 | UI library | React 19 | ✅ MIT | ✅ | No | |
@@ -80,8 +88,9 @@ free Django admin. No promotion/pricing SaaS, no Redis cache.
 ## Integrations — defaults vs. optional production providers
 | Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
 |---|---|---|---|---|---|
-| Payments (dev) | `MockPaymentProvider` (in-repo, `integrations/payments/mock.py`) | ✅ project code | ✅ | No | Moves no money; HMAC-signed intents; **blocked in production** |
-| Payments (prod, optional) | Razorpay | ❌ Commercial gateway (per-transaction fee, no subscription) | ❌ | Yes | Phase 8. Optional; COD works without it |
+| Payments (dev) | `MockPaymentProvider` (in-repo, `integrations/payments/mock.py`) | ✅ project code | ✅ | No | Moves no money; HMAC-signed intents and webhooks, instant refunds; **blocked in production** |
+| Payments (prod, optional) | Razorpay (via `integrations/payments/razorpay.py`) | ❌ Commercial gateway: no subscription; a per-transaction fee only on live payments. Test mode (`rzp_test_…` keys) is free | ❌ | Yes | Implemented in Phase 8 with Python's standard library (`urllib`, `hmac`), **no SDK or new dependency**. Optional; COD works without it. Not activated: needs the owner's Razorpay account and keys |
+| Razorpay Checkout script | `checkout.razorpay.com/v1/checkout.js` | ❌ Razorpay's hosted script (free to load) | ❌ | Public key id only | Loaded only on the payment page when an attempt is a Razorpay one; card/UPI entry happens inside Razorpay's window, never on our pages |
 | WhatsApp (dev) | `MockWhatsAppProvider` (Phase 20) | ✅ project code | ✅ | No | Records messages; never claims real delivery |
 | WhatsApp (prod, optional) | WhatsApp Business Cloud API (Meta) | ❌ Meta pricing per conversation/template | ❌ | Yes | Needs owner approval + Meta business account |
 | Maps (planned) | OpenStreetMap tiles + Leaflet; Nominatim geocoding | ✅ ODbL data / BSD-2 library | ✅ | No | Respect Nominatim policy (≤ 1 req/s, cache results, identify User-Agent) |
