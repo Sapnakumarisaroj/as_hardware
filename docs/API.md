@@ -117,7 +117,7 @@ The listing's `q` goes through a pluggable backend (`CATALOG_SEARCH_BACKEND`, de
 ## Addresses ✅ (own only)
 | Method | Path | Notes |
 |---|---|---|
-| GET/POST | `/api/addresses/` | First address becomes default. Phone accepts `+91 98765 43210` (stored as 10 digits). PIN = 6 digits |
+| GET/POST | `/api/addresses/` | First address becomes default. Phone accepts `+91 98765 43210` (stored as 10 digits). PIN = 6 digits. Optional map pin: `latitude` + `longitude` (both or neither, 6 decimals; `null` removes it). With a pin, delivery distance and time are calculated from the exact spot; without one, from the PIN code (Phase 9) |
 | GET/PUT/PATCH/DELETE | `/api/addresses/{id}/` | Delete is soft. Deleting the default promotes another |
 | POST | `/api/addresses/{id}/set-default/` | |
 
@@ -163,24 +163,25 @@ Response:
   "address_id": 31,
   "coupon": { "code": "DEMO10", "description": "…", "discount": "72.00" },        // or null (computed after offers)
   "coupon_error": { "code": "coupon_min_order", "message": "Add ₹451.00 more…", "details": {…} },  // or null
-  "delivery": { "available": true, "fee": "0.00", "free_delivery_min_order": "499.00",
-                "amount_to_free_delivery": "0.00", "fast_delivery_possible": true,
-                "eta_minutes": null, "message": "Delivery estimate will be confirmed after your order is placed." },
+  "delivery": { …delivery quote for the chosen address, see "Delivery & fulfilment"… },
   "blocking_issues": [ { "code": "address_required", "message": "Add or choose a delivery address." } ],
   "can_place_order": false,
   "payment_methods": [ { "value": "online", "label": "Mock online payment (development — no real money)", "test_mode": true },
                        { "value": "cod", "label": "Cash on delivery", "test_mode": false } ] }
 ```
 `blocking_issues[].code`: `cart_empty`, `cart_item_unavailable` (stock/availability changed — fix in the cart),
-`address_required`, `address_not_found`, `coupon_invalid`, `not_deliverable` (no single store can supply every line).
-`delivery.eta_minutes` stays `null` until the Phase 9 ETA engine; no delivery time is promised before then.
+`address_required`, `address_not_found`, `coupon_invalid`, `not_deliverable` (the address is outside every delivery
+zone, or the stores serving it can't supply every line; `delivery.reason_code` says which).
+`delivery` is the fulfilment plan for the chosen address (Phase 9). Without an address nothing is promised
+(`eta_minutes: null`, `delivery_type: null`) and the fee uses the global rule; with one, `totals.delivery_fee` follows
+the fee rule of the delivery zone.
 
 ## Orders ✅
 | Method | Path | Access | Notes |
 |---|---|---|---|
 | POST | `/api/orders/` | customer | Places the order from the cart. Body: `{address_id, payment_method: "cod"\|"online", coupon_code?, customer_note?, expected_total?}`. Header `Idempotency-Key: <8–64 chars [A-Za-z0-9_-]>` (or body `idempotency_key`). **201** new order · **200** + `Idempotent-Replayed: true` when the key was already used by this customer (returns that order, creates nothing) |
-| GET | `/api/orders/` | customer: own · staff: all | Newest first, paginated. `?status=` filter. Items: `order_number, status, payment_method, payment_status, grand_total, item_count` (units), `item_names` (first 3), `image`, `estimated_delivery_at`, `delivery_message`, `created_at` |
-| GET | `/api/orders/{order_number}/` | owner/staff | Snapshots of items (+`image`, `product_slug`, per-line `offer_discount`) and address, all totals incl. `offer_discount`, `coupon_discount` and `applied_offers[{id, name, badge, discount, skus}]`, `status_history`, `payments`, `refunds`, `can_cancel`, `can_retry_payment`, `delivery_message`. Phase 7: `can_return`, `return_window_ends_at`, `can_reorder`, `returns[]` (see Returns), per item `returnable_quantity` (0 outside the window) and `returned_quantity` |
+| GET | `/api/orders/` | customer: own · staff: all | Newest first, paginated. `?status=` filter. Items: `order_number, status, payment_method, payment_status, grand_total, item_count` (units), `item_names` (first 3), `image`, `estimated_delivery_at`, `delivery_message`, `delivery` (Phase 9, see "Order delivery data"), `created_at` |
+| GET | `/api/orders/{order_number}/` | owner/staff | Snapshots of items (+`image`, `product_slug`, per-line `offer_discount`) and address, all totals incl. `offer_discount`, `coupon_discount` and `applied_offers[{id, name, badge, discount, skus}]`, `status_history`, `payments`, `refunds`, `can_cancel`, `can_retry_payment`, `delivery_message`. Phase 7: `can_return`, `return_window_ends_at`, `can_reorder`, `returns[]` (see Returns), per item `returnable_quantity` (0 outside the window) and `returned_quantity`. Phase 9: `store_name`, `delivery`, `shipments[]` (see "Order delivery data") |
 | POST | `/api/orders/{order_number}/cancel/` | owner | `{reason}` (required). Only while `pending`/`confirmed`/`processing`, else 409 `invalid_transition`. Releases reserved stock, voids uncaptured payments, creates a **pending** Refund for captured payments, gives the coupon use back |
 | POST | `/api/orders/{order_number}/retry-payment/` | owner | New online payment attempt for a `pending` online order whose last attempt failed/was cancelled (409 otherwise) |
 | POST | `/api/orders/{order_number}/transition/` | staff | `{status, note?}`. Validated by the state machine (409 on invalid). Side effects: cancel → release stock, picked_up → sale. Return statuses (`return_requested`, `returned`, and leaving `return_requested`) are refused here (409 `invalid_transition`): they move only through the return endpoints |
@@ -190,8 +191,9 @@ Response:
 Customers cannot update or delete orders (PUT/PATCH/DELETE → 405) or change status except by cancelling; other
 customers' orders, payments and addresses return 404.
 
-**Placement errors:** `cart_empty` (400), `insufficient_stock` (409), `product_unavailable` / `max_quantity_exceeded`
-(400), coupon codes (`invalid_coupon`, `coupon_expired`, `coupon_min_order`, `coupon_not_applicable`,
+**Placement errors:** `cart_empty` (400), `insufficient_stock` (409; also when the stores that deliver to the address
+can't supply every line), `not_deliverable` (400, `details.reason`: `out_of_zone` | `location_unknown`),
+`product_unavailable` / `max_quantity_exceeded` (400), coupon codes (`invalid_coupon`, `coupon_expired`, `coupon_min_order`, `coupon_not_applicable`,
 `coupon_exhausted`, `coupon_already_used`: 400), `totals_changed` (409, `details: {expected, grand_total}`: prices,
 stock or coupon changed since the customer saw `expected_total`; nothing is created), address of another user (404).
 
@@ -209,6 +211,98 @@ stock or coupon changed since the customer saw `expected_total`; nothing is crea
 | Online order unpaid after `PAYMENT_EXPIRY_MINUTES` (30) | open attempts → `cancelled` (after asking the gateway) | unchanged | `cancelled` (stock released, customer notified) |
 | Money captured after cancellation/expiry, a second paid attempt, or wrong amount | `captured` + automatic full Refund | unchanged | unchanged (never confirmed on it) |
 | COD order delivered (Phase 8) | COD record → `captured` (cash collected) | `paid` | `delivered` |
+
+## Delivery & fulfilment ✅ (Phase 9)
+Every delivery time is **calculated** by the fulfilment engine (`apps/delivery`; rules in ARCHITECTURE.md →
+*Fulfilment and delivery engine*). There is no fixed "60 minutes": `FAST_DELIVERY_MAX_MINUTES` is only the cutoff
+below which an estimate counts as fast delivery.
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET | `/api/delivery/check/` | public | Delivery eligibility for a location. Indicative: for one in-stock item at each store that serves the location |
+| GET | `/api/delivery/estimate/` | public | Delivery quote for one product: `variant_id` (required), `quantity` (default 1) + location. Unknown/unpublished variant → 404 |
+| GET | `/api/delivery/cart-estimate/` | customer | Delivery quote for the signed-in customer's cart + location |
+| GET | `/api/delivery/zones/` | public | Active delivery zones of stores that take orders, with their **effective** rules |
+| GET | `/api/stores/availability/` | public | `variant_id` (required) + optional location. Which stores hold the product |
+| GET | `/api/delivery/shipments/` | store manager (their stores) / admin | Shipments waiting for a rider (`?scope=waiting`, default) or all (`?scope=all`), paginated |
+| GET | `/api/delivery/shipments/{id}/eligible-partners/` | staff / admin | Riders who may carry it, best first |
+| POST | `/api/delivery/shipments/{id}/assign/` | staff / admin | `{partner_id}` → 201 `{assignment_id, order_status, partner_id}` |
+
+**Location parameters** (query string; one of): `address_id` (a saved address of the signed-in customer; anonymous →
+401, someone else's → 404) · `latitude` + `longitude` (both; optional `postal_code`) · `postal_code` (6 digits).
+Anything else → 400. `location_precision` in the answer says what the estimate is based on: `exact` (map pin or
+coordinates), `pin` (centre of the PIN code) or `unknown` (only the PIN string; served through a zone's PIN list).
+
+**`GET /api/delivery/check/?postal_code=411038`**
+```json
+{ "serviceable": true, "postal_code": "411038", "location_precision": "pin",
+  "fast_delivery_available": true, "label": "Delivery in 14 minutes", "fast_unavailable_reason": "",
+  "message": "⚡ Fast delivery available · Delivery in 14 minutes",
+  "stores": [ { "name": "Demo Store — Kothrud", "area": "Kothrud", "distance_km": 0.0,
+                "fast_available": true, "eta_minutes": 14, "label": "Delivery in 14 minutes" } ] }
+```
+Not serviceable: `serviceable: false`, `stores: []`, `message: "We don't deliver to PIN 411014 yet."`.
+Standard only: `fast_delivery_available: false`, `label: "Today, 4:30 PM – 6:30 PM"`,
+`message: "🚚 Standard delivery · Today, 4:30 PM – 6:30 PM"`, and `fast_unavailable_reason` says why.
+
+**Delivery quote** (`/delivery/estimate/`, `/delivery/cart-estimate/`, and `delivery` in the checkout preview):
+```json
+{ "available": true, "delivery_type": "fast", "fast_delivery_possible": true,
+  "eta_minutes": 18, "label": "Delivery in 18 minutes", "message": "⚡ Fast delivery · Delivery in 18 minutes",
+  "store_name": "Demo Store — Kothrud", "prep_minutes": 10, "distance_km": 0.9,
+  "estimated_delivery_at": "2026-09-28T13:34:00+05:30",
+  "window_start": "2026-09-28T13:34:00+05:30", "window_end": "2026-09-28T13:49:00+05:30",
+  "fee": "0.00", "free_delivery_min_order": "499.00", "amount_to_free_delivery": "0.00",
+  "fast_unavailable_reason": "", "location_precision": "exact", "reason_code": "",
+  "shipments": [ { "sequence": 1, "store_name": "Demo Store — Kothrud", "store_area": "Kothrud", "line_count": 1,
+                   "delivery_type": "fast", "eta_minutes": 18, "label": "Delivery in 18 minutes", "distance_km": 0.9 } ] }
+```
+| Field | Meaning |
+|---|---|
+| `available` | `false` = can't be delivered there; `reason_code` is `out_of_zone`, `location_unknown`, `insufficient_stock` or `cart_empty` and `message` explains it. No ETA fields are set |
+| `delivery_type` | `fast` or `standard`. `null` when no location was given (stock-only answer) |
+| `eta_minutes`, `label` | fast: minutes until delivery, `"Delivery in 38 minutes"`. standard: minutes until the window opens, label = the window, `"Tomorrow, 10:00 AM – 12:00 PM"` |
+| `fast_unavailable_reason` | Set when the answer is standard: fast delivery not offered in the area · store closed · no delivery partner available · the calculated time is over the cutoff (`"Delivery would take about 74 minutes (fast delivery is up to 60)."`) |
+| `window_start`, `window_end` | fast: estimated arrival … + `FAST_WINDOW_MINUTES`. standard: the delivery window |
+| `prep_minutes` | Pick-and-pack time at the store (the largest, for several stores) |
+| `store_name`, `shipments[]` | The fulfilment store; with `shipments.length > 1` the order ships from several stores and `eta_minutes` is the **latest** shipment's |
+| `fee`, `free_delivery_min_order`, `amount_to_free_delivery` | The zone's fee rule (global rule when the zone sets none, or no location) |
+
+**`GET /api/delivery/zones/`** → `[{id, name, store_name, store_area, city, radius_km, postal_codes[],
+fast_delivery_enabled, fast_delivery_max_minutes, delivery_fee, free_delivery_min_order}]`. Blank zone settings are
+shown as the global value that applies.
+
+**`GET /api/stores/availability/`** → `[{store_name, store_area, city, kind, stock_status, delivers_to_location,
+distance_km}]`. `stock_status` is `in_stock` / `low_stock` / `out_of_stock`: **exact quantities are never exposed**.
+`delivers_to_location` and `distance_km` (straight line) are `null` without a location. Warehouses are not listed.
+
+**Assignment (foundation for Phase 10).** `eligible-partners` → `[{partner_id, full_name, vehicle_type, same_store,
+active_assignments, capacity, distance_km}]`: active, verified, `available`, below `max_active_assignments`, and
+based at the store or currently within `DELIVERY_PARTNER_PICKUP_RADIUS_KM` of it. `assign` errors (409):
+`invalid_delivery_state` (order not `confirmed`/`processing`/`packed`), `already_assigned` (the shipment has an active
+assignment), `partner_unavailable` (offline, at capacity, unverified or too far). Unknown shipment or partner, or a
+shipment of another manager's store → 404. When every shipment of a `packed` order has a rider the order becomes
+`assigned`. Cancelling the order (or `assigned → packed`) cancels the assignment and frees the rider. The rider's own
+steps (accept, pickup, OTP, proof) are Phase 10; riders see their assignments at `GET /api/delivery/assignments/`
+(`pickup` is the store of their shipment).
+
+### Order delivery data
+`delivery` on order list and detail:
+```json
+{ "type": "fast", "type_label": "Fast delivery", "fast": true,
+  "eta_minutes": 18, "minutes_left": 11, "label": "Delivery in 11 minutes",
+  "estimated_ready_at": "…", "estimated_delivery_at": "…", "window_start": "…", "window_end": "…" }
+```
+`eta_minutes` is the promise made when the order was confirmed; `minutes_left` counts down to `estimated_delivery_at`
+(`null` once the order is delivered, cancelled or returned; `label` becomes `"Arriving any minute"` at 0). Standard
+orders carry their window in `label`. Orders placed before Phase 9 have `type: null` and an empty `label`.
+`delivery_message` is the same information as one sentence that follows the order status (`"⚡ Delivery in 18 minutes
+(by about 1:34 PM)"`, `"🚚 Standard delivery · Today, 4:30 PM – 6:30 PM"`, `"Out for delivery · …"`, `"Delivered"`).
+An online order is re-estimated from the moment it is **paid**.
+
+`shipments[]` on order detail: `{sequence, store_name, store_area, delivery_type, distance_km, prep_minutes,
+eta_minutes, estimated_ready_at, estimated_delivery_at, window_start, window_end, item_ids[]}`. The current delivery
+status is the order `status` (`status_history` has the timestamps).
 
 ## Returns ✅ (Phase 7)
 | Method | Path | Access | Notes |
@@ -284,6 +378,6 @@ log consistency issues. `python manage.py payments_check` lists orders/payments/
 admin only: `/api/admin/users/`. Login/register return `{access, refresh, user}`. See `/api/docs/` for bodies.
 
 ## Planned 🔜
-- **Stores / delivery ETA** (Phase 9), **delivery partner** `/api/delivery/…` (Phase 10).
+- **Delivery partner workflow** (accept, pickup, OTP, proof of delivery) `/api/delivery/…` (Phase 10).
 - **Admin dashboard APIs** `/api/admin/…` (Phase 11). Until then, use the Django admin at `/django-admin/`.
 - **AI** `/api/ai/…` (Phases 12–19). **Notifications/support** (Phase 20).

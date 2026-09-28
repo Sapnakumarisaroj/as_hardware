@@ -225,9 +225,39 @@ SPECTACULAR_SETTINGS = {
 }
 
 # --- Business configuration -------------------------------------------------------
+# Fast delivery is *offered* only when the calculated ETA is at most this (zones may set a lower/higher
+# cutoff). It is a threshold, not a promise: customers see the calculated minutes.
 FAST_DELIVERY_MAX_MINUTES = env.int("FAST_DELIVERY_MAX_MINUTES", default=60)
+# Default fee rule; delivery zones can override both (Phase 9).
 DELIVERY_FEE = Decimal(env.str("DELIVERY_FEE", default="") or "40.00")
 FREE_DELIVERY_MIN_ORDER = Decimal(env.str("FREE_DELIVERY_MIN_ORDER", default="") or "499.00")
+
+# --- Delivery ETA engine (Phase 9, apps/delivery/eta.py) ---------------------------------
+DELIVERY_AVG_SPEED_KMPH = env.float("DELIVERY_AVG_SPEED_KMPH", default=18.0)  # two-wheeler in city traffic
+ROAD_DISTANCE_FACTOR = env.float("ROAD_DISTANCE_FACTOR", default=1.35)  # road km per straight-line km
+DELIVERY_HANDOVER_MINUTES = env.int("DELIVERY_HANDOVER_MINUTES", default=4)  # parking, stairs, OTP
+# A rider who is out on a delivery is expected back after about this long (queue estimate).
+DELIVERY_RIDER_TURNAROUND_MINUTES = env.int("DELIVERY_RIDER_TURNAROUND_MINUTES", default=35)
+# Standard (non-fast) deliveries are batched: extra time before dispatch, and the window shown.
+STANDARD_DISPATCH_DELAY_MINUTES = env.int("STANDARD_DISPATCH_DELAY_MINUTES", default=120)
+STANDARD_WINDOW_MINUTES = env.int("STANDARD_WINDOW_MINUTES", default=120)
+FAST_WINDOW_MINUTES = env.int("FAST_WINDOW_MINUTES", default=15)
+# When address and store share a PIN code but coordinates are missing, assume this distance.
+SAME_PIN_DISTANCE_KM = env.float("SAME_PIN_DISTANCE_KM", default=2.0)
+# Allow one order to ship from several stores when no single store has everything.
+SPLIT_FULFILLMENT_ENABLED = env.bool("SPLIT_FULFILLMENT_ENABLED", default=True)
+# A partner based elsewhere may take a shipment if currently within this distance of the store.
+DELIVERY_PARTNER_PICKUP_RADIUS_KM = env.float("DELIVERY_PARTNER_PICKUP_RADIUS_KM", default=3.0)
+MAX_SHIPMENTS_PER_ORDER = env.int("MAX_SHIPMENTS_PER_ORDER", default=3)
+
+# --- Maps (Phase 9, integrations/maps). Offline by default; OpenStreetMap services are opt-in. ---
+GEOCODING_PROVIDER = env("GEOCODING_PROVIDER", default="none")  # none | nominatim
+ROUTING_PROVIDER = env("ROUTING_PROVIDER", default="haversine")  # haversine | osrm
+NOMINATIM_BASE_URL = env("NOMINATIM_BASE_URL", default="https://nominatim.openstreetmap.org")
+NOMINATIM_USER_AGENT = env("NOMINATIM_USER_AGENT", default="") or f"{APP_NAME}/0.1 (delivery ETA)"
+OSRM_BASE_URL = env("OSRM_BASE_URL", default="https://router.project-osrm.org")
+MAPS_TIMEOUT_SECONDS = env.float("MAPS_TIMEOUT_SECONDS", default=4.0)
+ROUTE_CACHE_SECONDS = env.int("ROUTE_CACHE_SECONDS", default=24 * 3600)
 # Days after delivery during which a customer may request a return (Phase 7).
 RETURN_WINDOW_DAYS = env.int("RETURN_WINDOW_DAYS", default=7)
 
@@ -245,7 +275,6 @@ PAYMENT_EXPIRY_MINUTES = env.int("PAYMENT_EXPIRY_MINUTES", default=30)
 PAYMENT_RECONCILE_AFTER_MINUTES = env.int("PAYMENT_RECONCILE_AFTER_MINUTES", default=10)
 WHATSAPP_PROVIDER = env("WHATSAPP_PROVIDER", default="mock")  # mock | meta
 SMS_PROVIDER = env("SMS_PROVIDER", default="mock")  # mock | msg91 | twilio
-MAPS_PROVIDER = env("MAPS_PROVIDER", default="osm")  # osm (Nominatim + haversine) | google
 LLM_PROVIDER = env("LLM_PROVIDER", default="none")  # none | ollama | openai_compatible | anthropic
 OLLAMA_BASE_URL = env("OLLAMA_BASE_URL", default="http://localhost:11434")
 LLM_MODEL = env("LLM_MODEL", default="")

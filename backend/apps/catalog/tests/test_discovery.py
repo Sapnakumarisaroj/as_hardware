@@ -156,7 +156,7 @@ def test_unpublished_product_detail_is_hidden_from_customers(api_client, auth_cl
 def test_out_of_stock_and_no_fast_delivery_without_zone(api_client, catalog):
     card = next(p for p in api_client.get("/api/products/").json()["results"] if p["name"] == "Cordless Drill Driver")
     assert card["stock_status"] == "out_of_stock" and card["fast_delivery"] is False
-    other_store = create_store()  # no delivery zone → stock there is not "fast"
+    other_store = create_store(zone=False)  # no delivery zone → stock there is not "fast"
     product, _ = create_product(name="Hammer", stock=5, store=other_store)
     card = next(p for p in api_client.get("/api/products/").json()["results"] if p["name"] == "Hammer")
     assert card["stock_status"] == "low_stock" and card["fast_delivery"] is False

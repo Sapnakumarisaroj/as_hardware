@@ -28,7 +28,7 @@ from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError, NotFoundError, ServiceError
 from apps.core.money import q
 from apps.notifications.services import notify
-from apps.orders.checkout import ETA_PENDING_MESSAGE
+from apps.orders.delivery_info import delivery_sentence
 from apps.orders.models import Order, OrderStatus, PaymentMethod, PaymentStatus
 from apps.orders.services import apply_locked_transition, create_payment_for_order
 from integrations.payments import GatewayError, GatewayPayment, InvalidSignature, RefundResult, get_payment_provider
@@ -98,7 +98,7 @@ def _record_capture(
             order.user,
             event="order.confirmed",
             title=f"Payment received — order {order.order_number} confirmed",
-            body=f"We received ₹{payment.amount}. Your order is confirmed. {ETA_PENDING_MESSAGE}",
+            body=f"We received ₹{payment.amount}. Your order is confirmed. {delivery_sentence(order)}",
             data={"order_number": order.order_number},
         )
     return "captured"

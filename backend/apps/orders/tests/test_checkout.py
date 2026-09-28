@@ -89,10 +89,14 @@ def test_preview_valid_checkout_with_delivery_info(auth_client, shop):
     assert data["can_place_order"] is True and data["blocking_issues"] == []
     assert data["totals"]["grand_total"] == "180.00"
     delivery = data["delivery"]
-    assert delivery["available"] is True and delivery["fast_delivery_possible"] is True
+    assert delivery["available"] is True
     assert delivery["fee"] == "40.00" and delivery["free_delivery_min_order"] == "499.00"
     assert delivery["amount_to_free_delivery"] == "359.00"
-    assert delivery["eta_minutes"] is None and "confirmed" in delivery["message"]
+    # Phase 9: a real estimate. No rider is on duty at the test store, so it is standard delivery.
+    assert delivery["delivery_type"] == "standard" and delivery["fast_delivery_possible"] is False
+    assert isinstance(delivery["eta_minutes"], int) and delivery["label"]
+    assert "No delivery partner" in delivery["fast_unavailable_reason"]
+    assert delivery["store_name"] == shop["store"].name and delivery["shipments"][0]["line_count"] == 1
     assert {m["value"] for m in data["payment_methods"]} == {"online", "cod"}
 
 
@@ -379,14 +383,20 @@ def test_order_history_is_newest_first_with_summary_fields(auth_client, shop):
     assert "confirmed" in first["delivery_message"] or first["delivery_message"]
 
 
-def test_single_store_quote_reflects_split_stock(auth_client, user):
+def test_quote_splits_across_stores_only_when_allowed(auth_client, user, settings):
+    """Phase 9: no single store has both items → two shipments (or blocked when splitting is off)."""
     s1, s2 = create_store(), create_store()
     _, a = create_product(stock=5, store=s1)
     _, b = create_product(stock=5, store=s2)
     _add(auth_client, a)
     _add(auth_client, b)
     data = _preview(auth_client, address_id=create_address(user).id)
+    assert data["can_place_order"] is True
+    assert sorted(s["store_name"] for s in data["delivery"]["shipments"]) == sorted([s1.name, s2.name])
+    settings.SPLIT_FULFILLMENT_ENABLED = False
+    data = _preview(auth_client, address_id=create_address(user, name="B").id)
     assert data["delivery"]["available"] is False
     assert data["blocking_issues"][0]["code"] == "not_deliverable"
     add_stock(b, 5, store=s1)
-    assert _preview(auth_client, address_id=create_address(user, name="B").id)["can_place_order"] is True
+    data = _preview(auth_client, address_id=create_address(user, name="C").id)
+    assert data["can_place_order"] is True and len(data["delivery"]["shipments"]) == 1

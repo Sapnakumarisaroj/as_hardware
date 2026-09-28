@@ -1,8 +1,18 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { address, cart, cartLine, checkoutPreview, customer, TOTALS_800 as TOTALS } from '@/test/fixtures'
-import { httpError, mockApi } from '@/test/mockApi'
+import {
+  address,
+  cart,
+  cartLine,
+  checkoutPreview,
+  customer,
+  deliveryQuote,
+  standardQuote,
+  TOTALS_800 as TOTALS,
+  undeliverableQuote,
+} from '@/test/fixtures'
+import { httpError, mockApi, paramsSent } from '@/test/mockApi'
 import { currentUrl, renderRoute, signIn } from '@/test/utils'
 
 const line = cartLine({ available_quantity: 5 })
@@ -101,6 +111,45 @@ describe('cart page', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/wishlist/', { product_id: 5 }))
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/cart/items/9/'))
     expect(await screen.findByText(/Saved for later: FR PVC/)).toBeInTheDocument()
+  })
+
+  it('shows the delivery estimate for the default address', async () => {
+    signIn()
+    const api = mockApi({
+      get: routes(filled, { '/addresses/': [address()], '/delivery/cart-estimate/': deliveryQuote() }),
+    })
+    renderRoute('/cart')
+    const delivery = (await screen.findByRole('heading', { name: 'Delivery' })).closest('section')!
+    await waitFor(() => expect(delivery).toHaveTextContent('To Asha Kulkarni, Kothrud 411038'))
+    expect(delivery).toHaveTextContent('Fast delivery available')
+    expect(delivery).toHaveTextContent('Estimated delivery: 38 minutes')
+    expect(paramsSent(api.get, '/delivery/cart-estimate/')).toEqual([{ address_id: 31 }])
+  })
+
+  it('without an address it uses the PIN code, or asks for one', async () => {
+    signIn()
+    const api = mockApi({
+      get: routes(filled, { '/addresses/': [], '/delivery/cart-estimate/': standardQuote({ location_precision: 'pin' }) }),
+    })
+    const { user } = renderRoute('/cart')
+    const delivery = (await screen.findByRole('heading', { name: 'Delivery' })).closest('section')!
+    expect(paramsSent(api.get, '/delivery/cart-estimate/')).toHaveLength(0)
+    await user.type(within(delivery).getByLabelText(/Enter your PIN code/), '411001')
+    await user.click(within(delivery).getByRole('button', { name: 'Check' }))
+    await waitFor(() => expect(delivery).toHaveTextContent('To PIN 411001'))
+    expect(delivery).toHaveTextContent('Fast delivery unavailable')
+    expect(delivery).toHaveTextContent('Estimated delivery: Tomorrow, 10:00 AM – 12:00 PM')
+    expect(paramsSent(api.get, '/delivery/cart-estimate/')).toEqual([{ postal_code: '411001' }])
+  })
+
+  it('says when the cart cannot be delivered to the address', async () => {
+    signIn()
+    mockApi({
+      get: routes(filled, { '/addresses/': [address({ postal_code: '411014' })], '/delivery/cart-estimate/': undeliverableQuote() }),
+    })
+    renderRoute('/cart')
+    const delivery = (await screen.findByRole('heading', { name: 'Delivery' })).closest('section')!
+    expect(await within(delivery).findByRole('alert')).toHaveTextContent('We don’t deliver to PIN 411014 yet.')
   })
 
   it('proceeds to checkout', async () => {

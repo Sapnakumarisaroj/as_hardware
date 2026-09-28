@@ -17,6 +17,8 @@ from apps.carts.models import Cart, CartItem
 from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError, NotFoundError, ServiceError
 from apps.core.money import ZERO, q
+from apps.delivery.fulfillment import Plan, plan_fulfillment
+from apps.delivery.locations import resolve_location
 from apps.inventory.models import Inventory, StockMovement
 from apps.inventory.services import InsufficientStock, apply_movement, total_available
 from apps.notifications.services import notify
@@ -24,11 +26,10 @@ from apps.offers.models import Coupon, CouponRedemption
 from apps.offers.services import get_valid_coupon
 from apps.payments.models import Payment, Refund
 from apps.payments.refunds import create_refund
-from apps.stores.models import Store
 from integrations.payments import get_payment_provider
 
-from .checkout import ETA_PENDING_MESSAGE, find_fulfilment_store
-from .models import Order, OrderItem, OrderStatus, OrderStatusHistory, PaymentMethod, PaymentStatus
+from .delivery_info import delivery_sentence, refresh_delivery_estimate
+from .models import Order, OrderItem, OrderShipment, OrderStatus, OrderStatusHistory, PaymentMethod, PaymentStatus
 from .pricing import line_from_variant, price_lines
 from .state_machine import (
     CUSTOMER_CANCELLABLE,
@@ -53,13 +54,13 @@ def generate_order_number() -> str:
     return f"OD{timezone.localdate():%y%m%d}{suffix}"
 
 
-def _choose_store(requirements: dict[int, int]) -> Store:
-    store = find_fulfilment_store(requirements)
-    if store is None:
-        raise InsufficientStock(
-            "Some items are not available together at any store right now. Please reduce quantities or remove items."
-        )
-    return store
+def _plan(address, requirements: dict[int, int]) -> Plan:
+    plan = plan_fulfillment(requirements, resolve_location(address=address))
+    if plan.deliverable:
+        return plan
+    if plan.reason_code == "insufficient_stock":
+        raise InsufficientStock(plan.message)
+    raise OrderError(plan.message, code="not_deliverable", details={"reason": plan.reason_code})
 
 
 class TotalsChanged(ConflictError):
@@ -135,9 +136,13 @@ def place_order(
                 f"You can order at most {product.max_order_quantity} of {product.name}.", code="max_quantity_exceeded"
             )
 
+    # Which store(s) ship it, when it can arrive and which zone fee applies (reads stock; the
+    # reservations below re-check it under row locks).
+    plan = _plan(address, {item.variant_id: item.quantity for item in items})
+
     lines = [line_from_variant(item.variant, item.quantity) for item in items]
     coupon = get_valid_coupon(coupon_code, user, lock=True) if coupon_code.strip() else None
-    pricing = price_lines(lines, coupon=coupon)  # automatic offers, then the coupon
+    pricing = price_lines(lines, coupon=coupon, fee_rule=plan.fee_rule)  # automatic offers, then the coupon
     totals, offers = pricing.totals, pricing.offers
     if expected_total is not None and q(expected_total) != totals.grand_total:
         raise TotalsChanged(
@@ -145,12 +150,17 @@ def place_order(
             details={"expected": str(q(expected_total)), "grand_total": str(totals.grand_total)},
         )
 
-    store = _choose_store({item.variant_id: item.quantity for item in items})
-
+    latest = plan.latest
     order = Order.objects.create(
         order_number=_unique_order_number(),
         user=user,
-        store=store,
+        store=plan.primary.store,
+        delivery_type=plan.delivery_type,
+        eta_minutes=latest.eta_minutes,
+        estimated_ready_at=max(e.ready_at for e in plan.estimates),
+        estimated_delivery_at=latest.delivery_at,
+        delivery_window_start=latest.window_start,
+        delivery_window_end=latest.window_end,
         address_snapshot=address.snapshot(),
         payment_method=payment_method,
         subtotal=totals.subtotal,
@@ -176,10 +186,15 @@ def place_order(
         customer_note=customer_note[:500],
         idempotency_key=idempotency_key or None,
     )
+    shipment_of = {}
+    for sequence, planned in enumerate(plan.shipments, start=1):
+        shipment = _create_shipment(order, sequence, planned)
+        shipment_of.update(dict.fromkeys(planned.lines, shipment))
     OrderItem.objects.bulk_create(
         [
             OrderItem(
                 order=order,
+                shipment=shipment_of[item.variant_id],
                 variant=item.variant,
                 product=item.variant.product,
                 product_name=item.variant.product.name,
@@ -199,14 +214,15 @@ def place_order(
         ]
     )
 
-    # Reserve stock at the chosen store (locks rows and re-validates; raises → full rollback).
-    inventories = {
-        inv.variant_id: inv
-        for inv in Inventory.objects.filter(store=store, variant_id__in=[i.variant_id for i in items])
-    }
+    # Reserve each line at its shipment's store (locks rows and re-validates; raises → full rollback).
     for item in items:
+        inventory = Inventory.objects.filter(
+            store=shipment_of[item.variant_id].store, variant_id=item.variant_id, is_active=True
+        ).first()
+        if inventory is None:
+            raise InsufficientStock("Stock changed while you were checking out. Please review your cart.")
         apply_movement(
-            inventories[item.variant_id],
+            inventory,
             StockMovement.Type.RESERVATION,
             item.quantity,
             reason="Order placed",
@@ -229,7 +245,7 @@ def place_order(
             event="order.confirmed",
             title=f"Order {order.order_number} confirmed",
             body=f"Thank you! Your order of ₹{order.grand_total} (cash on delivery) is confirmed. "
-            f"{ETA_PENDING_MESSAGE}",
+            f"{delivery_sentence(order)}",
             data={"order_number": order.order_number},
         )
     else:
@@ -244,6 +260,27 @@ def place_order(
 
     CartItem.objects.filter(pk__in=[item.pk for item in items]).delete()
     return order, payment
+
+
+def _create_shipment(order: Order, sequence: int, planned) -> OrderShipment:
+    e = planned.estimate
+    return OrderShipment.objects.create(
+        order=order,
+        sequence=sequence,
+        store=planned.store,
+        zone=planned.zone,
+        delivery_type=e.delivery_type,
+        distance_km=round(Decimal(str(e.distance_km)), 2) if e.distance_km is not None else None,
+        prep_minutes=e.prep_minutes,
+        wait_minutes=e.wait_minutes,
+        travel_minutes=e.travel_minutes,
+        eta_minutes=e.eta_minutes,
+        estimated_ready_at=e.ready_at,
+        estimated_delivery_at=e.delivery_at,
+        window_start=e.window_start,
+        window_end=e.window_end,
+        eta_source=e.eta_source,
+    )
 
 
 def _unique_order_number() -> str:
@@ -292,6 +329,10 @@ def _apply_transition(order: Order, to_status: str, *, actor, note: str = "") ->
             details={"from": from_status, "to": to_status},
         )
 
+    if to_status == OrderStatus.CANCELLED or (from_status == OrderStatus.ASSIGNED and to_status == OrderStatus.PACKED):
+        from apps.delivery.assignment import release_assignments
+
+        release_assignments(order, reason="Order cancelled" if to_status == OrderStatus.CANCELLED else "Unassigned")
     if to_status == OrderStatus.CANCELLED and from_status in STOCK_RESERVED_STATUSES:
         _move_order_stock(order, StockMovement.Type.RELEASE, actor, "Order cancelled")
     elif to_status == OrderStatus.PICKED_UP:
@@ -300,6 +341,9 @@ def _apply_transition(order: Order, to_status: str, *, actor, note: str = "") ->
     order.status = to_status
     fields = ["status", "updated_at"]
     now = timezone.now()
+    if to_status == OrderStatus.CONFIRMED and order.payment_method == PaymentMethod.ONLINE:
+        # Paid later than placed: the delivery clock starts now, at the same store(s).
+        fields += refresh_delivery_estimate(order, now=now)
     if to_status == OrderStatus.CANCELLED:
         order.cancelled_at = now
         order.cancellation_reason = note[:255]
@@ -344,10 +388,12 @@ def _release_coupon(order: Order) -> None:
 
 
 def _move_order_stock(order: Order, movement_type: str, actor, reason: str) -> None:
-    for item in order.items.all():
+    """Each line moves at the store it was reserved at (its shipment's; legacy orders: order.store)."""
+    for item in order.items.select_related("shipment"):
         if item.variant_id is None:
             continue
-        inventory = Inventory.objects.filter(store=order.store, variant_id=item.variant_id).first()
+        store_id = item.shipment.store_id if item.shipment_id else order.store_id
+        inventory = Inventory.objects.filter(store_id=store_id, variant_id=item.variant_id).first()
         if inventory is None:
             raise OrderError(f"Inventory record missing for {item.sku}.", code="inventory_missing")
         apply_movement(

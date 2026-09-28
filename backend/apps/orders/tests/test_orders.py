@@ -90,17 +90,26 @@ def test_insufficient_stock_rolls_back_everything(user, stocked):
     assert Inventory.objects.get(store=store, variant=drill).reserved_quantity == 0
 
 
-def test_single_store_must_cover_all_items(user):
+def test_items_split_across_stores_or_one_store_when_possible(user, settings):
+    """Phase 9: an order ships from several stores when no single store has everything."""
     s1, s2 = create_store(), create_store()
     _, a = create_product(stock=5, store=s1)
     _, b = create_product(stock=5, store=s2)
     _fill_cart(user, (a, 1), (b, 1))
+    settings.SPLIT_FULFILLMENT_ENABLED = False
     with pytest.raises(ServiceError) as exc:
         place_order(user=user, address_id=create_address(user).id, payment_method="cod")
     assert getattr(exc.value, "error_code", "") == "insufficient_stock"
+    settings.SPLIT_FULFILLMENT_ENABLED = True
+    order, _ = place_order(user=user, address_id=create_address(user, name="Asha 1").id, payment_method="cod")
+    assert {(s.store_id, i.variant_id) for s in order.shipments.all() for i in s.items.all()} == {
+        (s1.pk, a.pk),
+        (s2.pk, b.pk),
+    }
     add_stock(b, 5, store=s1)
+    _fill_cart(user, (a, 1), (b, 1))
     order, _ = place_order(user=user, address_id=create_address(user, name="Asha 2").id, payment_method="cod")
-    assert order.store == s1
+    assert order.store == s1 and order.shipments.count() == 1
 
 
 def test_coupon_applied_and_redeemed(user, stocked):

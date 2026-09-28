@@ -1,5 +1,7 @@
 /** Order shapes from the API. Money is a decimal string computed by the server. */
 
+import type { OrderDelivery, OrderShipment } from '@/features/delivery/types'
+
 import type { RazorpayPayload } from './razorpay'
 
 export type OrderStatus =
@@ -29,6 +31,8 @@ export interface OrderSummary {
   image: string | null
   estimated_delivery_at: string | null
   delivery_message: string
+  /** Fast or standard, the estimate and the window promised for this order. */
+  delivery: OrderDelivery
   created_at: string
 }
 
@@ -158,6 +162,8 @@ export interface OrderDetail extends Omit<OrderSummary, 'item_count' | 'item_nam
   coupon_code: string
   customer_note: string
   eta_minutes: number | null
+  /** One per store the order ships from (usually one). */
+  shipments: OrderShipment[]
   cancellation_reason: string
   cancelled_at: string | null
   delivered_at: string | null

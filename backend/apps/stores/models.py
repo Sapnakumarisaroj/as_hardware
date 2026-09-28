@@ -46,10 +46,23 @@ class Store(SoftDeleteModel):
         blank=True,
         validators=[MinValueValidator(-180), MaxValueValidator(180)],
     )
-    # e.g. {"mon": ["09:00", "21:00"], ..., "sun": null}; interpreted by the ETA engine (Phase 9).
-    opening_hours = models.JSONField(default=dict, blank=True)
+    # {"mon": ["09:00", "21:00"], ..., "sun": null}. Empty = open all day, every day. A day that is
+    # missing or null = closed. Used by the ETA engine (apps/delivery/eta.py).
+    opening_hours = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='e.g. {"mon": ["09:00", "21:00"], "sun": null}. Empty = always open; missing/null day = closed.',
+    )
     avg_prep_minutes = models.PositiveSmallIntegerField(
-        default=10, help_text="Typical pick-and-pack time; input to the ETA engine."
+        default=10, help_text="Pick-and-pack time for an order with one line (ETA engine)."
+    )
+    prep_minutes_per_item = models.PositiveSmallIntegerField(
+        default=1, help_text="Extra pick-and-pack minutes for each additional order line."
+    )
+    own_riders = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="In-house riders on duty who don't use the partner app. Added to available app partners "
+        "when estimating delivery capacity.",
     )
     is_active = models.BooleanField(default=True)
     accepts_orders = models.BooleanField(default=True, help_text="Temporarily pause new orders without deactivating.")

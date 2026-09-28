@@ -1,7 +1,21 @@
 /** Browser-visible configuration. Only VITE_* variables reach the bundle — never put secrets here. */
+function mapCenter() {
+  const [latitude, longitude] = String(import.meta.env.VITE_MAP_CENTER || '')
+    .split(',')
+    .map((part) => Number(part.trim()))
+  if (Number.isFinite(latitude) && Number.isFinite(longitude) && latitude !== undefined && longitude !== undefined) {
+    return { latitude, longitude }
+  }
+  return { latitude: 18.5204, longitude: 73.8567 } // Pune
+}
+
 export const env = {
   appName: import.meta.env.VITE_APP_NAME || 'BoltRun',
   apiBaseUrl: (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/+$/, ''),
   supportPhone: import.meta.env.VITE_SUPPORT_PHONE || '',
   supportWhatsApp: import.meta.env.VITE_SUPPORT_WHATSAPP || '',
+  /** Map tiles for the address pin picker (OpenStreetMap by default; see docs/FREE_TOOLS.md for its usage policy). */
+  mapTileUrl: import.meta.env.VITE_MAP_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  /** Where the map opens when the address has no pin yet: "lat,lng". */
+  mapCenter: mapCenter(),
 } as const

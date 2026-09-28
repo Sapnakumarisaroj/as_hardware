@@ -2,6 +2,7 @@ import type { Address } from '@/features/addresses/api'
 import type { User } from '@/features/auth/api'
 import type { Cart, CartLine } from '@/features/cart/api'
 import type { CheckoutPreview } from '@/features/checkout/api'
+import type { DeliveryQuote, OrderDelivery } from '@/features/delivery/types'
 import type { OrderDetail } from '@/features/orders/types'
 import type {
   Category,
@@ -273,6 +274,111 @@ export const TOTALS_800 = {
 
 export const NO_OFFERS = { applied: [], missed: [] }
 
+/** A fast-delivery estimate from one store, as the fulfilment engine returns it. */
+export function deliveryQuote(overrides: Partial<DeliveryQuote> = {}): DeliveryQuote {
+  return {
+    available: true,
+    fee: '0.00',
+    free_delivery_min_order: '499.00',
+    amount_to_free_delivery: '0.00',
+    fast_delivery_possible: true,
+    eta_minutes: 38,
+    message: '⚡ Fast delivery · Delivery in 38 minutes',
+    delivery_type: 'fast',
+    label: 'Delivery in 38 minutes',
+    store_name: 'Demo Store — Kothrud',
+    estimated_delivery_at: '2026-09-28T07:08:00Z',
+    window_start: '2026-09-28T07:08:00Z',
+    window_end: '2026-09-28T07:23:00Z',
+    prep_minutes: 10,
+    distance_km: 2.7,
+    fast_unavailable_reason: '',
+    location_precision: 'exact',
+    reason_code: '',
+    shipments: [
+      {
+        sequence: 1,
+        store_name: 'Demo Store — Kothrud',
+        store_area: 'Kothrud',
+        line_count: 1,
+        delivery_type: 'fast',
+        eta_minutes: 38,
+        label: 'Delivery in 38 minutes',
+        distance_km: 2.7,
+      },
+    ],
+    ...overrides,
+  }
+}
+
+/** Fast delivery isn't possible right now: the next option is a standard delivery window. */
+export function standardQuote(overrides: Partial<DeliveryQuote> = {}): DeliveryQuote {
+  return deliveryQuote({
+    fast_delivery_possible: false,
+    eta_minutes: 1260,
+    message: 'Standard delivery · Tomorrow, 10:00 AM – 12:00 PM',
+    delivery_type: 'standard',
+    label: 'Tomorrow, 10:00 AM – 12:00 PM',
+    estimated_delivery_at: '2026-09-29T04:30:00Z',
+    window_start: '2026-09-29T04:30:00Z',
+    window_end: '2026-09-29T06:30:00Z',
+    fast_unavailable_reason: 'No delivery partner is available right now.',
+    shipments: [],
+    ...overrides,
+  })
+}
+
+export function undeliverableQuote(overrides: Partial<DeliveryQuote> = {}): DeliveryQuote {
+  return deliveryQuote({
+    available: false,
+    fast_delivery_possible: false,
+    eta_minutes: null,
+    message: 'We don’t deliver to PIN 411014 yet.',
+    delivery_type: null,
+    label: '',
+    store_name: null,
+    estimated_delivery_at: null,
+    window_start: null,
+    window_end: null,
+    prep_minutes: null,
+    distance_km: null,
+    location_precision: 'pin',
+    reason_code: 'out_of_zone',
+    shipments: [],
+    ...overrides,
+  })
+}
+
+export function orderDelivery(overrides: Partial<OrderDelivery> = {}): OrderDelivery {
+  return {
+    type: 'fast',
+    type_label: 'Fast delivery',
+    fast: true,
+    eta_minutes: 38,
+    minutes_left: 31,
+    estimated_ready_at: '2026-09-24T10:10:00Z',
+    estimated_delivery_at: '2026-09-24T10:38:00Z',
+    window_start: '2026-09-24T10:38:00Z',
+    window_end: '2026-09-24T10:53:00Z',
+    label: 'Delivery in 31 minutes',
+    ...overrides,
+  }
+}
+
+/** An order placed before delivery estimates existed. */
+export const NO_ESTIMATE: OrderDelivery = {
+  type: null,
+  type_label: null,
+  fast: false,
+  eta_minutes: null,
+  minutes_left: null,
+  estimated_ready_at: null,
+  estimated_delivery_at: null,
+  window_start: null,
+  window_end: null,
+  label: '',
+}
+
 export function checkoutPreview(overrides: Partial<CheckoutPreview> = {}): CheckoutPreview {
   return {
     cart: cart({ items: [cartLine()], totals: TOTALS_800, can_checkout: true }),
@@ -280,15 +386,7 @@ export function checkoutPreview(overrides: Partial<CheckoutPreview> = {}): Check
     address_id: 31,
     coupon: null,
     coupon_error: null,
-    delivery: {
-      available: true,
-      fee: '0.00',
-      free_delivery_min_order: '499.00',
-      amount_to_free_delivery: '0.00',
-      fast_delivery_possible: true,
-      eta_minutes: null,
-      message: 'Delivery estimate will be confirmed after your order is placed.',
-    },
+    delivery: deliveryQuote(),
     offers: NO_OFFERS,
     blocking_issues: [],
     can_place_order: true,
@@ -331,9 +429,26 @@ export function orderDetail(overrides: Partial<OrderDetail> = {}): OrderDetail {
     grand_total: '800.00',
     coupon_code: '',
     customer_note: '',
-    estimated_delivery_at: null,
-    eta_minutes: null,
-    delivery_message: 'Delivery estimate will be confirmed after your order is placed.',
+    estimated_delivery_at: '2026-09-24T10:38:00Z',
+    eta_minutes: 38,
+    delivery_message: '⚡ Delivery in 31 minutes (by about 4:08 PM)',
+    delivery: orderDelivery(),
+    shipments: [
+      {
+        sequence: 1,
+        store_name: 'Demo Store',
+        store_area: 'Kothrud',
+        delivery_type: 'fast',
+        distance_km: '2.70',
+        prep_minutes: 10,
+        eta_minutes: 38,
+        estimated_ready_at: '2026-09-24T10:10:00Z',
+        estimated_delivery_at: '2026-09-24T10:38:00Z',
+        window_start: '2026-09-24T10:38:00Z',
+        window_end: '2026-09-24T10:53:00Z',
+        item_ids: [1],
+      },
+    ],
     cancellation_reason: '',
     cancelled_at: null,
     delivered_at: null,

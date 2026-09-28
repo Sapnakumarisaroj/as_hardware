@@ -189,11 +189,76 @@ cart lines (current catalogue prices)
 - Admins manage offers in Django admin (Offers: targets, priority, schedule, "Live now" column). There is no customer
   or staff write API for offers until the Phase 11 dashboard.
 
-### Delivery ETA engine (Phase 9)
-`eta = prep_time(store, items) + queue_delay(open orders per available partner) + travel_time(distance)`.
-The distance is the haversine distance between store and address (free, offline) × a road-factor ÷ the configured average
-speed, flagged `eta_source: "estimate"`. A routing API can be plugged in later. Fast delivery is offered when
-`eta ≤ FAST_DELIVERY_MAX_MINUTES`; otherwise the engine returns the next available slot.
+### Fulfilment and delivery engine (Phase 9)
+`apps/delivery`: `locations.py` (where is the customer) → `fulfillment.py` (which store or stores) → `eta.py` (when) →
+`assignment.py` (which rider may carry it). `orders.checkout` and `orders.services.place_order` call
+`plan_fulfillment`; the same plan feeds the product page, cart, checkout preview and the order, so they cannot disagree.
+
+**1. Location.** An address resolves to the best available precision: `exact` (map pin from the Leaflet picker, or
+the address geocoded once), `pin` (centre of the PIN code, from the admin-managed `PinCode` table or geocoded once)
+or `unknown` (only the PIN string).
+
+**2. Delivery zones.** A store delivers to a location if one of its **active** zones covers it: the PIN code is in
+the zone's list, or the location is within `radius_km` (straight line) and inside the zone's polygon when one is set.
+With no coordinates on either side, only the store's own PIN matches. When several zones of a store cover the
+location, the best one is used: fast-delivery zones first, then the lowest fee, then the smallest radius. Only active
+stores and dark stores that accept orders count; **warehouses never ship to customers**.
+
+**3. Store selection** (`plan_fulfillment`). This replaced "first store that has everything".
+1. Candidates = stores whose zone covers the location.
+2. Every candidate holding **all** lines in the required quantity (available stock; reserved units don't count) gets
+   an estimate. The best wins: fast-eligible before standard, then lowest ETA, then shortest distance, then store id
+   (a stable tie-break). So a farther store that packs quicker or has a free rider can beat a nearer one.
+3. If no single store has everything and `SPLIT_FULFILLMENT_ENABLED`: lines are assigned greedily to the store
+   covering the most remaining lines (ties: best estimate), up to `MAX_SHIPMENTS_PER_ORDER` (3). A line is never
+   divided between stores. The order is fast only if **every** shipment is fast, and its ETA is the latest shipment's.
+   One store is always preferred over a split.
+4. Otherwise the items are not deliverable there: `out_of_zone`, `location_unknown` or `insufficient_stock`.
+
+One delivery fee per order: the rule of the primary shipment's zone (the shipment with the most lines), falling back
+to `DELIVERY_FEE` / `FREE_DELIVERY_MIN_ORDER`.
+
+**4. ETA** (`eta.estimate`, per store → location), in minutes, rounded up:
+
+    eta = preparation + rider wait + travel + handover
+
+| Part | Source |
+|---|---|
+| preparation | `store.avg_prep_minutes` + `store.prep_minutes_per_item` × (lines − 1) |
+| rider wait | capacity of the store right now: riders who can take an order (available, verified app partners below their `max_active_assignments`, plus `store.own_riders`) against the queue (confirmed/processing/packed shipments without a rider). A free rider → 0; otherwise the queue is spread over the riders on shift × `DELIVERY_RIDER_TURNAROUND_MINUTES` |
+| travel | `MapsProvider.route(store, customer)`: OSRM when enabled, else haversine × `ROAD_DISTANCE_FACTOR` at `DELIVERY_AVG_SPEED_KMPH`. Without coordinates: `SAME_PIN_DISTANCE_KM` for the store's own PIN, else the zone radius (worst case) |
+| handover | `DELIVERY_HANDOVER_MINUTES` |
+
+**Fast delivery** is offered only when the zone enables it, the store is open now (`opening_hours`), a rider can
+take the order, and `eta ≤` the zone's `fast_delivery_max_minutes` (else `FAST_DELIVERY_MAX_MINUTES`). Otherwise the
+answer is **standard delivery** with the reason: prepared in the current or next opening hours, dispatched in a batch
+after `STANDARD_DISPATCH_DELAY_MINUTES`, shown as a `STANDARD_WINDOW_MINUTES` window starting on the next half hour
+("Today, 4:30 PM – 6:30 PM" / "Tomorrow, …"). Nothing is hardcoded: every number comes from store, zone, rider and
+settings data, and customers see the calculated minutes.
+
+**5. The order.** `place_order` plans inside its transaction, stores the promise on the order (`delivery_type`,
+`eta_minutes`, `estimated_ready_at`, `estimated_delivery_at`, window) and one `OrderShipment` per store with its own
+estimate and the parts of the calculation (prep / wait / travel, distance, source). An online order is re-estimated
+at the same stores when it is paid, because the clock starts then.
+
+**6. Stock safety.** Planning only *reads* stock. Each line is then reserved at **its shipment's store** through
+`apply_movement`, which locks the inventory row and re-checks the quantity; if another order took the stock in
+between, the whole order rolls back with `insufficient_stock` (no order, no shipment, no reservation anywhere).
+Release on cancel, sale on pickup and restock on return all use the line's shipment store. Threaded tests cover
+competing orders spread over two stores and competing split orders.
+
+**7. Rider assignment (foundation).** `assign_shipment` locks the order, then the rider, and refuses orders that
+aren't waiting for a rider (`invalid_delivery_state`), a shipment that already has an active assignment
+(`already_assigned`) and riders who are offline, unverified, too far or at capacity (`partner_unavailable`). A rider
+at capacity becomes `busy`; cancelling or unassigning frees them. Threaded tests cover two staff assigning one shipment
+and three shipments competing for one rider. The rider's own workflow is Phase 10.
+
+**Maps** (`integrations/maps`): `MapsProvider` = geocoder + router, chosen by `GEOCODING_PROVIDER` (`none` |
+`nominatim`) and `ROUTING_PROVIDER` (`haversine` | `osrm`). The default is fully offline. Network providers use
+the standard library over https only, time out after `MAPS_TIMEOUT_SECONDS`, and any failure falls back to the offline
+estimate, so an outage never blocks checkout. Geocoding answers (including "not found") are stored in `GeocodeCache`;
+OSRM routes are cached for `ROUTE_CACHE_SECONDS`. OSRM's car timings are never trusted below the configured
+two-wheeler speed.
 
 ### Background jobs without Celery/Redis
 `core.Job` table (built in Phase 8) plus `enqueue(name, payload, dedupe_key=…)`, `@job` handlers and `@periodic`
@@ -253,7 +318,7 @@ integrations/llm/
 | WhatsApp  | `MockWhatsAppProvider` (stores and logs messages)  | WhatsApp Business Cloud API (Meta) | `WHATSAPP_PROVIDER` |
 | SMS       | `MockSMSProvider`                      | MSG91 / Twilio                   | `SMS_PROVIDER` |
 | Email     | console backend (dev)                  | hosting mailbox SMTP             | `EMAIL_*` |
-| Maps      | OpenStreetMap tiles + **Leaflet** (frontend), Nominatim geocoding (rate-limited, cached), haversine distance | Google Maps | `MAPS_PROVIDER` |
+| Maps      | Offline: haversine distance, admin-managed PIN centres. OpenStreetMap tiles + **Leaflet** for the address pin (frontend) | Still free: Nominatim geocoding (rate-limited, cached), OSRM routing (self-hosted or the public demo server). No paid maps provider is implemented | `GEOCODING_PROVIDER`, `ROUTING_PROVIDER`, `VITE_MAP_TILE_URL` |
 | LLM       | `NoLLMProvider` / Ollama (local)       | OpenAI-compatible / Anthropic    | `LLM_PROVIDER` |
 | Storage   | local filesystem (`MEDIA_ROOT`)        | S3-compatible (only if approved) | `STORAGE_BACKEND` |
 
@@ -343,6 +408,27 @@ product page ("applied automatically in your cart"), `CartOfferNotes` (applied o
 `AvailableCouponList` at checkout (server verdict per coupon, one-tap apply) and `LiveOffersStrip` on the homepage
 (hidden when no offers run). `PriceSummary` shows one row per applied offer and a separate coupon row. Cart, wishlist
 and login/register routes are now lazy-loaded too (main bundle ≈ 327 kB).
+
+### Delivery UI (Phase 9)
+`features/delivery`: typed quotes, hooks (`useServiceability`, `useProductEstimate`, `useCartEstimate`) and the shared
+display components. The browser never calculates a time or a fee; it shows what the fulfilment engine returned.
+- **One PIN code per browser** (`location.ts`, `useSyncExternalStore` over `localStorage`), shared by the header
+  selector, product pages and the cart. The header selector checks the PIN with `/delivery/check/`.
+- `DeliveryEstimate` renders a quote the same way everywhere: "⚡ Fast delivery available · Estimated delivery:
+  42 minutes", or "🚚 Standard delivery · Estimated delivery: Tomorrow, 10:00 AM – 12:00 PM" preceded by "Fast delivery
+  unavailable — *reason*", or the reason the items can't be delivered (`role="alert"`). Several stores are listed one
+  per line. Emoji are decorative (`aria-hidden`); the words carry the meaning.
+- **Product page**: estimate for the selected variant and quantity to the saved PIN; without a PIN, only the catalogue
+  hint and a PIN form (nothing promised). **Cart**: estimate to the default saved address, else the PIN.
+  **Checkout**: the plan for the chosen address with the zone's fee; an out-of-zone address blocks the order.
+  **Confirmation, order detail**: `OrderDeliveryCard` (type, estimate, window, preparation time, fulfilment store,
+  delivery status, one block per store for split orders). **Order history**: the delivery sentence per order.
+- **Address map pin** (`features/addresses/AddressLocationField` + `MapPinPicker`): optional; tap the map, drag the
+  pin or use the browser's location. Leaflet and its CSS load only when the map is opened (separate ≈ 150 kB chunk).
+  Tiles come from `VITE_MAP_TILE_URL` (OpenStreetMap by default, see FREE_TOOLS.md for its usage policy).
+- If an estimate can't be loaded the page still works: the product page falls back to the PIN form, the cart hides
+  the block, and checkout (which needs the plan) shows its normal retry.
+- Main bundle measured at the Phase 9 build: 481 kB (148 kB gzipped).
 
 ## 9. Environments
 | | Local (Windows) | Production (existing hosting) |

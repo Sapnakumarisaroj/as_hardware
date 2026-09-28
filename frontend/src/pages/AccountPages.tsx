@@ -8,6 +8,8 @@ import { useAddresses } from '@/features/addresses/api'
 import { AddressFormModal, AddressList, AddressText } from '@/features/addresses/components'
 import { useAuth } from '@/features/auth/context'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
+import { OrderDeliveryCard } from '@/features/delivery/components'
+import { orderStatusLabel } from '@/features/orders/status'
 import { ORDERS_PAGE_SIZE, useOrder, useOrders, useRetryPayment, useReturns } from '@/features/orders/api'
 import {
   CancelOrderDialog,
@@ -146,7 +148,11 @@ export function OrdersPage() {
                   </p>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <PaymentStatusBadge order={order} />
-                    {order.delivery_message && <span className="text-xs text-ink-600">{order.delivery_message}</span>}
+                    {order.delivery_message && (
+                      <span className={`text-xs ${order.delivery.type ? 'font-semibold text-ink-900' : 'text-ink-600'}`}>
+                        {order.delivery_message}
+                      </span>
+                    )}
                   </div>
                 </div>
               </Link>
@@ -282,9 +288,10 @@ export function OrderDetailPage() {
             <h2 id="progress-heading" className="mb-3 text-base font-bold">
               Order status
             </h2>
-            {data.delivery_message && <p className="mb-4 text-sm text-ink-800">{data.delivery_message}</p>}
+            {data.delivery_message && <p className="mb-4 text-sm font-semibold text-ink-900">{data.delivery_message}</p>}
             <OrderTimeline order={data} />
           </section>
+          <OrderDeliveryCard order={data} statusLabel={orderStatusLabel(data)} headingId="delivery-heading" />
           <section aria-labelledby="items-heading" className="rounded-lg bg-white px-5 py-4 ring-1 ring-steel-200">
             <h2 id="items-heading" className="text-base font-bold">
               Items

@@ -291,13 +291,16 @@ def receive_return(ret: ReturnRequest, *, actor, note: str = "", restock: bool =
     """Staff confirm the items are back: optionally restock them and record the pending refund."""
     ret, order = _lock(ret)
     _require(ret, RS.APPROVED, action="marked received")
-    lines = list(ret.items.select_related("order_item"))
+    lines = list(ret.items.select_related("order_item__shipment"))
 
     if restock:
         for line in lines:
             if line.order_item.variant_id is None:
                 continue  # the variant was deleted from the catalog; nothing to restock
-            inventory, _ = Inventory.objects.get_or_create(store=order.store, variant_id=line.order_item.variant_id)
+            # Back to the store it shipped from (split orders: that line's shipment store).
+            shipment = line.order_item.shipment
+            store_id = shipment.store_id if shipment else order.store_id
+            inventory, _ = Inventory.objects.get_or_create(store_id=store_id, variant_id=line.order_item.variant_id)
             apply_movement(
                 inventory,
                 StockMovement.Type.RETURN,

@@ -22,6 +22,8 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: ['./src/test/setup.ts'],
       css: false,
+      // Tests wait up to 10 s for lazy routes (src/test/setup.ts); the test itself needs longer than that.
+      testTimeout: 30_000,
     },
   }
 })

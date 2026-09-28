@@ -3,13 +3,36 @@ from django.contrib import admin, messages
 from apps.core.exceptions import ServiceError
 
 from . import returns, services
-from .models import Order, OrderItem, OrderStatus, OrderStatusHistory, ReturnItem, ReturnRequest
+from .models import Order, OrderItem, OrderShipment, OrderStatus, OrderStatusHistory, ReturnItem, ReturnRequest
 from .state_machine import RETURN_WORKFLOW_STATUSES, TRANSITIONS
 
 
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
     fields = ("sku", "product_name", "variant_name", "unit_price", "quantity", "line_total")
+    readonly_fields = fields
+    extra = 0
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+class ShipmentInline(admin.TabularInline):
+    model = OrderShipment
+    fields = (
+        "sequence",
+        "store",
+        "zone",
+        "delivery_type",
+        "distance_km",
+        "prep_minutes",
+        "wait_minutes",
+        "travel_minutes",
+        "eta_minutes",
+        "estimated_delivery_at",
+        "eta_source",
+    )
     readonly_fields = fields
     extra = 0
     can_delete = False
@@ -59,13 +82,15 @@ class OrderAdmin(admin.ModelAdmin):
         "payment_status",
         "grand_total",
         "store",
+        "delivery_type",
+        "estimated_delivery_at",
         "created_at",
     )
-    list_filter = ("status", "payment_status", "payment_method", "store")
+    list_filter = ("status", "payment_status", "payment_method", "delivery_type", "store")
     search_fields = ("order_number", "user__email", "user__phone")
     date_hierarchy = "created_at"
     list_select_related = ("user", "store")
-    inlines = [OrderItemInline, StatusHistoryInline]
+    inlines = [OrderItemInline, ShipmentInline, StatusHistoryInline]
     # Return statuses move only through the return request (see ReturnRequestAdmin).
     actions = [
         _transition_action(s)

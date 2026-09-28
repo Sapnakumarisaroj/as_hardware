@@ -64,7 +64,32 @@ free Django admin. No promotion/pricing SaaS, no Redis cache.
 | Background jobs | In-repo `core.Job` queue + `manage.py run_jobs` via the hosting's **cron** | ✅ project code | ✅ | No | No Redis/Celery; portable claim with a conditional UPDATE |
 | Tests for the gateway | Recorded fakes of Razorpay's REST API + `unittest.mock` | ✅ | ✅ | No | Runs without network or credentials |
 
-## Frontend (no new packages in Phases 4–8)
+## Fulfilment, delivery zones & ETA (Phase 9)
+No paid maps or routing service is used or implemented (no Google Maps). The default configuration makes **no
+network calls at all**.
+
+| Feature | Tool | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Distance | Haversine formula (in-repo Python, `integrations/maps/base.py`) × `ROAD_DISTANCE_FACTOR` | ✅ project code | ✅ | No | **Default** (`ROUTING_PROVIDER=haversine`). No limits |
+| Zone polygons | Ray-casting point-in-polygon (in-repo Python) | ✅ project code | ✅ | No | No GIS extension (PostGIS etc.) needed, so it runs on shared MySQL hosting |
+| PIN code centres | `delivery_pincode` table, managed in Django admin | ✅ project data | ✅ | No | Demo seed has approximate centres for 11 Pune PIN codes |
+| Road routing (optional) | **OSRM** `/route/v1/driving` via Python `urllib` | ✅ BSD-2 software, ODbL data | ✅ if self-hosted | No | `ROUTING_PROVIDER=osrm`. See limits below |
+| Geocoding (optional) | **Nominatim** (OpenStreetMap) via Python `urllib` | ✅ GPL-2 software, ODbL data | ✅ if self-hosted | No | `GEOCODING_PROVIDER=nominatim`. See limits below |
+| Address map pin | **Leaflet 1.9** (npm `leaflet`, types `@types/leaflet`) | ✅ BSD-2 | ✅ | No | The only new package of Phase 9. Loaded lazily (own ≈ 150 kB chunk) when a customer opens the map |
+| Map tiles | **OpenStreetMap** standard tiles (`tile.openstreetmap.org`) | ✅ ODbL data; free to use within the tile policy | ❌ | No | `VITE_MAP_TILE_URL`. See limits below |
+| Browser location | W3C Geolocation API | ✅ built into browsers | ✅ | No | Needs HTTPS in production and the customer's permission |
+
+### Usage limits of the public OpenStreetMap services
+These are community-funded servers with **no SLA**. They are fine for development and light use; a busy store should
+self-host or use a provider that offers the same software (both are configuration changes, not code changes).
+
+| Service | Limit / policy | How the project complies |
+|---|---|---|
+| Nominatim (`nominatim.openstreetmap.org`) | At most **1 request per second**; an identifying `User-Agent` (set `NOMINATIM_USER_AGENT` to the site name and a contact email); results **must be cached**; no bulk or systematic geocoding; no autocomplete | One request per second per process (lock + sleep); every answer, including "not found", is stored in `delivery_geocodecache` and never asked again; used only for a saved address without a map pin and for unknown PIN codes; the map pin avoids geocoding altogether |
+| OSRM demo server (`router.project-osrm.org`) | Demo server for **light, non-commercial-scale use**: about **1 request per second**, no heavy or commercial load, may be slow or offline at any time | Routes are cached for 24 h (`ROUTE_CACHE_SECONDS`); 4 s timeout; any error falls back to the offline haversine estimate; for production traffic set `OSRM_BASE_URL` to a self-hosted OSRM (free software, needs a VPS and a map extract) |
+| OSM tile server (`tile.openstreetmap.org`) | No bulk downloading or prefetching; keep the visible "© OpenStreetMap contributors" attribution; a valid `Referer` (browsers send it); heavy users must switch to another tile source | Tiles load only while a customer has the address map open; attribution is shown on the map; `VITE_MAP_TILE_URL` switches to any other tile server |
+
+## Frontend (no new runtime packages in Phases 4–8; Leaflet added in Phase 9)
 | Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
 |---|---|---|---|---|---|
 | UI library | React 19 | ✅ MIT | ✅ | No | |
@@ -93,8 +118,7 @@ free Django admin. No promotion/pricing SaaS, no Redis cache.
 | Razorpay Checkout script | `checkout.razorpay.com/v1/checkout.js` | ❌ Razorpay's hosted script (free to load) | ❌ | Public key id only | Loaded only on the payment page when an attempt is a Razorpay one; card/UPI entry happens inside Razorpay's window, never on our pages |
 | WhatsApp (dev) | `MockWhatsAppProvider` (Phase 20) | ✅ project code | ✅ | No | Records messages; never claims real delivery |
 | WhatsApp (prod, optional) | WhatsApp Business Cloud API (Meta) | ❌ Meta pricing per conversation/template | ❌ | Yes | Needs owner approval + Meta business account |
-| Maps (planned) | OpenStreetMap tiles + Leaflet; Nominatim geocoding | ✅ ODbL data / BSD-2 library | ✅ | No | Respect Nominatim policy (≤ 1 req/s, cache results, identify User-Agent) |
-| Distance / ETA (planned) | Haversine (in-repo Python) | ✅ | ✅ | No | Routing APIs are optional later |
+| Maps, distance, ETA | Haversine + PIN table (default); Leaflet + OpenStreetMap tiles; optional Nominatim and OSRM | ✅ | ✅ (default) | No | Built in Phase 9: see "Fulfilment, delivery zones & ETA" above for the usage limits |
 | AI (dev, planned) | Ollama + open models (e.g. Llama 3.1, Qwen 2.5, LLaVA) | ✅ MIT runtime; model licences vary | ✅ | No | Needs local RAM/GPU; not usable on shared hosting |
 | AI (prod default) | `none` provider: rule-based fallbacks | ✅ project code | ✅ | No | No paid AI API is subscribed automatically |
 | Email (prod) | SMTP mailbox from the hosting plan | ✅ included in hosting | ❌ | SMTP password | Console backend in dev |

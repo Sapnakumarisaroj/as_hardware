@@ -6,7 +6,11 @@ import { QuantityStepper } from '@/components/QuantityStepper'
 import { useToast } from '@/components/toast'
 import { useAuth } from '@/features/auth/context'
 import { useCart, useRemoveCartItem, useUpdateCartItem, type CartLine } from '@/features/cart/api'
+import { useAddresses } from '@/features/addresses/api'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
+import { useCartEstimate } from '@/features/delivery/api'
+import { DeliveryEstimate, PincodeForm } from '@/features/delivery/components'
+import { usePincode } from '@/features/delivery/location'
 import { CartOfferNotes } from '@/features/offers/components'
 import { PriceSummary } from '@/features/orders/components'
 import { useAddToWishlist } from '@/features/wishlist/api'
@@ -137,6 +141,45 @@ function Line({ line }: { line: CartLine }) {
   )
 }
 
+/**
+ * Delivery estimate for the whole cart: to the default saved address when there is one,
+ * otherwise to the PIN code chosen in the header. Hidden if it can't be loaded (checkout
+ * shows the binding estimate either way).
+ */
+function CartDelivery({ cartVersion }: { cartVersion: string }) {
+  const pincode = usePincode()
+  const addresses = useAddresses()
+  const saved = addresses.data?.find((a) => a.is_default) ?? addresses.data?.[0]
+  const target = saved ? { addressId: saved.id } : pincode ? { pincode } : null
+  const estimate = useCartEstimate(addresses.isPending ? null : target, cartVersion)
+
+  if (addresses.isPending) return null
+  // A saved address that can't be checked right now: checkout shows the estimate instead.
+  if (saved && estimate.isError) return null
+  return (
+    <section aria-labelledby="cart-delivery" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+      <h2 id="cart-delivery" className="mb-2 text-base font-bold">
+        Delivery
+      </h2>
+      {target && estimate.isPending ? (
+        <p className="text-sm text-ink-600">Checking delivery…</p>
+      ) : estimate.data && target ? (
+        <div aria-busy={estimate.isFetching}>
+          <p className="mb-1 text-xs text-ink-600">
+            To{' '}
+            <span className="font-semibold text-ink-900">
+              {saved ? `${saved.name}, ${saved.area || saved.city} ${saved.postal_code}` : `PIN ${pincode}`}
+            </span>
+          </p>
+          <DeliveryEstimate quote={estimate.data} />
+        </div>
+      ) : (
+        <PincodeForm label="Enter your PIN code to see when your order can arrive" />
+      )}
+    </section>
+  )
+}
+
 export function CartPage() {
   usePageMeta('Your cart')
   const { status } = useAuth()
@@ -219,6 +262,7 @@ export function CartPage() {
 
       <aside className="h-fit space-y-3 lg:sticky lg:top-32">
         <CartOfferNotes offers={offers} />
+        <CartDelivery cartVersion={items.map((line) => `${line.variant_id}x${line.quantity}`).join(',')} />
         <div className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
           <PriceSummary
             totals={totals}

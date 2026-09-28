@@ -102,6 +102,9 @@ All configuration comes from environment variables. See `.env.example` for the f
 | `LLM_PROVIDER` | `none` or `ollama` | `none` unless you choose and approve a provider |
 | `BACKGROUND_JOBS_MODE` | `inline` | `cron` if cron is available |
 | `VITE_API_BASE_URL` | `http://localhost:8000/api` | `https://api.yourdomain.com/api` (**build-time**; set before `npm run build`) |
+| `ROUTING_PROVIDER` | `haversine` (offline) | `haversine`, or `osrm` with `OSRM_BASE_URL` (§2a) |
+| `GEOCODING_PROVIDER` | `none` (offline) | `none`, or `nominatim` with `NOMINATIM_USER_AGENT` (§2a) |
+| `VITE_MAP_TILE_URL`, `VITE_MAP_CENTER` | blank → OpenStreetMap tiles, map opens on Pune | your city's `lat,lng` (**build-time**) |
 
 Where to put production values, in order of preference:
 1. the **environment variables** section of the control panel's "Setup Python App"
@@ -109,6 +112,38 @@ Where to put production values, in order of preference:
 3. a `.env` file at the path given in `ENV_FILE`
 
 Never commit `.env`. `VITE_*` values are public (compiled into the JS bundle), so never put secrets there.
+
+### 2a. Delivery engine setup (Phase 9)
+
+Delivery works out of the box with **no external service** (`ROUTING_PROVIDER=haversine`, `GEOCODING_PROVIDER=none`).
+What it needs is real data, entered once in the Django admin (`/django-admin/`):
+
+1. **Stores** → each store: address, PIN code, **latitude/longitude** (right-click the spot on openstreetmap.org →
+   "Show address" shows the coordinates), opening hours, preparation time, and "Own riders" if riders don't use the
+   partner app. A store without coordinates can only serve PIN codes listed in its zones.
+2. **Delivery zones** (on the store page or under Delivery → Delivery zones): radius and/or PIN codes, fee and
+   free-delivery threshold (blank = the global `DELIVERY_FEE` / `FREE_DELIVERY_MIN_ORDER`), fast delivery on/off and
+   its cutoff. **A store without an active zone receives no orders.**
+3. **PIN codes** (Delivery → PIN codes): the approximate centre of each PIN code you serve, so customers who have
+   only typed a PIN (or saved an address without a map pin) get a distance-based estimate.
+4. **Delivery partners**: verified, with a home store and "Deliveries at once". Fast delivery is offered only while
+   a rider (app partner or own rider) can take the order.
+
+Tuning (environment variables; all optional, defaults in `.env.example`): `FAST_DELIVERY_MAX_MINUTES`,
+`DELIVERY_AVG_SPEED_KMPH`, `ROAD_DISTANCE_FACTOR`, `DELIVERY_HANDOVER_MINUTES`, `DELIVERY_RIDER_TURNAROUND_MINUTES`,
+`STANDARD_DISPATCH_DELAY_MINUTES`, `STANDARD_WINDOW_MINUTES`, `SPLIT_FULFILLMENT_ENABLED`, `MAX_SHIPMENTS_PER_ORDER`.
+`TIME_ZONE` is `Asia/Kolkata`; opening hours are in that time zone.
+
+**Optional OpenStreetMap services** (free, but with usage limits: see FREE_TOOLS.md):
+- `ROUTING_PROVIDER=osrm`: road distances from OSRM. The public demo server (`OSRM_BASE_URL` default) is for light
+  use only; for production traffic point `OSRM_BASE_URL` at your own OSRM (needs a VPS; not possible on shared hosting).
+- `GEOCODING_PROVIDER=nominatim`: set `NOMINATIM_USER_AGENT="YourSite/1.0 (you@yourdomain.com)"`.
+- Both need **outbound HTTPS** from the hosting account (some shared hosts block it; ask support, or stay offline).
+  If a service is unreachable the engine silently uses the offline estimate.
+- OSRM results are cached in Django's cache, so run `createcachetable` (§3).
+
+**Frontend map.** The address form loads map tiles from `tile.openstreetmap.org` in the customer's browser. If you
+add a Content-Security-Policy header, allow that host in `img-src`. "Use my current location" works only on HTTPS.
 
 ## 3. Database setup
 
@@ -253,6 +288,8 @@ Options -Indexes
 - [ ] SSL active on all three hostnames
 - [ ] DB backups scheduled
 - [ ] Cron job for `run_jobs` (if `BACKGROUND_JOBS_MODE=cron`)
+- [ ] Stores have coordinates, opening hours and at least one active delivery zone; PIN codes entered (§2a)
+- [ ] `GET /api/delivery/check/?postal_code=<a PIN you serve>` answers `serviceable: true`, and a PIN you don't serve `false`
 
 ## 12. Troubleshooting
 
@@ -269,4 +306,7 @@ Options -Indexes
 | Code changes not visible | Restart the app (`touch tmp/restart.txt`) |
 | Redirect loop after enabling SSL | `SECURE_SSL_REDIRECT=false` (let Apache redirect) |
 | `health` returns `"database":"unavailable"` (503) | DB credentials or host wrong, or the DB is down. Check the log for the request ID shown in the `X-Request-ID` header |
+| Checkout says "We don't deliver to PIN … yet" for an address you serve | No active delivery zone covers it: add the PIN to a zone's PIN codes or increase the radius; check the store is active, accepts orders and has coordinates (§2a) |
+| Only "Standard delivery" is ever offered | The reason is in `fast_unavailable_reason`: no rider available (set "Own riders" or put a verified partner online), store closed (opening hours), zone has fast delivery off, or the calculated time is over the cutoff |
+| Map in the address form stays grey | Tiles blocked: allow `tile.openstreetmap.org` in the CSP `img-src`, or set `VITE_MAP_TILE_URL` and rebuild |
 | Processes killed / slow | Plan resource limits (§0 #10). Lower Passenger workers; keep `LLM_PROVIDER=none` on shared hosting |

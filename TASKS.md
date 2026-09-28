@@ -155,8 +155,44 @@ Scope: ROADMAP Phase 8 (Razorpay order/verify/webhook/refund, idempotency, `run_
 - [~] Razorpay **not** exercised against Razorpay's servers: no credentials in this environment (and none should be committed). Covered by recorded-API tests; a test-mode run with the owner's `rzp_test_` keys is the first go-live step
 - [~] Browser testing not performed (same localhost limitation; not re-attempted)
 
+## Phase 9 — Fulfilment and fast delivery ✅ (2026-09-28)
+Scope: ROADMAP Phase 9 (stores/zones, fulfilment selection, ETA engine, geocode cache) plus the items deferred to it:
+"store selection picks the first store", "serviceability/ETA per address", and the Leaflet/OSM address pin (ROADMAP
+row 5). The rider's own workflow (accept, pickup, OTP, proof) stays in Phase 10; only eligibility and safe assignment
+were built. Checkout, orders, returns and payments were extended, not rebuilt.
+- [x] Delivery zones: radius, PIN-code list, optional polygon, active/inactive, per-zone fee and free-delivery threshold, fast delivery on/off with its own cutoff; best zone per store (fast first, then cheapest, then smallest)
+- [x] Locations: map pin → geocoded address → PIN centre (`PinCode` table) → PIN string only; `GeocodeCache` stores every geocoding answer, including "not found"
+- [x] `MapsProvider` (`integrations/maps`): haversine router (default, offline), optional OSRM router and Nominatim geocoder over the standard library (https only, timeout, cached, 1 request/second, fallback to the offline estimate on any error). No paid provider
+- [x] ETA = preparation (store base + per extra line) + rider wait (riders who can take an order vs. shipments waiting, turnaround time) + travel (route ÷ configured speed) + handover; opening hours; nothing hardcoded
+- [x] Fast delivery only when the zone allows it, the store is open, a rider can take the order and the ETA is within the cutoff; otherwise standard delivery with the reason and the next window ("Today, 4:30 PM – 6:30 PM" / "Tomorrow, …")
+- [x] Store selection: every covering store that holds all lines is estimated; fast-eligible first, then lowest ETA, distance, store id. Replaces "first store with everything"
+- [x] Multi-store orders: greedy split when no store has everything (`SPLIT_FULFILLMENT_ENABLED`, `MAX_SHIPMENTS_PER_ORDER`); a line is never divided; one store preferred over a split; the order is fast only if every shipment is
+- [x] Orders: `delivery_type`, `eta_minutes`, `estimated_ready_at`, `estimated_delivery_at`, delivery window; `OrderShipment` per store with its estimate and its parts; items linked to their shipment; online orders re-estimated when paid; notifications quote the real estimate
+- [x] Stock safety: each line reserved / released / sold / restocked at its shipment's store; a stale plan fails with `insufficient_stock` and writes nothing; out-of-zone addresses can't order (`not_deliverable`)
+- [x] Assignment foundation: eligible riders (active, verified, available, below capacity, same store or within pickup radius), ranking, `assign_shipment` with order → rider locks; refuses invalid order states, duplicates and riders at capacity; cancel/unassign frees the rider; packed orders move to `assigned` once every shipment has a rider
+- [x] APIs: `/api/delivery/check/`, `/estimate/`, `/cart-estimate/`, `/zones/`, `/api/stores/availability/` (status only, no quantities), staff `/api/delivery/shipments/` (+ `eligible-partners`, `assign`); checkout preview and orders extended (additive)
+- [x] Django admin: stores (preparation times, own riders, opening hours, map-location column, zones inline), delivery zones (fieldsets, effective fee/cutoff columns), PIN codes, geocode cache (read-only), partner capacity, shipments on the order page; assignments can't be added by hand
+- [x] Demo data: delivery settings for the 2 demo stores, 3 zones (Kothrud 5 km fast, Kothrud extended 10 km standard ₹60, Baner 5 km fast with its own fee and 45-minute cutoff), 11 approximate Pune PIN centres
+- [x] Frontend: header PIN selector checks serviceability; product page estimate for the variant and quantity; cart estimate (default address, else PIN); checkout plan with zone fee, fast-unavailable reason, split shipments, out-of-zone block; delivery card on confirmation and order detail (type, estimate, window, preparation, store, status, per-store blocks); delivery sentence in order history; optional Leaflet/OpenStreetMap pin (tap, drag or browser location) in the address form, loaded lazily
+- [x] Found and fixed while testing: a zone with a ₹0 fee override was ranked as the most expensive zone; estimate labels ("Today"/"Tomorrow") were relative to the wall clock instead of the time the estimate was calculated for; a rider's pickup address came from the order's primary store instead of their shipment's store
+- [x] Tests: backend 533 pass (100 new, in `delivery/tests/test_eta.py`, `test_fulfillment.py`, `test_assignment.py`, `test_api.py` and `orders/tests/test_fulfillment_orders.py`; 4 of them real-thread races); frontend 104 pass across 14 files (16 new)
+- [x] Verified: ruff lint + format clean, `check` clean, `makemigrations --check` clean, 5 migrations applied to the dev DB (backup taken first, nothing reset) and demo delivery data seeded, `payments_check` clean, OpenAPI 0 errors (same 4 cosmetic enum warnings); frontend lint/typecheck clean, production build OK (main bundle 481 kB / 148 kB gzip, Leaflet in its own 150 kB lazy chunk)
+- [x] Live end-to-end: 53/53 checks over real HTTP with JWT logins against a running dev server on a **copy** of the dev DB (temporary customers, admin, manager and rider lived only in the copy): zones, eligible / standard-only / non-eligible / PIN-listed locations, invalid input, store selection by address (Kothrud vs Baner), insufficient stock, checkout previews, refused out-of-zone order, fast and standard orders, customer-visible delivery data, stock reserved at the chosen store only, staff shipment list and scoping, rider assignment, duplicate and over-capacity refusals, cancel → rider freed and stock released, cross-customer 404s
+- [~] Main bundle is 481 kB; Phase 8 recorded 327 kB. Leaflet is not in it (verified in the build output) and the lockfile only gained Leaflet; the cause of the difference was not investigated. Still below Vite's 500 kB warning
+- [~] OSRM and Nominatim were **not** called for real: providers are tested against faked HTTP responses, and both are off by default
+- [~] The Leaflet map itself is not covered by tests (jsdom can't render it; the form around it is tested with the map mocked) and browser testing was not performed (same localhost limitation as earlier phases; not re-attempted)
+- [~] Frontend test timeouts raised (wait 10 s, test 30 s): with 14 files starting at once the first lazy-route import sometimes exceeded 5 s on this machine
+
 ## Known limitations carried forward
-- Store selection picks the first store covering all items (distance/zone/ETA selection is Phase 9); `delivery.eta_minutes` is always null until then
+- Delivery estimates use straight-line distance × a road factor unless OSRM is enabled; traffic, weather and one-way streets are not modelled. PIN-only addresses are estimated from the PIN's centre (or the zone radius when the PIN has no known centre)
+- Rider wait is a simple queue model (riders on shift × turnaround time); riders' live positions and routes are not used for the ETA. In-house riders are a number on the store ("Own riders"), not tracked individually
+- One delivery status per order: shipments of a split order don't have their own status, and one delivery fee is charged per order (the primary shipment's zone rule). Per-shipment status comes with the Phase 10 rider workflow
+- A split order is planned greedily (store covering most lines first), which is not always the mathematically best split; a line is never divided between stores, so 5 units with 3 + 3 in two stores can't be ordered together
+- The plan reads stock before the reservation locks it. On PostgreSQL/MySQL two simultaneous orders for the last units at one store can make the second fail with `insufficient_stock` even if another store could have served it; the customer retries and gets the other store. (SQLite serialises transactions, so tests can't show this)
+- Customers choose no delivery slot; standard delivery gets the next window. Estimates are not recalculated after the order is confirmed (delays are not pushed to the customer until Phase 10/20)
+- Rider assignment is manual (staff API); auto-assignment, accept/decline, pickup, OTP and proof are Phase 10. The generic `packed → assigned` transition still works without an app rider, because in-house riders have no accounts
+- Delivery zones, PIN codes and store delivery settings are managed in Django admin only; polygons are entered as JSON (no map editor). Dashboard in Phase 11
+- Public OpenStreetMap services (tiles, Nominatim, OSRM demo) have usage limits and no SLA (FREE_TOOLS.md)
 - Offers have no usage limits or per-customer caps, no "buy X get Y"/bundle or free-delivery offer types, and only one coupon per order; offers are managed in Django admin only (dashboard in Phase 11)
 - Product listing prices stay the catalogue price; the offer discount appears in the cart (the badge says so), not as a reduced list price
 - Razorpay is implemented but inactive until the owner adds keys and registers the webhook (DEPLOYMENT.md). Only one gateway at a time; switching providers leaves older attempts with their original provider
@@ -170,9 +206,8 @@ Scope: ROADMAP Phase 8 (Razorpay order/verify/webhook/refund, idempotency, `run_
 - Cart "save for later" uses the wishlist (per product, not per variant)
 - Search is keyword/substring based (no typo tolerance or synonyms; "tap" also matches "tape"); semantic search is Phase 13
 - Specification filters need consistent spec names/values in the admin; variant-level attributes (e.g. wire length) are shown on the product page but are not yet filterable
-- The location selector only remembers a PIN code; serviceability/ETA per address is Phase 9
 - Product/category pages set title and meta description client-side (no server rendering or sitemap yet)
-- Delivery assignment workflow (accept, pickup, OTP, proof) is Phase 10; partners are verified by admins in Django admin
+- Delivery partners are verified by admins in Django admin
 - Email verification is not implemented yet (`email_verified` is reset on email change)
 - A local dev server stopped with `Stop-Process -Force` makes Git Bash report exit 127 (the venv `python.exe` launcher loses its child); stop it with Ctrl+C in normal use
 - Refund failures are audit-logged and visible in the staff API/admin, but nobody is emailed about them yet (Phase 20 notifications)

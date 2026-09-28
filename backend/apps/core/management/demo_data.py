@@ -515,6 +515,42 @@ STORES = [
     ("DEMO-PUN-WH1", "Demo Warehouse — Chakan", "warehouse", "Chakan", "410501", "18.760600", "73.863600"),
 ]
 
+# Delivery settings of the demo stores (Phase 9). Opening hours {} = always open.
+_DAILY_8_TO_21 = {day: ["08:00", "21:00"] for day in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")}
+STORE_DELIVERY = {
+    "DEMO-PUN-KTH": {
+        "avg_prep_minutes": 10,
+        "prep_minutes_per_item": 2,
+        "own_riders": 2,
+        "opening_hours": _DAILY_8_TO_21,
+    },
+    "DEMO-PUN-BNR": {"avg_prep_minutes": 8, "prep_minutes_per_item": 1, "own_riders": 1, "opening_hours": {}},
+}
+
+# store code, zone name, radius km, PIN codes always served, fast delivery, fast cutoff (min), fee, free from
+# (None = global setting). The nearer zone offers fast delivery; the extended one is standard only.
+ZONES = [
+    ("DEMO-PUN-KTH", "Kothrud 5 km", "5", "411038 411029 411052", True, None, None, None),
+    ("DEMO-PUN-KTH", "Kothrud extended 10 km", "10", "", False, None, "60", "999"),
+    ("DEMO-PUN-BNR", "Baner 5 km", "5", "411045 411057", True, 45, "30", "399"),
+]
+
+# Approximate centres of some Pune PIN codes (demo values for distance estimates, not survey data).
+# postal code, area, lat, lng
+PIN_CODES = [
+    ("411001", "Pune Camp", "18.519600", "73.879300"),
+    ("411004", "Deccan Gymkhana", "18.516700", "73.841400"),
+    ("411007", "Aundh", "18.558000", "73.807500"),
+    ("411014", "Viman Nagar", "18.567900", "73.914300"),
+    ("411021", "Pashan / Bavdhan", "18.520400", "73.778600"),
+    ("411028", "Hadapsar", "18.508900", "73.926000"),
+    ("411029", "Kothrud (Ideal Colony)", "18.501800", "73.816500"),
+    ("411038", "Kothrud", "18.507400", "73.807700"),
+    ("411045", "Baner", "18.559000", "73.786800"),
+    ("411052", "Karve Nagar", "18.490000", "73.818000"),
+    ("411057", "Hinjawadi", "18.591300", "73.738900"),
+]
+
 # Automatic offers (Phase 6). name, description, type, value, max_discount, min_order, priority, category slugs
 # (empty = whole cart). All clearly marked "Demo".
 OFFERS = [

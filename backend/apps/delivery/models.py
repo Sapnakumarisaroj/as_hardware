@@ -1,7 +1,7 @@
-"""Delivery foundation: zones, partners, assignments and their status history.
+"""Delivery: zones, PIN codes, partners, assignments and their status history.
 
-The assignment/ETA algorithms arrive in Phases 9–10. "One active assignment per order"
-is enforced by the delivery service then (no partial unique indexes on MySQL).
+Phase 9 adds the fulfilment/ETA engine (fulfillment.py, eta.py, locations.py) and the assignment
+foundation (assignment.py). The rider workflow (accept, pickup, OTP, proof) is Phase 10.
 """
 
 from decimal import Decimal
@@ -21,7 +21,14 @@ LNG_VALIDATORS = [MinValueValidator(-180), MaxValueValidator(180)]
 
 
 class DeliveryZone(TimeStampedModel):
-    """Service area around a store: a radius, optionally refined by a polygon."""
+    """Service area of a store (Phase 9 rules, apps/delivery/fulfillment.py):
+
+    An address is inside the zone if its PIN code is listed in `postal_codes`, or its location is
+    within `radius_km` (straight line) of the store and, when a `polygon` is set, inside it.
+    Fee: `delivery_fee_override` / `free_delivery_min_order` replace the global defaults.
+    Fast delivery: only if enabled here and the calculated ETA ≤ `fast_delivery_max_minutes`
+    (or FAST_DELIVERY_MAX_MINUTES).
+    """
 
     store = models.ForeignKey("stores.Store", on_delete=models.CASCADE, related_name="delivery_zones")
     name = models.CharField(max_length=120)
@@ -30,8 +37,24 @@ class DeliveryZone(TimeStampedModel):
     )
     # Optional [[lat, lng], ...] ring, checked in Python (portable; no GIS extension needed).
     polygon = models.JSONField(null=True, blank=True)
+    postal_codes = models.TextField(
+        blank=True, help_text="PIN codes always served by this zone (comma or space separated), e.g. 411038, 411029."
+    )
     fast_delivery_enabled = models.BooleanField(default=True)
-    delivery_fee_override = models.DecimalField(**MONEY_FIELD_KWARGS, null=True, blank=True)
+    fast_delivery_max_minutes = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Offer fast delivery only when the ETA is at most this. Blank = global setting.",
+    )
+    delivery_fee_override = models.DecimalField(
+        **MONEY_FIELD_KWARGS, null=True, blank=True, help_text="Delivery fee in this zone. Blank = global setting."
+    )
+    free_delivery_min_order = models.DecimalField(
+        **MONEY_FIELD_KWARGS,
+        null=True,
+        blank=True,
+        help_text="Order value (after discounts) for free delivery in this zone. Blank = global setting.",
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -40,6 +63,47 @@ class DeliveryZone(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.radius_km} km)"
+
+    @property
+    def postal_code_set(self) -> set[str]:
+        return {code for code in self.postal_codes.replace(",", " ").split() if code.isdigit()}
+
+
+class PinCode(models.Model):
+    """Known PIN codes with an approximate centre point (admin-managed, or learned from geocoding).
+
+    Lets the engine estimate distance for a PIN typed in the location selector, or for an address
+    saved without a map pin. Not a serviceability list by itself: zones decide that.
+    """
+
+    postal_code = models.CharField(max_length=6, unique=True)
+    area = models.CharField(max_length=120, blank=True)
+    city = models.CharField(max_length=80, blank=True)
+    state = models.CharField(max_length=80, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, validators=LAT_VALIDATORS)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, validators=LNG_VALIDATORS)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["postal_code"]
+        verbose_name = "PIN code"
+
+    def __str__(self) -> str:
+        return f"{self.postal_code} {self.area}".strip()
+
+
+class GeocodeCache(models.Model):
+    """Every geocoding answer (including "not found"), so each query hits OpenStreetMap at most once."""
+
+    query = models.CharField(max_length=255, unique=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    display_name = models.CharField(max_length=255, blank=True)
+    source = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return self.query
 
 
 class DeliveryPartner(TimeStampedModel):
@@ -62,6 +126,9 @@ class DeliveryPartner(TimeStampedModel):
         "stores.Store", null=True, blank=True, on_delete=models.SET_NULL, related_name="delivery_partners"
     )
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.OFFLINE, db_index=True)
+    max_active_assignments = models.PositiveSmallIntegerField(
+        default=1, validators=[MinValueValidator(1)], help_text="Deliveries this partner may carry at once."
+    )
     is_verified = models.BooleanField(default=False, help_text="Documents checked by an admin.")
     is_active = models.BooleanField(default=True)
     current_latitude = models.DecimalField(
@@ -92,6 +159,11 @@ class DeliveryAssignment(TimeStampedModel):
     ACTIVE_STATUSES = (Status.ASSIGNED, Status.ACCEPTED, Status.PICKED_UP, Status.OUT_FOR_DELIVERY)
 
     order = models.ForeignKey("orders.Order", on_delete=models.PROTECT, related_name="delivery_assignments")
+    # Phase 9: the shipment (one store's part of the order) this rider carries. One active
+    # assignment per shipment is enforced by apps.delivery.assignment (locks, no partial index).
+    shipment = models.ForeignKey(
+        "orders.OrderShipment", null=True, blank=True, on_delete=models.PROTECT, related_name="assignments"
+    )
     partner = models.ForeignKey(DeliveryPartner, on_delete=models.PROTECT, related_name="assignments")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ASSIGNED, db_index=True)
     assigned_at = models.DateTimeField(auto_now_add=True)

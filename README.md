@@ -1,15 +1,22 @@
 # BoltRun
 
-AI-powered hardware marketplace with fast (~60-minute) delivery: a Django REST API and a React SPA.
+AI-powered hardware marketplace with fast delivery from nearby stores: a Django REST API and a React SPA. Delivery
+times are calculated per order (store, distance, preparation, riders, workload), never a fixed promise.
 
-> Status: **Phase 8 complete** (catalogue, cart, checkout with addresses, automatic offers and coupons, cash on delivery,
+> Status: **Phase 9 complete** (catalogue, cart, checkout with addresses, automatic offers and coupons, cash on delivery,
 > online payments via Razorpay (ready; needs your keys) or the development mock gateway, verified webhooks, gateway
-> refunds, order history, cancellation, returns and "Buy again"). Cron: `manage.py run_jobs` every 5 minutes. See [TASKS.md](TASKS.md)
+> refunds, order history, cancellation, returns and "Buy again", **delivery zones, store selection and calculated
+> delivery estimates**). Cron: `manage.py run_jobs` every 5 minutes. See [TASKS.md](TASKS.md)
 > and [docs/ROADMAP.md](docs/ROADMAP.md).
 >
 > Try it locally: run `seed_demo_data`, register on the site, add products, check out with **Cash on delivery** or
 > **Mock online payment** (you choose success / failure / cancellation; no money moves). Demo offers apply automatically
 > (e.g. 10% off Tools on ₹1,500+); demo coupons `DEMO10` and `DEMOFLAT50` are listed at checkout.
+>
+> Delivery demo (Pune): set the PIN code in the header. `411038` (Kothrud) and `411045` (Baner) get **fast delivery**
+> from their nearest store, `411001` gets **standard delivery** (extended zone, ₹60 fee), `411014` is **outside the
+> delivery area**. Zones, fees, preparation time and riders are configured in the Django admin (Stores, Delivery).
+> Maps are free and offline by default (OpenStreetMap services are optional: [docs/FREE_TOOLS.md](docs/FREE_TOOLS.md)).
 
 | | |
 |---|---|

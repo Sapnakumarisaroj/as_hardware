@@ -64,16 +64,21 @@ def line_from_variant(variant, quantity: int) -> PricedLine:
     )
 
 
-def delivery_fee_for(amount_after_discount: Decimal) -> Decimal:
-    if amount_after_discount <= 0:
+def delivery_fee_for(amount_after_discount: Decimal, fee_rule=None) -> Decimal:
+    """`fee_rule` (apps.delivery.fulfillment.FeeRule) comes from the delivery zone; None = global settings."""
+    fee = fee_rule.fee if fee_rule else q(settings.DELIVERY_FEE)
+    free_min = fee_rule.free_min if fee_rule else settings.FREE_DELIVERY_MIN_ORDER
+    if amount_after_discount <= 0 or amount_after_discount >= free_min:
         return ZERO
-    if amount_after_discount >= settings.FREE_DELIVERY_MIN_ORDER:
-        return ZERO
-    return q(settings.DELIVERY_FEE)
+    return q(fee)
 
 
 def calculate_totals(
-    lines: Iterable[PricedLine], discount: Decimal = ZERO, *, line_discounts: Mapping[int, Decimal] | None = None
+    lines: Iterable[PricedLine],
+    discount: Decimal = ZERO,
+    *,
+    line_discounts: Mapping[int, Decimal] | None = None,
+    fee_rule=None,
 ) -> Totals:
     """Totals for priced lines.
 
@@ -95,7 +100,7 @@ def calculate_totals(
     net = after_offers - coupon
     factor = (net / after_offers) if after_offers else ZERO
     tax_total = q(sum((included_tax(nets[line.variant_id] * factor, line.gst_rate) for line in lines), ZERO))
-    fee = delivery_fee_for(net)
+    fee = delivery_fee_for(net, fee_rule)
     return Totals(
         subtotal=subtotal,
         mrp_total=mrp_total,
@@ -126,7 +131,7 @@ class Pricing:
     coupon: object | None = None  # offers.models.Coupon
 
 
-def price_lines(lines: Iterable[PricedLine], *, coupon=None) -> Pricing:
+def price_lines(lines: Iterable[PricedLine], *, coupon=None, fee_rule=None) -> Pricing:
     """The one pricing path for cart, checkout, coupon preview and order placement:
     automatic offers first, then the coupon on what remains. Raises CouponError if the
     coupon does not apply to these lines."""
@@ -149,5 +154,7 @@ def price_lines(lines: Iterable[PricedLine], *, coupon=None) -> Pricing:
         ]
         discount = coupon_discount(coupon, net_lines, q(sum((n.line_total for n in net_lines), ZERO)))
     return Pricing(
-        totals=calculate_totals(lines, discount, line_discounts=offers.line_discounts), offers=offers, coupon=coupon
+        totals=calculate_totals(lines, discount, line_discounts=offers.line_discounts, fee_rule=fee_rule),
+        offers=offers,
+        coupon=coupon,
     )

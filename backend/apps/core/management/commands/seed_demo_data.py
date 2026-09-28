@@ -17,13 +17,23 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from apps.catalog.models import Brand, Category, Product, ProductSpecification, ProductVariant, normalize_sku
-from apps.delivery.models import DeliveryZone
+from apps.delivery.models import DeliveryZone, PinCode
 from apps.inventory.models import Inventory, StockMovement
 from apps.inventory.services import apply_movement
 from apps.offers.models import Coupon, Offer
 from apps.stores.models import Store
 
-from ..demo_data import BRANDS, CATEGORIES, COUPONS, OFFERS, PRODUCTS, STORES
+from ..demo_data import (
+    BRANDS,
+    CATEGORIES,
+    COUPONS,
+    OFFERS,
+    PIN_CODES,
+    PRODUCTS,
+    STORE_DELIVERY,
+    STORES,
+    ZONES,
+)
 
 DEMO_NOTE = "Demo data for development — not a real product listing."
 
@@ -147,13 +157,35 @@ class Command(BaseCommand):
                     "longitude": Decimal(lng),
                     "is_active": True,
                     "is_deleted": False,
+                    **STORE_DELIVERY.get(code, {}),
                 },
             )
-            if store.can_fulfill_orders:
-                DeliveryZone.objects.get_or_create(
-                    store=store, name=f"{area} 5 km", defaults={"radius_km": Decimal("5")}
-                )
             stores.append(store)
+        by_code = {store.code: store for store in stores}
+        for code, name, radius, pins, fast, fast_max, fee, free_min in ZONES:
+            DeliveryZone.objects.update_or_create(
+                store=by_code[code],
+                name=name,
+                defaults={
+                    "radius_km": Decimal(radius),
+                    "postal_codes": pins,
+                    "fast_delivery_enabled": fast,
+                    "fast_delivery_max_minutes": fast_max,
+                    "delivery_fee_override": Decimal(fee) if fee else None,
+                    "free_delivery_min_order": Decimal(free_min) if free_min else None,
+                },
+            )
+        for postal_code, area, lat, lng in PIN_CODES:
+            PinCode.objects.update_or_create(
+                postal_code=postal_code,
+                defaults={
+                    "area": area,
+                    "city": "Pune",
+                    "state": "Maharashtra",
+                    "latitude": Decimal(lat),
+                    "longitude": Decimal(lng),
+                },
+            )
         return stores
 
     def _inventory(self, stores, products) -> int:

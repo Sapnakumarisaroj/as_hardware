@@ -28,7 +28,12 @@ export interface Address {
 export type AddressInput = Pick<
   Address,
   'name' | 'phone' | 'address_line1' | 'address_line2' | 'area' | 'landmark' | 'city' | 'state' | 'postal_code' | 'address_type'
-> & { is_default?: boolean }
+> & {
+  is_default?: boolean
+  /** Map pin (both or neither); null removes it. */
+  latitude?: string | null
+  longitude?: string | null
+}
 
 export const ADDRESS_TYPE_LABELS: Record<AddressType, string> = {
   home: 'Home',
@@ -52,7 +57,12 @@ function useAddressMutation<TVars, TResult>(request: (vars: TVars) => Promise<TR
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: request,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: addressKeys.list }),
+    onSuccess: () => {
+      // Delivery estimates depend on the address (PIN code, map pin).
+      void queryClient.invalidateQueries({ queryKey: ['checkout'] })
+      void queryClient.invalidateQueries({ queryKey: ['delivery'] })
+      return queryClient.invalidateQueries({ queryKey: addressKeys.list })
+    },
   })
 }
 

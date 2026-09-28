@@ -1,31 +1,30 @@
 """Checkout validation and preview: the same rules `place_order` enforces, without writing.
 
-`build_checkout()` re-reads the cart with current prices and stock, validates the address
-and coupon, quotes delivery, and lists anything that blocks ordering. The frontend shows
-this; it never computes money itself.
-
-Delivery quoting (`quote_delivery`) is deliberately simple until the Phase 9 fulfilment
-engine: it says whether one store can supply the whole cart, the fee, the free-delivery
-threshold and whether that store offers fast delivery. It never invents an ETA.
+`build_checkout()` re-reads the cart with current prices and stock, validates the address and
+coupon, plans fulfilment for the chosen address (apps.delivery.fulfillment: zones, store
+selection, ETA, delivery fee rule) and lists anything that blocks ordering. The frontend shows
+this; it never computes money or delivery times itself.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal
-
-from django.conf import settings
 
 from apps.accounts.models import Address
 from apps.carts.services import CartSummary, summarize_cart
 from apps.core.exceptions import ServiceError
 from apps.core.money import ZERO, q
+from apps.delivery.fulfillment import FeeRule, Plan, plan_fulfillment
+from apps.delivery.locations import resolve_location
 from apps.offers.engine import OfferResult
 from apps.offers.models import Coupon
 from apps.offers.services import get_valid_coupon
-from apps.stores.models import Store
 
 from .pricing import Totals, delivery_fee_for, price_lines
 
+# Orders placed before the Phase 9 ETA engine (no estimate stored) still use this wording.
 ETA_PENDING_MESSAGE = "Delivery estimate will be confirmed after your order is placed."
+CHOOSE_ADDRESS_MESSAGE = "Choose a delivery address to see when your order can arrive."
 
 
 @dataclass
@@ -35,9 +34,20 @@ class DeliveryQuote:
     free_delivery_min_order: Decimal
     amount_to_free_delivery: Decimal
     fast_delivery_possible: bool = False
-    eta_minutes: int | None = None  # filled by the Phase 9 ETA engine; None = not promised
+    eta_minutes: int | None = None  # None = no address yet / not deliverable
     store_name: str | None = None
-    message: str = ETA_PENDING_MESSAGE
+    message: str = CHOOSE_ADDRESS_MESSAGE
+    delivery_type: str | None = None  # fast | standard
+    label: str = ""
+    estimated_delivery_at: datetime | None = None
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    prep_minutes: int | None = None
+    distance_km: float | None = None
+    fast_unavailable_reason: str = ""
+    location_precision: str | None = None
+    reason_code: str = ""
+    shipments: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -51,63 +61,73 @@ class CheckoutSummary:
     delivery: DeliveryQuote
     blocking_issues: list[dict] = field(default_factory=list)
     offers: OfferResult = field(default_factory=OfferResult)
+    plan: Plan | None = None
 
     @property
     def can_place_order(self) -> bool:
         return not self.blocking_issues
 
 
-def find_fulfilment_store(requirements: dict[int, int]) -> Store | None:
-    """First active fulfilment store holding every variant in the required quantity.
-    (Distance/zone/ETA-based selection replaces this in Phase 9.)"""
-    from collections import defaultdict
-
-    from apps.inventory.models import Inventory
-
-    if not requirements:
-        return None
-    rows = Inventory.objects.filter(
-        variant_id__in=requirements.keys(),
-        is_active=True,
-        store__is_active=True,
-        store__is_deleted=False,
-        store__accepts_orders=True,
-        store__kind__in=Store.FULFILLMENT_KINDS,
-    ).values_list("store_id", "variant_id", "available_quantity")
-    coverage: dict[int, set[int]] = defaultdict(set)
-    for store_id, variant_id, available in rows:
-        if available >= requirements[variant_id]:
-            coverage[store_id].add(variant_id)
-    needed = set(requirements)
-    for store_id in sorted(coverage):
-        if coverage[store_id] >= needed:
-            return Store.objects.get(pk=store_id)
-    return None
-
-
-def quote_delivery(requirements: dict[int, int], amount_after_discount: Decimal) -> DeliveryQuote:
-    from apps.delivery.models import DeliveryZone
-
-    threshold = q(settings.FREE_DELIVERY_MIN_ORDER)
-    fee = delivery_fee_for(amount_after_discount)
-    to_free = q(max(threshold - amount_after_discount, ZERO)) if fee > 0 else ZERO
-    store = find_fulfilment_store(requirements)
-    if store is None:
-        return DeliveryQuote(
-            available=False,
-            fee=fee,
-            free_delivery_min_order=threshold,
-            amount_to_free_delivery=to_free,
-            message="These items can't be delivered together right now. Reduce quantities or remove items.",
+def shipment_rows(plan: Plan) -> list[dict]:
+    rows = []
+    for index, shipment in enumerate(plan.shipments, start=1):
+        e = shipment.estimate
+        rows.append(
+            {
+                "sequence": index,
+                "store_name": shipment.store.name,
+                "store_area": shipment.store.area,
+                "line_count": len(shipment.lines),
+                "delivery_type": e.delivery_type if e else None,
+                "eta_minutes": e.eta_minutes if e else None,
+                "label": e.label if e else "",
+                "distance_km": round(e.distance_km, 1) if e and e.distance_km is not None else None,
+            }
         )
-    fast = DeliveryZone.objects.filter(store=store, is_active=True, fast_delivery_enabled=True).exists()
+    return rows
+
+
+def quote_from_plan(plan: Plan | None, amount_after_discount: Decimal, fee_rule: FeeRule | None) -> DeliveryQuote:
+    rule = fee_rule or FeeRule.default()
+    fee = delivery_fee_for(amount_after_discount, rule)
+    to_free = q(max(rule.free_min - amount_after_discount, ZERO)) if fee > 0 else ZERO
+    base = {"fee": fee, "free_delivery_min_order": rule.free_min, "amount_to_free_delivery": to_free}
+    if plan is None:
+        return DeliveryQuote(available=False, **base, message=CHOOSE_ADDRESS_MESSAGE)
+    if not plan.deliverable:
+        return DeliveryQuote(available=False, **base, message=plan.message, reason_code=plan.reason_code,
+                             location_precision=plan.location.precision if plan.location else None)  # fmt: skip
+    latest = plan.latest
+    if latest is None:  # stock-only plan (no address yet)
+        return DeliveryQuote(
+            available=True, **base, store_name=plan.primary.store.name, message=CHOOSE_ADDRESS_MESSAGE,
+            shipments=shipment_rows(plan),
+        )  # fmt: skip
+    fast = plan.delivery_type == "fast"
+    label = latest.label
+    message = (
+        f"⚡ Fast delivery · {label}"
+        if fast
+        else f"Standard delivery · {label}"
+        + (f" (fast delivery unavailable: {plan.fast_unavailable_reason})" if plan.fast_unavailable_reason else "")
+    )
     return DeliveryQuote(
         available=True,
-        fee=fee,
-        free_delivery_min_order=threshold,
-        amount_to_free_delivery=to_free,
+        **base,
         fast_delivery_possible=fast,
-        store_name=store.name,
+        eta_minutes=latest.eta_minutes,
+        store_name=plan.primary.store.name,
+        message=message,
+        delivery_type=plan.delivery_type,
+        label=label,
+        estimated_delivery_at=latest.delivery_at,
+        window_start=latest.window_start,
+        window_end=latest.window_end,
+        prep_minutes=max(e.prep_minutes for e in plan.estimates),
+        distance_km=round(latest.distance_km, 1) if latest.distance_km is not None else None,
+        fast_unavailable_reason=plan.fast_unavailable_reason,
+        location_precision=plan.location.precision,
+        shipments=shipment_rows(plan),
     )
 
 
@@ -128,33 +148,39 @@ def build_checkout(user, *, address_id: int | None = None, coupon_code: str = ""
     else:
         issues.append({"code": "address_required", "message": "Add or choose a delivery address."})
 
+    requirements = {line.item.variant_id: line.item.quantity for line in cart.lines if line.in_stock}
+    plan = None
+    if requirements:
+        location = resolve_location(address=address) if address else None
+        plan = plan_fulfillment(requirements, location)
+    fee_rule = plan.fee_rule if plan and plan.deliverable and plan.location else None
+
     lines = cart.priced_lines
-    pricing = price_lines(lines)  # automatic offers
+    pricing = price_lines(lines, fee_rule=fee_rule)  # automatic offers
     coupon, coupon_error = None, None
     if coupon_code.strip() and lines:
         try:
             coupon = get_valid_coupon(coupon_code, user)
-            pricing = price_lines(lines, coupon=coupon)  # coupon on top of offers
+            pricing = price_lines(lines, coupon=coupon, fee_rule=fee_rule)  # coupon on top of offers
         except ServiceError as exc:
             coupon = None
             coupon_error = {"code": exc.error_code, "message": str(exc.detail), "details": exc.details}
             issues.append({"code": "coupon_invalid", "message": str(exc.detail)})
     totals = pricing.totals
-    discount = totals.coupon_discount
 
-    requirements = {line.item.variant_id: line.item.quantity for line in cart.lines if line.in_stock}
-    delivery = quote_delivery(requirements, totals.subtotal - totals.discount_total)
-    if cart.lines and not cart.issues and not delivery.available:
-        issues.append({"code": "not_deliverable", "message": delivery.message})
+    delivery = quote_from_plan(plan, totals.subtotal - totals.discount_total, fee_rule)
+    if cart.lines and not cart.issues and plan is not None and not plan.deliverable:
+        issues.append({"code": "not_deliverable", "message": plan.message})
 
     return CheckoutSummary(
         cart=cart,
         totals=totals,
         address=address,
         coupon=coupon,
-        coupon_discount=discount,
+        coupon_discount=totals.coupon_discount,
         coupon_error=coupon_error,
         delivery=delivery,
         blocking_issues=issues,
         offers=pricing.offers,
+        plan=plan,
     )

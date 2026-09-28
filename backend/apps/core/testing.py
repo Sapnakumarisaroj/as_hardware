@@ -19,7 +19,9 @@ def create_category(name: str = "Tools", parent: Category | None = None) -> Cate
     return Category.objects.create(name=name, slug=f"{name.lower().replace(' ', '-')}-{n}", parent=parent)
 
 
-def create_store(kind: str = Store.Kind.STORE, **kwargs) -> Store:
+def create_store(kind: str = Store.Kind.STORE, *, zone: bool = True, **kwargs) -> Store:
+    """A store in PIN 411001. Fulfilment stores get a 5 km delivery zone unless `zone=False`
+    (since Phase 9 an order can only ship from a store whose zone covers the address)."""
     n = next(_seq)
     defaults = {
         "name": f"Store {n}",
@@ -31,7 +33,12 @@ def create_store(kind: str = Store.Kind.STORE, **kwargs) -> Store:
         "postal_code": "411001",
     }
     defaults.update(kwargs)
-    return Store.objects.create(**defaults)
+    store = Store.objects.create(**defaults)
+    if zone and store.kind in Store.FULFILLMENT_KINDS:
+        from apps.delivery.models import DeliveryZone
+
+        DeliveryZone.objects.create(store=store, name="Test zone 5 km", radius_km=Decimal("5"))
+    return store
 
 
 def create_product(

@@ -61,7 +61,7 @@ class AssignmentViewSet(viewsets.ReadOnlyModelViewSet):
             return DeliveryAssignment.objects.none()
         qs = (
             DeliveryAssignment.objects.filter(partner__user=self.request.user)
-            .select_related("order__store")
+            .select_related("order__store", "shipment__store")
             .prefetch_related("status_history")
         )
         scope = self.request.query_params.get("scope")

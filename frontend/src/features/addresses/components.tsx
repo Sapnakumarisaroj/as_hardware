@@ -5,6 +5,7 @@ import { Modal } from '@/components/Modal'
 import { useToast } from '@/components/toast'
 import { ApiError } from '@/lib/api/errors'
 
+import { AddressLocationField } from './AddressLocationField'
 import {
   ADDRESS_TYPE_LABELS,
   formatAddressLine,
@@ -57,6 +58,14 @@ export function AddressFormModal({
     ) as unknown as AddressInput
     input.address_type = (form.get('address_type') as AddressType) || 'home'
     if (form.get('is_default')) input.is_default = true
+    const latitude = String(form.get('latitude') ?? '')
+    const longitude = String(form.get('longitude') ?? '')
+    const pinned = latitude !== '' && longitude !== ''
+    // Only send the pin when there is one to save or an existing one to remove.
+    if (pinned || address?.latitude) {
+      input.latitude = pinned ? latitude : null
+      input.longitude = pinned ? longitude : null
+    }
     setError(null)
     try {
       const saved = address ? await update.mutateAsync({ id: address.id, input }) : await create.mutateAsync(input)
@@ -93,6 +102,14 @@ export function AddressFormModal({
         <FormField {...f('postal_code')} label="PIN code" inputMode="numeric" autoComplete="postal-code" maxLength={6} required />
         <FormField {...f('city')} label="City" autoComplete="address-level2" required />
         <FormField {...f('state')} label="State" autoComplete="address-level1" required className="sm:col-span-2" />
+        <AddressLocationField
+          key={address?.id ?? 'new'}
+          initial={
+            address?.latitude && address.longitude
+              ? { latitude: Number(address.latitude), longitude: Number(address.longitude) }
+              : null
+          }
+        />
         <fieldset className="sm:col-span-2">
           <legend className="label">Address type</legend>
           <div className="flex flex-wrap gap-2">

@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { address, customer, orderDetail, pendingOnlineOrder } from '@/test/fixtures'
+import { address, customer, NO_ESTIMATE, orderDelivery, orderDetail, pendingOnlineOrder } from '@/test/fixtures'
 import { httpError, mockApi } from '@/test/mockApi'
 import { currentUrl, renderRoute, signIn } from '@/test/utils'
 
@@ -90,8 +90,9 @@ describe('order history and detail', () => {
       item_count: 2,
       item_names: ['FR PVC Insulated Copper Wire'],
       image: null,
-      estimated_delivery_at: null,
-      delivery_message: 'Delivery estimate will be confirmed after your order is placed.',
+      estimated_delivery_at: '2026-09-24T10:38:00Z',
+      delivery_message: '⚡ Delivery in 31 minutes (by about 4:08 PM)',
+      delivery: orderDelivery(),
       created_at: '2026-09-24T10:00:00Z',
     }
     const api = mockApi({
@@ -103,6 +104,7 @@ describe('order history and detail', () => {
     expect(within(link).getByText('Confirmed')).toBeInTheDocument()
     expect(within(link).getByText('Pay on delivery')).toBeInTheDocument()
     expect(within(link).getByText('₹800')).toBeInTheDocument()
+    expect(within(link).getByText('⚡ Delivery in 31 minutes (by about 4:08 PM)')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Page 2' }))
     await waitFor(() =>
       expect(api.get).toHaveBeenLastCalledWith('/orders/', { params: { page: 2, page_size: 10 } }),
@@ -217,12 +219,104 @@ describe('order history and detail', () => {
     renderRoute(`/order-confirmation/${NUMBER}`)
     expect(await screen.findByRole('heading', { name: 'Thank you! Your order is placed.' })).toBeInTheDocument()
     expect(screen.getByText(NUMBER)).toBeInTheDocument()
-    expect(screen.getByText('Confirmed')).toBeInTheDocument()
+    expect(screen.getAllByText('Confirmed')).not.toHaveLength(0)
     expect(screen.getByText('Pay on delivery')).toBeInTheDocument()
     expect(screen.getByText(/Total ₹800/)).toBeInTheDocument()
-    expect(screen.getByText('Delivery estimate will be confirmed after your order is placed.')).toBeInTheDocument()
+    expect(screen.getByText('⚡ Delivery in 31 minutes (by about 4:08 PM)')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'View order' })).toHaveAttribute('href', `/account/orders/${NUMBER}`)
     expect(screen.getByRole('link', { name: 'Continue shopping' })).toHaveAttribute('href', '/products')
+  })
+
+  it('confirmation and order detail show the delivery promise: store, type, estimate, window, preparation', async () => {
+    signIn()
+    mockApi({ get: baseGet({ [`/orders/${NUMBER}/`]: orderDetail() }) })
+    const confirmation = renderRoute(`/order-confirmation/${NUMBER}`)
+    let card = (await screen.findByRole('heading', { name: 'Delivery' })).closest('section')!
+    expect(card).toHaveTextContent('Fast delivery')
+    expect(card).toHaveTextContent('Estimated delivery: 31 minutes')
+    expect(card).toHaveTextContent('Delivery statusConfirmed')
+    expect(card).toHaveTextContent('Fast deliveryEligible')
+    expect(card).toHaveTextContent('Delivery window4:08 PM – 4:23 PM')
+    expect(card).toHaveTextContent('Preparation timeAbout 10 minutes (ready by 3:40 PM)')
+    expect(card).toHaveTextContent('Fulfilled byDemo Store, Kothrud')
+    expect(card).not.toHaveTextContent(/60 min/)
+    confirmation.unmount()
+
+    renderRoute(`/account/orders/${NUMBER}`)
+    card = (await screen.findByRole('heading', { name: 'Delivery' })).closest('section')!
+    expect(card).toHaveTextContent('Estimated delivery: 31 minutes')
+    expect(card).toHaveTextContent('Fulfilled byDemo Store, Kothrud')
+  })
+
+  it('standard delivery shows its window; a delivered order shows no countdown', async () => {
+    signIn()
+    const standard = orderDetail({
+      delivery_message: '🚚 Standard delivery · Tomorrow, 10:00 AM – 12:00 PM',
+      delivery: orderDelivery({
+        type: 'standard',
+        type_label: 'Standard delivery',
+        fast: false,
+        eta_minutes: 1260,
+        minutes_left: 1250,
+        window_start: '2026-09-25T04:30:00Z',
+        window_end: '2026-09-25T06:30:00Z',
+        label: 'Tomorrow, 10:00 AM – 12:00 PM',
+      }),
+    })
+    let order = standard
+    mockApi({ get: baseGet({ [`/orders/${NUMBER}/`]: () => order }) })
+    const first = renderRoute(`/account/orders/${NUMBER}`)
+    let card = (await screen.findByRole('heading', { name: 'Delivery' })).closest('section')!
+    expect(card).toHaveTextContent('Standard delivery')
+    expect(card).toHaveTextContent('Estimated delivery: Tomorrow, 10:00 AM – 12:00 PM')
+    expect(card).toHaveTextContent('Fast deliveryNot available for this order')
+    first.unmount()
+
+    order = { ...standard, status: 'delivered', delivery_message: 'Delivered', can_cancel: false }
+    renderRoute(`/account/orders/${NUMBER}`)
+    card = (await screen.findByRole('heading', { name: 'Delivery' })).closest('section')!
+    expect(card).toHaveTextContent('Delivery statusDelivered')
+    expect(card).not.toHaveTextContent('Estimated delivery')
+    expect(card).not.toHaveTextContent('Delivery window')
+  })
+
+  it('an order shipped from two stores lists each store with its items', async () => {
+    signIn()
+    const base = orderDetail()
+    const split = orderDetail({
+      items: [base.items[0]!, { ...base.items[0]!, id: 2, product_name: 'PTFE Tape', sku: 'DEMO-TAPE' }],
+      shipments: [
+        base.shipments[0]!,
+        { ...base.shipments[0]!, sequence: 2, store_name: 'Demo Dark Store', store_area: 'Baner', delivery_type: 'standard', item_ids: [2] },
+      ],
+    })
+    mockApi({ get: baseGet({ [`/orders/${NUMBER}/`]: split }) })
+    renderRoute(`/account/orders/${NUMBER}`)
+    const card = (await screen.findByRole('heading', { name: 'Delivery' })).closest('section')!
+    expect(card).toHaveTextContent('This order ships from 2 stores')
+    const stores = within(card).getAllByRole('listitem')
+    expect(stores[0]).toHaveTextContent('Demo Store, Kothrud')
+    expect(stores[0]).toHaveTextContent('FR PVC Insulated Copper Wire')
+    expect(stores[1]).toHaveTextContent('Demo Dark Store, Baner')
+    expect(stores[1]).toHaveTextContent('PTFE Tape')
+    expect(stores[1]).toHaveTextContent('Standard delivery')
+  })
+
+  it('orders placed before delivery estimates existed keep the older wording', async () => {
+    signIn()
+    const old = orderDetail({
+      delivery: NO_ESTIMATE,
+      shipments: [],
+      eta_minutes: null,
+      estimated_delivery_at: null,
+      delivery_message: 'Delivery estimate will be confirmed after your order is placed.',
+    })
+    mockApi({ get: baseGet({ [`/orders/${NUMBER}/`]: old }) })
+    renderRoute(`/account/orders/${NUMBER}`)
+    const card = (await screen.findByRole('heading', { name: 'Delivery' })).closest('section')!
+    expect(card).toHaveTextContent('Delivery estimate will be confirmed after your order is placed.')
+    expect(card).not.toHaveTextContent('Estimated delivery:')
+    expect(card).toHaveTextContent('Fulfilled byDemo Store')
   })
 
   it('addresses page lists, sets default and deletes addresses', async () => {

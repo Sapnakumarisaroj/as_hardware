@@ -1,15 +1,15 @@
 from datetime import datetime
 
-from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.payments.models import Payment, Refund
 
-from .checkout import ETA_PENDING_MESSAGE
+from .delivery_info import delivery_message, describe_delivery
 from .models import (
     Order,
     OrderItem,
+    OrderShipment,
     OrderStatus,
     OrderStatusHistory,
     PaymentMethod,
@@ -116,11 +116,53 @@ class RefundSummarySerializer(serializers.ModelSerializer):
         fields = ["public_id", "amount", "status", "reason", "manual", "created_at", "processed_at"]
 
 
+class OrderDeliverySerializer(serializers.Serializer):
+    """The delivery promise (see orders/delivery_info.py). Labels are ready to display."""
+
+    type = serializers.CharField(allow_null=True, help_text="fast | standard | null (placed before Phase 9)")
+    type_label = serializers.CharField(allow_null=True)
+    fast = serializers.BooleanField()
+    eta_minutes = serializers.IntegerField(allow_null=True, help_text="Estimate when the order was confirmed.")
+    minutes_left = serializers.IntegerField(allow_null=True)
+    estimated_ready_at = serializers.DateTimeField(allow_null=True)
+    estimated_delivery_at = serializers.DateTimeField(allow_null=True)
+    window_start = serializers.DateTimeField(allow_null=True)
+    window_end = serializers.DateTimeField(allow_null=True)
+    label = serializers.CharField()
+
+
+class ShipmentSerializer(serializers.ModelSerializer):
+    store_name = serializers.CharField(source="store.name", read_only=True)
+    store_area = serializers.CharField(source="store.area", read_only=True)
+    item_ids = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderShipment
+        fields = [
+            "sequence",
+            "store_name",
+            "store_area",
+            "delivery_type",
+            "distance_km",
+            "prep_minutes",
+            "eta_minutes",
+            "estimated_ready_at",
+            "estimated_delivery_at",
+            "window_start",
+            "window_end",
+            "item_ids",
+        ]
+
+    def get_item_ids(self, obj) -> list[int]:
+        return [item.id for item in obj.items.all()]
+
+
 class OrderListSerializer(serializers.ModelSerializer):
     item_count = serializers.SerializerMethodField()
     item_names = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
     delivery_message = serializers.SerializerMethodField()
+    delivery = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -135,6 +177,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "image",
             "estimated_delivery_at",
             "delivery_message",
+            "delivery",
             "created_at",
         ]
 
@@ -151,20 +194,9 @@ class OrderListSerializer(serializers.ModelSerializer):
     def get_delivery_message(self, obj) -> str:
         return delivery_message(obj)
 
-
-def delivery_message(order: Order) -> str:
-    """Honest, status-based delivery text. A real ETA appears only once the backend sets one."""
-    if order.status == OrderStatus.DELIVERED:
-        return "Delivered"
-    if order.status in (OrderStatus.CANCELLED, OrderStatus.RETURNED, OrderStatus.RETURN_REQUESTED):
-        return ""
-    if order.status == OrderStatus.PENDING and order.payment_method == PaymentMethod.ONLINE:
-        return "Complete the payment to confirm your order."
-    if order.estimated_delivery_at:
-        return f"Estimated delivery by {timezone.localtime(order.estimated_delivery_at):%d %b, %I:%M %p}"
-    if order.status == OrderStatus.OUT_FOR_DELIVERY:
-        return "Out for delivery — arriving soon."
-    return ETA_PENDING_MESSAGE
+    @extend_schema_field(OrderDeliverySerializer)
+    def get_delivery(self, obj) -> dict:
+        return describe_delivery(obj)
 
 
 class ReturnItemSerializer(serializers.ModelSerializer):
@@ -266,6 +298,8 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     can_cancel = serializers.SerializerMethodField()
     can_retry_payment = serializers.SerializerMethodField()
     delivery_message = serializers.SerializerMethodField()
+    delivery = serializers.SerializerMethodField()
+    shipments = ShipmentSerializer(many=True, read_only=True)
     can_return = serializers.SerializerMethodField()
     return_window_ends_at = serializers.SerializerMethodField()
     can_reorder = serializers.SerializerMethodField()
@@ -295,6 +329,8 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "estimated_delivery_at",
             "eta_minutes",
             "delivery_message",
+            "delivery",
+            "shipments",
             "cancellation_reason",
             "cancelled_at",
             "delivered_at",
@@ -345,6 +381,10 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     def get_delivery_message(self, obj) -> str:
         return delivery_message(obj)
 
+    @extend_schema_field(OrderDeliverySerializer)
+    def get_delivery(self, obj) -> dict:
+        return describe_delivery(obj)
+
 
 class PlaceOrderSerializer(serializers.Serializer):
     """Only identifiers and choices are accepted — never prices or totals.
@@ -383,6 +423,17 @@ class _CouponErrorSerializer(serializers.Serializer):
     details = serializers.DictField()
 
 
+class _QuoteShipmentSerializer(serializers.Serializer):
+    sequence = serializers.IntegerField()
+    store_name = serializers.CharField()
+    store_area = serializers.CharField()
+    line_count = serializers.IntegerField()
+    delivery_type = serializers.CharField(allow_null=True)
+    eta_minutes = serializers.IntegerField(allow_null=True)
+    label = serializers.CharField()
+    distance_km = serializers.FloatField(allow_null=True)
+
+
 class DeliveryQuoteSerializer(serializers.Serializer):
     available = serializers.BooleanField()
     fee = serializers.DecimalField(max_digits=12, decimal_places=2)
@@ -391,6 +442,21 @@ class DeliveryQuoteSerializer(serializers.Serializer):
     fast_delivery_possible = serializers.BooleanField()
     eta_minutes = serializers.IntegerField(allow_null=True)
     message = serializers.CharField()
+    # Phase 9 (fulfilment engine)
+    delivery_type = serializers.CharField(allow_null=True, help_text="fast | standard | null")
+    label = serializers.CharField(help_text='"Delivery in 38 minutes" or "Tomorrow, 10:00 AM – 12:00 PM"')
+    store_name = serializers.CharField(allow_null=True)
+    estimated_delivery_at = serializers.DateTimeField(allow_null=True)
+    window_start = serializers.DateTimeField(allow_null=True)
+    window_end = serializers.DateTimeField(allow_null=True)
+    prep_minutes = serializers.IntegerField(allow_null=True)
+    distance_km = serializers.FloatField(allow_null=True)
+    fast_unavailable_reason = serializers.CharField()
+    location_precision = serializers.CharField(allow_null=True, help_text="exact | pin | unknown")
+    reason_code = serializers.CharField(
+        help_text="Why not deliverable: out_of_zone, location_unknown, insufficient_stock"
+    )
+    shipments = _QuoteShipmentSerializer(many=True)
 
 
 class CheckoutPreviewSerializer(serializers.Serializer):

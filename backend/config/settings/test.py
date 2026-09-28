@@ -20,6 +20,9 @@ REST_FRAMEWORK = {
     },
 }
 FRONTEND_URL = "http://testserver-frontend"
+# Never call OpenStreetMap services from tests (providers are exercised with fakes).
+GEOCODING_PROVIDER = "none"
+ROUTING_PROVIDER = "haversine"
 
 # WhiteNoise isn't needed under the test client (and warns when staticfiles/ is absent).
 from .base import MIDDLEWARE  # noqa: E402

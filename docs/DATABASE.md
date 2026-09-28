@@ -77,7 +77,14 @@ than duplicated, so they can never disagree. **Stock state** is computed: `in_st
 ## stores ✅
 | Table | Key columns | Notes |
 |---|---|---|
-| `stores_store` | name, code (unique, upper), kind (store / dark_store / warehouse), phone, email, address fields, postal_code, latitude/longitude, opening_hours JSON, avg_prep_minutes, is_active, accepts_orders, soft delete | index (kind, is_active, accepts_orders). `Warehouse` = proxy (kind=warehouse). Stores and dark stores fulfil orders; warehouses do not |
+| `stores_store` | name, code (unique, upper), kind (store / dark_store / warehouse), phone, email, address fields, postal_code, latitude/longitude, opening_hours JSON, avg_prep_minutes, prep_minutes_per_item + own_riders (Phase 9), is_active, accepts_orders, soft delete | index (kind, is_active, accepts_orders). `Warehouse` = proxy (kind=warehouse). Stores and dark stores fulfil orders; warehouses do not |
+
+**Delivery settings (Phase 9, migration `stores 0003`).** `opening_hours`: `{"mon": ["09:00", "21:00"], …, "sun": null}`;
+empty = always open, a missing or `null` day = closed, a closing time at or before the opening time means past
+midnight. `avg_prep_minutes` = pick-and-pack time for a one-line order; `prep_minutes_per_item` (default 1) is added
+per further line; `own_riders` (default 0) = in-house riders on duty who don't use the partner app, counted as
+delivery capacity. `latitude`/`longitude` are needed for distance-based zones and ETAs (without them only PIN
+matching works).
 
 ## inventory ✅
 | Table | Key columns | Constraints |
@@ -114,8 +121,9 @@ Movement effects (only via `inventory.services.apply_movement`, which locks the 
 ## orders ✅
 | Table | Key columns | Constraints / indexes |
 |---|---|---|
-| `orders_order` | public_id UUID, order_number (unique), user FK, store FK, address_snapshot JSON, status (fulfilment), payment_method (cod/online), payment_status, subtotal, mrp_total, discount_total, delivery_fee, tax_total, grand_total, coupon FK, coupon_code, customer_note, estimated_delivery_at, eta_minutes, cancellation_reason, cancelled_at, delivered_at, idempotency_key (Phase 5, nullable), offer_discount + coupon_discount (= discount_total) and applied_offers JSON snapshot (Phase 6) | CHECK grand_total ≥ 0, discount ≥ 0; **unique (user, idempotency_key)**; indexes (user, created_at), (store, status), (status, created_at) |
-| `orders_orderitem` | order FK, variant FK (SET NULL), product FK (SET NULL) + snapshot: product_name, variant_name, sku, brand_name, unit, unit_mrp, unit_price, gst_rate, hsn_code, quantity, line_total, offer_discount (Phase 6: this line's share of automatic offers) | CHECK quantity ≥ 1 |
+| `orders_order` | public_id UUID, order_number (unique), user FK, store FK, address_snapshot JSON, status (fulfilment), payment_method (cod/online), payment_status, subtotal, mrp_total, discount_total, delivery_fee, tax_total, grand_total, coupon FK, coupon_code, customer_note, delivery promise (Phase 9): delivery_type (fast/standard, blank for older orders), eta_minutes, estimated_ready_at, estimated_delivery_at, delivery_window_start, delivery_window_end; cancellation_reason, cancelled_at, delivered_at, idempotency_key (Phase 5, nullable), offer_discount + coupon_discount (= discount_total) and applied_offers JSON snapshot (Phase 6) | CHECK grand_total ≥ 0, discount ≥ 0; **unique (user, idempotency_key)**; indexes (user, created_at), (store, status), (status, created_at) |
+| `orders_orderitem` | order FK, variant FK (SET NULL), product FK (SET NULL) + snapshot: product_name, variant_name, sku, brand_name, unit, unit_mrp, unit_price, gst_rate, hsn_code, quantity, line_total, offer_discount (Phase 6: this line's share of automatic offers), shipment FK (Phase 9, SET NULL: the store this line is reserved at and ships from) | CHECK quantity ≥ 1 |
+| `orders_ordershipment` (Phase 9) | order FK (CASCADE), sequence, store FK (PROTECT), zone FK (SET NULL), delivery_type, distance_km, prep_minutes, wait_minutes, travel_minutes, eta_minutes, estimated_ready_at, estimated_delivery_at, window_start, window_end, eta_source (haversine / osrm / pin / zone / legacy), created_at | **unique (order, sequence)**; index (store, created_at). One row per store the order ships from |
 | `orders_orderstatushistory` | order FK, from_status, to_status, changed_by, note, created_at | index (order, created_at) |
 | `orders_returnrequest` (Phase 7) | return_number (unique), order FK (PROTECT), user FK, status (requested/approved/rejected/received/cancelled), reason, details, refund_amount (fixed at request time), refund_method (original_payment/manual), refund 1:1 → `payments_refund` (set when received), decision_note, decided_by, decided_at, received_at, restocked, cancelled_at | CHECK refund_amount ≥ 0; indexes (order, status), (status, created_at) |
 | `orders_returnitem` (Phase 7) | return_request FK (CASCADE), order_item FK (PROTECT), quantity, refund_amount | CHECK quantity ≥ 1; unique (return_request, order_item) |
@@ -148,6 +156,12 @@ cumulatively (`q(paid × returned_so_far / qty)` differences), so they add up ex
 `receive` writes a `return` stock movement (`reference_type="return"`, `reference_id=<return_number>`) when restocking,
 and creates the pending `payments_refund`.
 
+**Fulfilment (Phase 9).** `orders 0005` adds the delivery columns, `orders_ordershipment` and `orderitem.shipment`
+(all nullable or defaulted). `orders 0006_backfill_legacy_shipments` gives every earlier order one shipment for its
+store (`eta_source = "legacy"`, no estimate invented) and attaches its items, so stock movements of old orders keep
+using the right store. `order.store` stays as the primary fulfilment store (the shipment with the most lines); stock
+is always moved at the **line's shipment store**. The order's estimate is the latest of its shipments.
+
 ## payments ✅
 | Table | Key columns | Constraints |
 |---|---|---|
@@ -167,13 +181,23 @@ payment of orders already delivered/returned as captured and the order `paid`, s
 
 **No card numbers, CVV, UPI PINs or bank credentials are ever stored.**
 
-## delivery ✅ (foundation)
+## delivery ✅ (Phase 9 engine; rider workflow in Phase 10)
 | Table | Key columns |
 |---|---|
-| `delivery_deliveryzone` | store FK, name, radius_km, polygon JSON (optional), fast_delivery_enabled, delivery_fee_override, is_active |
-| `delivery_deliverypartner` | user 1:1, phone, vehicle_type, vehicle_number, home_store FK, status (offline/available/busy), is_verified, is_active, current lat/lng, last_location_at |
-| `delivery_deliveryassignment` | order FK, partner FK, status, assigned/accepted/picked_up/out_for_delivery/delivered timestamps, otp_hash (hash only), otp_verified_at, proof_image, delivery_notes, failure_reason, distance_km, earning_amount |
+| `delivery_deliveryzone` | store FK, name, radius_km, polygon JSON (optional `[[lat, lng], …]`, checked in Python), postal_codes (text: PIN codes always served), fast_delivery_enabled, fast_delivery_max_minutes (blank = global), delivery_fee_override, free_delivery_min_order (blank = global), is_active. Index (store, is_active) |
+| `delivery_pincode` (Phase 9) | postal_code (unique), area, city, state, latitude, longitude, is_active. Approximate centre of a PIN code for distance estimates; **not** a serviceability list (zones decide that) |
+| `delivery_geocodecache` (Phase 9) | query (unique; `pin:411038` or `addr:<address>`), latitude/longitude (NULL = "not found"), display_name, source, created_at. Each query reaches the geocoder once |
+| `delivery_deliverypartner` | user 1:1, phone, vehicle_type, vehicle_number, home_store FK, status (offline/available/busy), max_active_assignments (Phase 9, default 1), is_verified, is_active, current lat/lng, last_location_at. Index (home_store, status, is_active) |
+| `delivery_deliveryassignment` | order FK, shipment FK (Phase 9, nullable for older rows), partner FK, status, assigned/accepted/picked_up/out_for_delivery/delivered timestamps, otp_hash (hash only), otp_verified_at, proof_image, delivery_notes, failure_reason, distance_km, earning_amount |
 | `delivery_deliverystatushistory` | assignment FK, from_status, to_status, lat, lng, note, created_at |
+
+Migrations: `delivery 0003_geocodecache_pincode` (two new tables), `delivery 0004` (zone PIN list, fast cutoff and
+free-delivery threshold; partner capacity; assignment → shipment). No data is changed; existing zones keep working
+as radius-only zones with the global fee rule.
+
+**One active assignment per shipment** is enforced in `delivery.assignment.assign_shipment` under the order row lock
+rather than by a partial unique index, which MySQL doesn't have (portability rule above). "Active" = assigned,
+accepted, picked_up or out_for_delivery.
 
 ## reviews ✅
 | Table | Key columns | Constraints |
@@ -206,14 +230,20 @@ in `running` for more than 10 minutes are re-queued.
 | `core_auditlog` | append-only admin/sensitive action log (actor, action, target, changes JSON, IP, request_id) |
 
 ## Planned tables 🔜
-`accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 13–19) · `ai_productembedding` (JSON vectors, Phase 13) · `locations geocode cache` (Phase 9) · `django_cache` (prod DB cache, created by `createcachetable`).
+`accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 13–19) · `ai_productembedding` (JSON vectors, Phase 13) · `django_cache` (prod DB cache, created by `createcachetable`).
 
 ## Transactions
 - `orders.services.place_order` runs in one atomic block. It locks the customer's cart row (so concurrent "Place order"
   clicks queue), returns the existing order if the idempotency key was already used, locks the cart lines and coupon,
-  validates, recalculates totals (compares them with `expected_total`), picks a store, creates the order, items, stock
-  reservations, redemption, status history and payment, then clears the cart. Any failure rolls back everything, and
-  notifications are only sent on commit (both tested).
+  validates, plans fulfilment for the address (Phase 9: store or stores, estimate, zone fee rule), recalculates totals
+  (compares them with `expected_total`), creates the order, its shipments, items, stock reservations (each line at its
+  shipment's store), redemption, status history and payment, then clears the cart. Any failure rolls back everything,
+  and notifications are only sent on commit (both tested). The plan reads stock without locks; the reservation
+  re-checks it under the inventory row lock, so a stale plan fails with `insufficient_stock` and writes nothing.
+- `delivery.assignment.assign_shipment` (Phase 9) locks the order, then the delivery partner (always in that order),
+  re-checks the order status, the shipment's active assignment and the partner's eligibility and capacity, then
+  writes the assignment and its history. Tested with threads: one winner per shipment, never more than a rider's
+  capacity.
 - `payments.services` (Phase 8): checkout verification, webhooks and reconciliation all call the gateway **outside** any
   transaction, then lock payment → order and apply the result through the same `_record_capture` / `_record_failure`,
   so concurrent reports capture once. Webhook rows are created under the unique constraint and locked while

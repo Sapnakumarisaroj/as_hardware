@@ -1,29 +1,21 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 
 import { ChevronDownIcon, PinIcon } from '@/components/icons'
-
-const KEY = 'boltrun.delivery-pincode'
-
-function readPincode(): string {
-  try {
-    return window.localStorage.getItem(KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
+import { useServiceability } from '@/features/delivery/api'
+import { isValidPincode, savePincode, usePincode } from '@/features/delivery/location'
 
 /**
- * Remembers the shopper's delivery PIN code in this browser. Actual serviceability and ETA
- * are decided by the delivery engine (Phase 9) once an address is chosen at checkout, so
- * this never promises a delivery time.
+ * The shopper's delivery PIN code (remembered in this browser). The backend says whether we
+ * deliver there and how fast; product pages and the cart use the same PIN for their estimates.
  */
 export function LocationSelector({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
-  const [pincode, setPincode] = useState(readPincode)
+  const pincode = usePincode()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(pincode)
   const [error, setError] = useState('')
   const panelId = useId()
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const check = useServiceability(open ? pincode : '')
 
   useEffect(() => {
     if (!open) return
@@ -44,18 +36,12 @@ export function LocationSelector({ tone = 'dark' }: { tone?: 'dark' | 'light' })
   function save(event: FormEvent) {
     event.preventDefault()
     const value = draft.trim()
-    if (!/^[1-9]\d{5}$/.test(value)) {
+    if (!isValidPincode(value)) {
       setError('Enter a valid 6-digit PIN code.')
       return
     }
-    try {
-      window.localStorage.setItem(KEY, value)
-    } catch {
-      // Not persisted (private mode); still used for this visit.
-    }
-    setPincode(value)
+    savePincode(value)
     setError('')
-    setOpen(false)
   }
 
   const textTone = tone === 'dark' ? 'text-white hover:text-amber-500' : 'text-ink-900 hover:text-amber-600'
@@ -98,10 +84,10 @@ export function LocationSelector({ tone = 'dark' }: { tone?: 'dark' | 'light' })
                 aria-invalid={Boolean(error)}
                 aria-describedby={`${panelId}-note`}
                 className="input"
-                placeholder="e.g. 411001"
+                placeholder="e.g. 411038"
               />
               <button type="submit" className="btn-primary px-3">
-                Save
+                Check
               </button>
             </div>
             {error && (
@@ -109,9 +95,27 @@ export function LocationSelector({ tone = 'dark' }: { tone?: 'dark' | 'light' })
                 {error}
               </p>
             )}
-            <p id={`${panelId}-note`} className="mt-2 text-xs text-ink-600">
-              Delivery availability and timing are confirmed after you choose an address at checkout.
-            </p>
+            <div id={`${panelId}-note`} role="status" className="mt-2 text-xs text-ink-600">
+              {!pincode ? (
+                'Enter your PIN code to see if we deliver to you and how fast.'
+              ) : check.isPending ? (
+                `Checking delivery to ${pincode}…`
+              ) : check.isError ? (
+                'Couldn’t check delivery right now. Your PIN code is saved; the time is confirmed at checkout.'
+              ) : (
+                <>
+                  <span className={`block text-sm font-semibold ${check.data.serviceable ? 'text-ink-900' : 'text-danger-600'}`}>
+                    {check.data.message}
+                  </span>
+                  {check.data.serviceable && !check.data.fast_delivery_available && check.data.fast_unavailable_reason && (
+                    <span className="block">Fast delivery unavailable — {check.data.fast_unavailable_reason}</span>
+                  )}
+                  {check.data.serviceable && (
+                    <span className="block">For an item in stock nearby. The time for your order is shown in the cart.</span>
+                  )}
+                </>
+              )}
+            </div>
           </form>
         </div>
       )}

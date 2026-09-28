@@ -3,13 +3,13 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 
 import { EmptyState, ErrorState, PageSpinner, SignInPrompt } from '@/components/feedback'
-import { BoltIcon, ClockIcon } from '@/components/icons'
 import { useToast } from '@/components/toast'
 import { AddressFormModal, AddressList } from '@/features/addresses/components'
 import { useAddresses } from '@/features/addresses/api'
 import { useAuth } from '@/features/auth/context'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { checkoutKeys, useCheckoutPreview, type CheckoutPreview } from '@/features/checkout/api'
+import { DeliveryEstimate } from '@/features/delivery/components'
 import { useAvailableCoupons } from '@/features/offers/api'
 import { AvailableCouponList, CartOfferNotes } from '@/features/offers/components'
 import { newIdempotencyKey, usePlaceOrder } from '@/features/orders/api'
@@ -38,41 +38,17 @@ function Step({ n, title, children, action }: { n: number; title: string; childr
 }
 
 function DeliveryInfo({ delivery }: { delivery: CheckoutPreview['delivery'] }) {
-  if (!delivery.available) {
-    return (
-      <p role="alert" className="text-sm font-semibold text-danger-600">
-        {delivery.message}
-      </p>
-    )
-  }
   return (
-    <div className="space-y-2 text-sm">
-      <p className="flex items-start gap-2 font-semibold text-ink-900">
-        {delivery.fast_delivery_possible ? (
-          <>
-            <BoltIcon className="mt-0.5 size-4 shrink-0 text-amber-600" />
-            Available for delivery · stocked at a store with fast delivery
-          </>
-        ) : (
-          <>
-            <ClockIcon className="mt-0.5 size-4 shrink-0 text-ink-600" />
-            Available for delivery from our stores
-          </>
-        )}
-      </p>
-      <p className="pl-6 text-ink-600">
-        {delivery.eta_minutes ? `Estimated delivery in about ${delivery.eta_minutes} minutes.` : delivery.message}
-      </p>
-      <p className="pl-6 text-ink-800">
-        Delivery fee: {delivery.fee === '0.00' ? <span className="font-semibold text-success-600">Free</span> : formatPrice(delivery.fee)}
-        {delivery.amount_to_free_delivery !== '0.00' && (
-          <span className="block text-xs text-ink-600">
-            Add {formatPrice(delivery.amount_to_free_delivery)} more for free delivery (orders from{' '}
-            {formatPrice(delivery.free_delivery_min_order)}).
-          </span>
-        )}
-      </p>
-    </div>
+    <DeliveryEstimate quote={delivery} showFee={delivery.available}>
+      {delivery.reason_code === 'out_of_zone' && (
+        <p className="text-ink-600">Choose or add another delivery address to continue.</p>
+      )}
+      {delivery.available && delivery.delivery_type && (
+        <p className="text-xs text-ink-600">
+          The estimate is calculated when you place the order, from the store’s workload and distance at that moment.
+        </p>
+      )}
+    </DeliveryEstimate>
   )
 }
 

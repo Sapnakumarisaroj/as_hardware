@@ -40,6 +40,11 @@ class PaymentMethod(models.TextChoices):
     ONLINE = "online", "Online (UPI / card / net banking)"
 
 
+class DeliveryType(models.TextChoices):
+    FAST = "fast", "Fast delivery"
+    STANDARD = "standard", "Standard delivery"
+
+
 class Order(TimeStampedModel):
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     order_number = models.CharField(max_length=20, unique=True)
@@ -71,8 +76,13 @@ class Order(TimeStampedModel):
     coupon = models.ForeignKey("offers.Coupon", null=True, blank=True, on_delete=models.SET_NULL, related_name="orders")
     coupon_code = models.CharField(max_length=30, blank=True)
     customer_note = models.CharField(max_length=500, blank=True)
+    # Delivery promise made at placement (Phase 9; the latest of the order's shipments).
+    delivery_type = models.CharField(max_length=10, choices=DeliveryType.choices, blank=True)
+    estimated_ready_at = models.DateTimeField(null=True, blank=True)
     estimated_delivery_at = models.DateTimeField(null=True, blank=True)
     eta_minutes = models.PositiveIntegerField(null=True, blank=True)
+    delivery_window_start = models.DateTimeField(null=True, blank=True)
+    delivery_window_end = models.DateTimeField(null=True, blank=True)
     cancellation_reason = models.CharField(max_length=255, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
@@ -119,6 +129,10 @@ class OrderItem(models.Model):
     offer_discount = models.DecimalField(
         **MONEY_FIELD_KWARGS, default=0, help_text="This line's share of automatic offers (for returns/refunds)."
     )
+    # Phase 9: the shipment (store) this line is reserved at and ships from.
+    shipment = models.ForeignKey(
+        "OrderShipment", null=True, blank=True, on_delete=models.SET_NULL, related_name="items"
+    )
 
     class Meta:
         ordering = ["id"]
@@ -126,6 +140,42 @@ class OrderItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.quantity} × {self.sku}"
+
+
+class OrderShipment(models.Model):
+    """One store's part of an order, with the delivery estimate made when the order was placed.
+
+    Most orders have one shipment. When no single store holds every line, the fulfilment
+    engine splits the order across stores (apps/delivery/fulfillment.py); each line is reserved
+    at, sold from and restocked to its shipment's store. The order status covers all shipments.
+    """
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="shipments")
+    sequence = models.PositiveSmallIntegerField(default=1)
+    store = models.ForeignKey("stores.Store", on_delete=models.PROTECT, related_name="shipments")
+    zone = models.ForeignKey(
+        "delivery.DeliveryZone", null=True, blank=True, on_delete=models.SET_NULL, related_name="shipments"
+    )
+    delivery_type = models.CharField(max_length=10, choices=DeliveryType.choices)
+    distance_km = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    prep_minutes = models.PositiveSmallIntegerField(default=0)
+    wait_minutes = models.PositiveSmallIntegerField(default=0, help_text="Expected wait for a free rider.")
+    travel_minutes = models.PositiveSmallIntegerField(default=0)
+    eta_minutes = models.PositiveIntegerField(default=0)
+    estimated_ready_at = models.DateTimeField(null=True, blank=True)
+    estimated_delivery_at = models.DateTimeField(null=True, blank=True)
+    window_start = models.DateTimeField(null=True, blank=True)
+    window_end = models.DateTimeField(null=True, blank=True)
+    eta_source = models.CharField(max_length=20, blank=True, help_text="haversine, osrm, pin or legacy.")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["order_id", "sequence"]
+        constraints = [models.UniqueConstraint(fields=["order", "sequence"], name="uniq_shipment_sequence")]
+        indexes = [models.Index(fields=["store", "created_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.order_id}/{self.sequence} from {self.store_id}"
 
 
 class OrderStatusHistory(models.Model):

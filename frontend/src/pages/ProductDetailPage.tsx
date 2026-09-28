@@ -11,6 +11,9 @@ import { PriceBlock, Rating, StockLabel } from '@/features/catalog/components/ba
 import { ProductRail } from '@/features/catalog/components/ProductCollections'
 import { ProductGallery } from '@/features/catalog/components/ProductGallery'
 import { VariantSelector } from '@/features/catalog/components/VariantSelector'
+import { useProductEstimate } from '@/features/delivery/api'
+import { DeliveryEstimate, PincodeForm } from '@/features/delivery/components'
+import { savePincode, usePincode } from '@/features/delivery/location'
 import { ProductOfferCallout } from '@/features/offers/components'
 import type { ProductDetail, ProductVariant } from '@/features/catalog/types'
 import { variantLabel } from '@/features/catalog/variants'
@@ -26,8 +29,15 @@ function pickVariant(product: ProductDetail, requested: string | null): ProductV
   return byId ?? product.variants.find((v) => v.is_default) ?? product.variants[0]
 }
 
-function DeliveryInfo({ variant }: { variant: ProductVariant }) {
-  if (variant.stock_status === 'out_of_stock') {
+/**
+ * With a PIN code: the backend's estimate for this variant and quantity. Without one: only what
+ * the catalogue knows (stocked at a store that offers fast delivery or not) and a PIN form.
+ */
+function DeliveryInfo({ variant, quantity }: { variant: ProductVariant; quantity: number }) {
+  const pincode = usePincode()
+  const outOfStock = variant.stock_status === 'out_of_stock'
+  const estimate = useProductEstimate(variant.id, quantity, pincode, !outOfStock)
+  if (outOfStock) {
     return (
       <p className="flex items-start gap-2 text-sm text-ink-800">
         <ClockIcon className="mt-0.5 size-4 shrink-0 text-ink-600" />
@@ -35,8 +45,21 @@ function DeliveryInfo({ variant }: { variant: ProductVariant }) {
       </p>
     )
   }
+  if (pincode && estimate.data) {
+    return (
+      <div aria-live="polite" aria-busy={estimate.isFetching}>
+        <p className="mb-1 text-xs text-ink-600">
+          Delivering to PIN <span className="font-semibold text-ink-900">{pincode}</span>{' '}
+          <button type="button" onClick={() => savePincode('')} className="font-semibold text-amber-600 hover:underline">
+            Change
+          </button>
+        </p>
+        <DeliveryEstimate quote={estimate.data} showFee={false} />
+      </div>
+    )
+  }
   return (
-    <div className="space-y-1.5 text-sm">
+    <div className="space-y-2 text-sm">
       {variant.fast_delivery ? (
         <p className="flex items-start gap-2 font-semibold text-ink-900">
           <BoltIcon className="mt-0.5 size-4 shrink-0 text-amber-600" />
@@ -48,7 +71,16 @@ function DeliveryInfo({ variant }: { variant: ProductVariant }) {
           Standard delivery from our stores
         </p>
       )}
-      <p className="pl-6 text-ink-600">Delivery availability and time are checked after you select your address.</p>
+      {pincode && estimate.isPending ? (
+        <p className="pl-6 text-ink-600">Checking delivery to {pincode}…</p>
+      ) : (
+        <div className="pl-6">
+          {pincode && estimate.isError && (
+            <p className="mb-1 text-ink-600">Couldn’t check delivery to {pincode} right now. The time is confirmed at checkout.</p>
+          )}
+          <PincodeForm current={pincode} label="Enter your PIN code to see the delivery time" />
+        </div>
+      )}
     </div>
   )
 }
@@ -231,7 +263,7 @@ export function ProductDetailPage() {
               )}
             </p>
             <div className="mt-3">
-              <DeliveryInfo variant={variant} />
+              <DeliveryInfo variant={variant} quantity={safeQuantity} />
             </div>
           </div>
 

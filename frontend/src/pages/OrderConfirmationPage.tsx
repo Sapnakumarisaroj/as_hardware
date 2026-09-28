@@ -3,8 +3,10 @@ import { Link, Navigate, useParams } from 'react-router'
 import { ErrorState, PageSpinner, SignInPrompt } from '@/components/feedback'
 import { AddressText } from '@/features/addresses/components'
 import { useAuth } from '@/features/auth/context'
+import { OrderDeliveryCard } from '@/features/delivery/components'
 import { useOrder } from '@/features/orders/api'
 import { OrderItemsList, OrderStatusBadge, PaymentStatusBadge } from '@/features/orders/components'
+import { orderStatusLabel } from '@/features/orders/status'
 import { isNotFound } from '@/lib/api/errors'
 import { formatPrice } from '@/lib/format'
 import { usePageMeta } from '@/lib/usePageMeta'
@@ -58,7 +60,7 @@ export function OrderConfirmationPage() {
             <OrderStatusBadge order={data} />
             <PaymentStatusBadge order={data} />
           </div>
-          <p className="mt-3 text-sm text-ink-800">{data.delivery_message}</p>
+          {data.delivery_message && <p className="mt-3 text-sm font-semibold text-ink-900">{data.delivery_message}</p>}
           <p className="mt-2 text-lg font-bold">
             Total {formatPrice(data.grand_total)}
             <span className="block text-xs font-normal text-ink-600">
@@ -66,6 +68,10 @@ export function OrderConfirmationPage() {
             </span>
           </p>
         </section>
+
+        {data.status !== 'cancelled' && (
+          <OrderDeliveryCard order={data} statusLabel={orderStatusLabel(data)} headingId="confirm-delivery" />
+        )}
 
         <section aria-labelledby="confirm-items" className="rounded-lg bg-white px-5 py-4 ring-1 ring-steel-200">
           <h2 id="confirm-items" className="text-base font-bold">
