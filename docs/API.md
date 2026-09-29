@@ -182,9 +182,11 @@ the fee rule of the delivery zone.
 | POST | `/api/orders/` | customer | Places the order from the cart. Body: `{address_id, payment_method: "cod"\|"online", coupon_code?, customer_note?, expected_total?}`. Header `Idempotency-Key: <8–64 chars [A-Za-z0-9_-]>` (or body `idempotency_key`). **201** new order · **200** + `Idempotent-Replayed: true` when the key was already used by this customer (returns that order, creates nothing) |
 | GET | `/api/orders/` | customer: own · staff: all | Newest first, paginated. `?status=` filter. Items: `order_number, status, payment_method, payment_status, grand_total, item_count` (units), `item_names` (first 3), `image`, `estimated_delivery_at`, `delivery_message`, `delivery` (Phase 9, see "Order delivery data"), `created_at` |
 | GET | `/api/orders/{order_number}/` | owner/staff | Snapshots of items (+`image`, `product_slug`, per-line `offer_discount`) and address, all totals incl. `offer_discount`, `coupon_discount` and `applied_offers[{id, name, badge, discount, skus}]`, `status_history`, `payments`, `refunds`, `can_cancel`, `can_retry_payment`, `delivery_message`. Phase 7: `can_return`, `return_window_ends_at`, `can_reorder`, `returns[]` (see Returns), per item `returnable_quantity` (0 outside the window) and `returned_quantity`. Phase 9: `store_name`, `delivery`, `shipments[]` (see "Order delivery data") |
-| POST | `/api/orders/{order_number}/cancel/` | owner | `{reason}` (required). Only while `pending`/`confirmed`/`processing`, else 409 `invalid_transition`. Releases reserved stock, voids uncaptured payments, creates a **pending** Refund for captured payments, gives the coupon use back |
+| POST | `/api/orders/{order_number}/cancel/` | owner | `{reason}` (required). Only while `pending`/`confirmed`/`processing`, else 409 `invalid_transition`. Releases reserved stock, voids uncaptured payments, creates a **pending** Refund for captured payments, gives the coupon use back, and takes the job off a rider who was already assigned |
+| POST | `/api/orders/{order_number}/shipments/{sequence}/delivery-code/` | owner | Phase 10. New delivery code for a shipment that is out for delivery; the old one stops working. At most one per `DELIVERY_OTP_RESEND_SECONDS` (409 `otp_too_soon`); not out for delivery → 409 `otp_not_needed`. Returns the order |
+| GET | `/api/orders/{order_number}/shipments/{sequence}/proof/` | owner · staff of the store · admin | Phase 10. The photo taken at delivery (`image/jpeg`, `Cache-Control: private, no-store`). 404 until the shipment is delivered or when no photo exists |
 | POST | `/api/orders/{order_number}/retry-payment/` | owner | New online payment attempt for a `pending` online order whose last attempt failed/was cancelled (409 otherwise) |
-| POST | `/api/orders/{order_number}/transition/` | staff | `{status, note?}`. Validated by the state machine (409 on invalid). Side effects: cancel → release stock, picked_up → sale. Return statuses (`return_requested`, `returned`, and leaving `return_requested`) are refused here (409 `invalid_transition`): they move only through the return endpoints |
+| POST | `/api/orders/{order_number}/transition/` | staff | `{status, note?}`. Validated by the state machine (409 on invalid). Side effects: cancel → release stock, picked_up → sale; the order's shipments follow. Return statuses (`return_requested`, `returned`, and leaving `return_requested`) are refused here (409 `invalid_transition`): they move only through the return endpoints. Phase 10: `picked_up`, `out_for_delivery`, `delivered` and `delivery_failed` are refused with 409 `rider_in_charge` while a delivery partner holds a job for the order (the rider's steps move it; reassign or unassign instead), and cancelling is refused with 409 `shipment_on_the_way` once part of the order has left the store. Stores whose own riders don't use the app keep using these steps |
 | POST | `/api/orders/{order_number}/reorder/` | owner | **Buy again** (Phase 7). Adds the order's items to the cart at **today's** prices (never the old price). Each line is capped by current stock and the product's order limit, counting what is already in the cart. Returns `{added[], skipped[], cart}`; each line is `{sku, name, requested, added, reason}` and `skipped` lists lines added partly or not at all (`"No longer sold."`, `"Out of stock right now."`, `"Only N added (stock or order limit)."`, `"Your cart already has the most you can order."`). Works for any order status; a store manager viewing a customer's order gets 404 |
 | POST | `/api/payments/{public_id}/verify/` | owner | `{payload: {…what the gateway widget returned…}}`. The server verifies it **with the gateway** and returns the updated order. **Razorpay:** `{razorpay_order_id, razorpay_payment_id, razorpay_signature}`: HMAC-SHA256(`order_id\|payment_id`, key secret) is checked, then the payment is fetched from Razorpay (order id, amount and currency must match; `authorized` → captured). `{cancelled: true}` when the customer closes the window. **Mock:** `{mock_signature (from client_payload), mock_outcome: "success"\|"failed"\|"cancelled"\|"pending"}`. Still processing at the gateway → the attempt stays `created` and the order is confirmed later by webhook/reconciliation. Repeating a successful verification is harmless. A closed attempt → 409 `payment_state_invalid`, unless the gateway confirms it was captured (a retry inside the Razorpay window after a failure). Gateway unreachable → 409 `payment_verification_unavailable`, with nothing changed |
 
@@ -211,6 +213,12 @@ stock or coupon changed since the customer saw `expected_total`; nothing is crea
 | Online order unpaid after `PAYMENT_EXPIRY_MINUTES` (30) | open attempts → `cancelled` (after asking the gateway) | unchanged | `cancelled` (stock released, customer notified) |
 | Money captured after cancellation/expiry, a second paid attempt, or wrong amount | `captured` + automatic full Refund | unchanged | unchanged (never confirmed on it) |
 | COD order delivered (Phase 8) | COD record → `captured` (cash collected) | `paid` | `delivered` |
+| Delivery attempt failed (Phase 10) | unchanged | unchanged | `delivery_failed` → `assigned` when sent out again, or `cancelled` (undelivered goods restocked, captured money refunded) |
+
+**Order statuses:** `pending → confirmed → processing → packed → assigned → picked_up → out_for_delivery → delivered`,
+plus `delivery_failed` (Phase 10), `cancelled`, `return_requested`, `returned`. From `packed` onwards the order status
+is derived from its shipments: `delivery_failed` if any shipment failed, otherwise the least advanced shipment; so an
+order is `delivered` only when every shipment is.
 
 ## Delivery & fulfilment ✅ (Phase 9)
 Every delivery time is **calculated** by the fulfilment engine (`apps/delivery`; rules in ARCHITECTURE.md →
@@ -224,9 +232,11 @@ below which an estimate counts as fast delivery.
 | GET | `/api/delivery/cart-estimate/` | customer | Delivery quote for the signed-in customer's cart + location |
 | GET | `/api/delivery/zones/` | public | Active delivery zones of stores that take orders, with their **effective** rules |
 | GET | `/api/stores/availability/` | public | `variant_id` (required) + optional location. Which stores hold the product |
-| GET | `/api/delivery/shipments/` | store manager (their stores) / admin | Shipments waiting for a rider (`?scope=waiting`, default) or all (`?scope=all`), paginated |
+| GET | `/api/delivery/shipments/` | store manager (their stores) / admin | Shipments, paginated. `?scope=waiting` (default: need a rider, including failed ones), `active` (with a rider), `failed`, `delivered`, `all`; `?status=` |
 | GET | `/api/delivery/shipments/{id}/eligible-partners/` | staff / admin | Riders who may carry it, best first |
-| POST | `/api/delivery/shipments/{id}/assign/` | staff / admin | `{partner_id}` → 201 `{assignment_id, order_status, partner_id}` |
+| POST | `/api/delivery/shipments/{id}/assign/` | staff / admin | `{partner_id}` → 201 `{assignment_id, order_status, partner_id}`. Also sends a failed shipment out again |
+
+The rider workflow and the rest of the staff endpoints are in "Delivery partner workflow" below.
 
 **Location parameters** (query string; one of): `address_id` (a saved address of the signed-in customer; anonymous →
 401, someone else's → 404) · `latitude` + `longitude` (both; optional `postal_code`) · `postal_code` (6 digits).
@@ -276,15 +286,15 @@ shown as the global value that applies.
 distance_km}]`. `stock_status` is `in_stock` / `low_stock` / `out_of_stock`: **exact quantities are never exposed**.
 `delivers_to_location` and `distance_km` (straight line) are `null` without a location. Warehouses are not listed.
 
-**Assignment (foundation for Phase 10).** `eligible-partners` → `[{partner_id, full_name, vehicle_type, same_store,
+**Assignment.** `eligible-partners` → `[{partner_id, full_name, vehicle_type, same_store,
 active_assignments, capacity, distance_km}]`: active, verified, `available`, below `max_active_assignments`, and
 based at the store or currently within `DELIVERY_PARTNER_PICKUP_RADIUS_KM` of it. `assign` errors (409):
-`invalid_delivery_state` (order not `confirmed`/`processing`/`packed`), `already_assigned` (the shipment has an active
-assignment), `partner_unavailable` (offline, at capacity, unverified or too far). Unknown shipment or partner, or a
-shipment of another manager's store → 404. When every shipment of a `packed` order has a rider the order becomes
-`assigned`. Cancelling the order (or `assigned → packed`) cancels the assignment and frees the rider. The rider's own
-steps (accept, pickup, OTP, proof) are Phase 10; riders see their assignments at `GET /api/delivery/assignments/`
-(`pickup` is the store of their shipment).
+`invalid_delivery_state` (order not `confirmed`/`processing`/`packed`/`assigned`/`delivery_failed`, or the shipment
+is already on its way), `already_assigned` (the shipment has an active assignment), `partner_unavailable` (offline,
+at capacity, unverified or too far). Unknown shipment or partner, or a shipment of another manager's store → 404.
+A rider can be assigned while the order is still being packed; when every shipment of a `packed` order has a rider
+the order becomes `assigned`. Cancelling the order (or `assigned → packed`) cancels the jobs of riders who have not
+picked up yet and frees them.
 
 ### Order delivery data
 `delivery` on order list and detail:
@@ -301,8 +311,120 @@ orders carry their window in `label`. Orders placed before Phase 9 have `type: n
 An online order is re-estimated from the moment it is **paid**.
 
 `shipments[]` on order detail: `{sequence, store_name, store_area, delivery_type, distance_km, prep_minutes,
-eta_minutes, estimated_ready_at, estimated_delivery_at, window_start, window_end, item_ids[]}`. The current delivery
-status is the order `status` (`status_history` has the timestamps).
+eta_minutes, estimated_ready_at, estimated_delivery_at, window_start, window_end, item_ids[]}` plus the delivery
+progress (Phase 10):
+
+| Field | Meaning |
+|---|---|
+| `status`, `status_label` | `pending` (waiting for a rider) · `assigned` · `picked_up` · `out_for_delivery` · `delivered` · `failed` · `cancelled` |
+| `delivery_attempts`, `picked_up_at`, `out_for_delivery_at`, `delivered_at` | Progress of this shipment |
+| `rider` | `{name (first name), vehicle, phone, status}` or `null`. `phone` is set only while the rider carries the goods (`picked_up`, `out_for_delivery`) |
+| `delivery_code` | `{state, code, expires_at, can_request_new}`: the code to tell the rider at the door. **Only for the customer who placed the order, only while the shipment is out for delivery**; `null` otherwise (also for staff). `state`: `active` (then `code` is set) · `expired` · `locked` (too many wrong tries): ask for a new one |
+| `amount_to_pay` | Cash on delivery: what to pay the rider for this shipment; `null` when nothing is due |
+| `failure` | `{code, reason, failed_at, next_step}` when the last attempt failed. The rider's free-text note is not shown to the customer |
+| `proof_available`, `received_by` | After delivery. The photo itself is fetched from `/api/orders/{n}/shipments/{sequence}/proof/` |
+
+## Delivery partner workflow ✅ (Phase 10)
+Rules in ARCHITECTURE.md → *Delivery partner workflow*. Delivery partners sign in like everyone else
+(`POST /api/auth/login/`, role `delivery_partner`; accounts are created and verified by an admin).
+
+### Rider (own jobs only)
+Another rider's job → 404. Customers, store managers and admins → 403. Anonymous → 401.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/delivery/me/` | `full_name, email, phone, vehicle_type, vehicle_number, home_store_name, status, is_verified, is_active, max_active_assignments, active_assignments, cash_in_hand, last_location_at` |
+| PATCH | `/api/delivery/me/` | `{status: "available" \| "offline"}`. Nothing else is writable (`busy` is set by the system). 409 `partner_not_verified`; 409 `active_delivery` while a job is active |
+| POST | `/api/delivery/me/location/` | `{latitude, longitude}` → 204. Only the latest position is kept |
+| GET | `/api/delivery/assignments/` | `?scope=active` (oldest first) \| `history`; `?kind=delivery` \| `return_pickup`. Paginated |
+| GET | `/api/delivery/assignments/{id}/` | One job |
+| POST | `/api/delivery/assignments/{id}/accept/` | `assigned → accepted` |
+| POST | `/api/delivery/assignments/{id}/reject/` | `{reason}` (required). `assigned`/`accepted` → `rejected`; the shipment waits for a rider again |
+| POST | `/api/delivery/assignments/{id}/pickup/` | `{latitude?, longitude?}`. `accepted → picked_up`. Delivery: at the store; needs a packed order (409 `order_not_packed`); the shipment's stock reservation becomes a sale. Return pickup: from the customer |
+| POST | `/api/delivery/assignments/{id}/start/` | `picked_up → out_for_delivery`. Issues the customer's delivery code and notifies the customer. Deliveries only (409 `not_a_delivery`) |
+| POST | `/api/delivery/assignments/{id}/proof/` | multipart `photo` (JPEG/PNG/WebP, ≤ 8 MB), `received_by?`. While `out_for_delivery` (return pickup: once collected). Replaces an earlier photo |
+| GET | `/api/delivery/assignments/{id}/proof/` | The rider's own photo |
+| POST | `/api/delivery/assignments/{id}/complete/` | `{otp, cod_collected?, cod_amount?, cod_method?: "cash" \| "upi", cod_reference?, received_by?, notes?, latitude?, longitude?}`. Delivery: `out_for_delivery → delivered`. Return pickup: `picked_up → delivered` (handed over at the store; no code, no cash) |
+| POST | `/api/delivery/assignments/{id}/fail/` | `{reason, note?}`; `note` required for `other`. `picked_up`/`out_for_delivery` → `failed` (return pickup: also from `accepted`). `reason`: `customer_unavailable`, `wrong_address`, `customer_refused`, `payment_not_ready`, `damaged`, `vehicle_problem`, `other` |
+| PATCH | `/api/delivery/assignments/{id}/notes/` | `{notes}` (≤ 500), while the job is active |
+| GET | `/api/delivery/earnings/` | `delivered_count, total_earnings, today_earnings, last_7_days_earnings, today_delivered_count, failed_count, cash_in_hand, cash_deliveries_pending_handover` |
+
+Every action answers with the job. There is no PUT/PATCH/DELETE on a job (405), and a rider has no access to orders,
+prices, customers, inventory or any staff endpoint (403/404). Unknown fields in a request are ignored.
+
+**The job** (`GET /api/delivery/assignments/{id}/`):
+```json
+{ "id": 7, "kind": "delivery", "kind_label": "Delivery to the customer",
+  "status": "out_for_delivery", "status_label": "Out for delivery", "next_actions": ["proof", "complete", "fail"],
+  "order_number": "OD260928ABCDEF", "order_status": "out_for_delivery", "payment_method": "cod",
+  "shipment_sequence": 1, "return_number": null,
+  "amount_to_collect": "1200.00",
+  "cod": { "amount_due": "1200.00", "collected": false, "collected_amount": null, "method": null,
+           "collected_at": null, "handed_over": false, "handed_over_at": null },
+  "pickup": { "name": "Demo Store — Kothrud", "address": "…", "phone": "…", "latitude": "18.507400", "longitude": "73.807700",
+              "map_url": "https://www.openstreetmap.org/?mlat=…", "directions_url": "https://www.openstreetmap.org/directions?to=…",
+              "geo_uri": "geo:18.507400,73.807700?q=18.507400,73.807700" },
+  "drop": { "name": "Asha Kumar", "phone": "9876543210", "address": "12 MG Road, Kothrud, Pune, 411038",
+            "address_line1": "…", "area": "…", "landmark": "…", "city": "…", "postal_code": "…",
+            "latitude": "…", "longitude": "…", "note": "Call before delivery", "map_url": "…", "directions_url": "…", "geo_uri": "…" },
+  "items": [ { "name": "Impact Drill 650W", "variant": "", "sku": "DEMO-DRILL", "quantity": 2 } ],
+  "otp_state": "active", "proof_uploaded": false, "proof_required": false, "received_by": "",
+  "distance_km": "2.70", "earning_amount": "0.00", "delivery_notes": "",
+  "assigned_at": "…", "accepted_at": "…", "picked_up_at": "…", "out_for_delivery_at": "…", "delivered_at": null,
+  "failed_at": null, "failure_code": "", "failure_reason": "", "rejected_at": null, "reject_reason": "",
+  "status_history": [ { "from_status": "", "to_status": "assigned", "note": "Assigned by store", "created_at": "…" } ] }
+```
+- `pickup` / `drop`: store → customer for a delivery, customer → store for a return pickup. The customer's name,
+  phone, address and note are present only while the job is active; afterwards only `{area, city}`.
+- Navigation uses free links: `geo_uri` opens the phone's own maps app, `map_url` / `directions_url` open
+  OpenStreetMap. Without a map pin they search for the address text.
+- `items` has names and quantities, never prices. `amount_to_collect` is the only money a rider sees.
+- `otp_state`: `none` · `active` · `expired` · `locked` · `used`. **The code itself is never sent to the rider.**
+- `next_actions` tells the app which buttons to show; the server checks every step regardless.
+
+**Errors** (409 unless noted): `invalid_delivery_state` (step not allowed from the current status; `details.status`),
+`order_not_packed`, `not_a_delivery`, `return_not_open`, `partner_inactive`; 400 `reason_required`, `note_required`,
+`proof_required` (when `DELIVERY_PROOF_REQUIRED`), `proof_invalid`, `proof_too_large`.
+
+**Delivery code (OTP).** Six digits, issued at `start`, valid `DELIVERY_OTP_TTL_MINUTES` (30), single use.
+`complete` answers 400 with: `otp_invalid` (wrong code; the message says how many tries are left), `otp_locked`
+(after `DELIVERY_OTP_MAX_ATTEMPTS` = 5 wrong codes even the right one is refused), `otp_expired`, `otp_not_issued`.
+A wrong code is counted although the request fails. The customer gets a new code from their order page
+(`…/delivery-code/`), which replaces the old one. A failed attempt destroys the code; the next attempt gets its own.
+
+**Cash on delivery.** `amount_to_collect` is this shipment's share of the order total (its items after discounts;
+the delivery fee travels with the first shipment; shares add up to the order total). `complete` needs
+`cod_collected: true` and `cod_amount` **equal** to it: 400 `cod_not_collected`, `cod_amount_mismatch`
+(`details.amount_due`), `cod_method_invalid`. The amount is compared, never stored as sent. Online-paid orders have
+`amount_to_collect: null`. `cash` stays in the rider's `cash_in_hand` until the store records the handover; `upi` is
+paid to the store directly and needs none. The order becomes `paid` when the whole order is delivered.
+
+### Staff (their stores) and admin
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/delivery/shipments/{id}/` | Status, rider, COD, `items[]` and `assignments[]`: every rider's job on the shipment with its `status_history` (delivery history) |
+| POST | `/api/delivery/shipments/{id}/reassign/` | `{partner_id, reason?}` → 201. Only before pickup. 409 `not_assigned`, `already_picked_up`, `same_partner`, `partner_unavailable` |
+| POST | `/api/delivery/shipments/{id}/unassign/` | `{reason?}`. Only before pickup; the shipment waits for a rider again |
+| POST | `/api/delivery/shipments/{id}/complete-without-otp/` | `{note (required), cod_collected?, cod_amount?, cod_method?, cod_reference?}`. Closes a delivery that is out for delivery when the customer can't show the code. Flagged (`completed_without_otp`) and audit-logged. Same COD rules |
+| GET | `/api/delivery/shipments/{id}/proof/` | The delivery photo. Each view is audit-logged |
+| GET | `/api/delivery/partners/` | Rider availability: `partner_id, full_name, phone, vehicle_type, home_store_name, status, is_verified, is_active, active_assignments, capacity, can_take_jobs, cash_in_hand, last_location_at`. `?status=offline\|available\|busy`. Managers see riders based at their stores |
+| GET | `/api/delivery/cod/` | Cash-on-delivery collections, newest first, paginated. `?handed_over=true\|false`, `?partner=<id>`. `assignment_id, order_number, store_name, partner_id, partner_name, cod_amount_due, cod_collected_amount, cod_method, cod_reference, cod_collected_at, handed_over, cod_handed_over_at, handed_over_to, cod_handover_note` |
+| POST | `/api/delivery/cod/{assignment_id}/handover/` | `{note?}`. The store received the rider's cash. 409 `cod_not_collected`, `cod_already_handed_over` |
+| POST | `/api/returns/{return_number}/assign-pickup/` | `{partner_id}` → 201. Sends a rider to collect an **approved** return (409 `invalid_delivery_state` otherwise, `already_assigned`, `partner_unavailable`) |
+
+Staff shipment rows: `id, order_number, order_status, payment_method, sequence, store_name, status, status_label,
+delivery_type, distance_km, estimated_ready_at, estimated_delivery_at, delivery_attempts, picked_up_at,
+out_for_delivery_at, delivered_at, failed_at, failure_reason, failure_note, assigned_partner, rider{assignment_id,
+assignment_status, partner_id, full_name, phone, completed_without_otp}, cod{…}, proof_available, can_assign,
+can_reassign`. Managers of another store get 404 for everything here.
+
+**Proof-of-delivery photos** are stored outside the web-served media folder and have no URL. They are streamed only
+by the three `proof` endpoints (rider: own job · customer: own delivered order · staff: their store), with
+`Cache-Control: private, no-store`. Uploads are re-encoded on the server: metadata such as GPS position and phone
+model is removed, the picture is scaled to at most 1600 px and saved as JPEG.
+
+**Notifications:** rider `delivery.assigned`, `delivery.unassigned` (in-app); customer `order.out_for_delivery`
+(never contains the code), `order.part_delivered`, `order.delivered`, `delivery.failed` (in-app + email).
 
 ## Returns ✅ (Phase 7)
 | Method | Path | Access | Notes |
@@ -318,7 +440,10 @@ status is the order `status` (`status_history` has the timestamps).
 Return fields: `return_number, order_number, status (+status_label), reason (+reason_label), details, refund_amount,
 refund_method (original_payment | manual), refund_method_label, refund_status (null until received), restocked,
 decision_note, created_at, decided_at, received_at, cancelled_at, can_cancel, items[{order_item_id, sku, product_name,
-variant_name, quantity, refund_amount, image}]`.
+variant_name, quantity, refund_amount, image}]`, and (Phase 10) `pickup`: `null`, or `{status, status_label,
+rider_name, rider_phone (while the pickup is active), picked_up_at, failure_reason}` when the store sent a delivery
+partner to collect the items (`POST /api/returns/{n}/assign-pickup/`, see "Delivery partner workflow"). The rider
+brings the items to the store; the store still checks them and calls `receive`, which starts the refund.
 
 **Rules.**
 - Only `delivered` orders can be returned, within `RETURN_WINDOW_DAYS` (default 7) of `delivered_at`, and only products
@@ -378,6 +503,5 @@ log consistency issues. `python manage.py payments_check` lists orders/payments/
 admin only: `/api/admin/users/`. Login/register return `{access, refresh, user}`. See `/api/docs/` for bodies.
 
 ## Planned 🔜
-- **Delivery partner workflow** (accept, pickup, OTP, proof of delivery) `/api/delivery/…` (Phase 10).
 - **Admin dashboard APIs** `/api/admin/…` (Phase 11). Until then, use the Django admin at `/django-admin/`.
 - **AI** `/api/ai/…` (Phases 12–19). **Notifications/support** (Phase 20).

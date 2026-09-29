@@ -59,6 +59,11 @@ function AccountMenu() {
       </summary>
       <div className="absolute right-0 top-full z-40 mt-2 w-52 rounded-lg bg-white py-1 text-sm text-ink-900 shadow-lg ring-1 ring-steel-200">
         <p className="truncate border-b border-steel-100 px-4 py-2 text-xs text-ink-600">{user.email}</p>
+        {user.role === 'delivery_partner' && (
+          <Link to="/rider" onClick={close} className="block px-4 py-2 font-semibold hover:bg-steel-50">
+            Rider app
+          </Link>
+        )}
         <Link to="/account" onClick={close} className="block px-4 py-2 hover:bg-steel-50">
           My account
         </Link>

@@ -28,3 +28,26 @@ def test_seed_is_idempotent_and_clearly_labelled(settings):
     assert not Store.objects.exclude(code__startswith="DEMO-").exists()
     assert all("(Demo)" in p.brand.name for p in Product.objects.select_related("brand"))
     assert all(p.specifications.exists() for p in Product.objects.all())
+
+
+def test_demo_rider_is_opt_in_with_a_random_password_shown_once(settings, capsys):
+    from django.contrib.auth import get_user_model
+
+    from apps.delivery.models import DeliveryPartner
+
+    settings.DEBUG = True
+    call_command("seed_demo_data", "--no-images")
+    assert not DeliveryPartner.objects.exists()
+
+    call_command("seed_demo_data", "--no-images", "--with-rider")
+    out = capsys.readouterr().out
+    partner = DeliveryPartner.objects.select_related("user", "home_store").get()
+    assert partner.user.email == "demo-rider@example.com" and partner.user.role == "delivery_partner"
+    assert partner.is_verified and partner.status == "offline" and partner.home_store.code == "DEMO-PUN-KTH"
+    password = out.split("password: ")[1].split()[0]
+    assert len(password) >= 12 and partner.user.check_password(password)
+
+    call_command("seed_demo_data", "--no-images", "--with-rider")
+    assert "already exists" in capsys.readouterr().out
+    assert get_user_model().objects.get(email="demo-rider@example.com").check_password(password)
+    assert DeliveryPartner.objects.count() == 1

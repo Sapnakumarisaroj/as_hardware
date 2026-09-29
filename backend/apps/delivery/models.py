@@ -1,7 +1,7 @@
 """Delivery: zones, PIN codes, partners, assignments and their status history.
 
-Phase 9 adds the fulfilment/ETA engine (fulfillment.py, eta.py, locations.py) and the assignment
-foundation (assignment.py). The rider workflow (accept, pickup, OTP, proof) is Phase 10.
+Phase 9: the fulfilment/ETA engine (fulfillment.py, eta.py, locations.py) and who may carry a
+shipment (assignment.py). Phase 10: the rider workflow (workflow.py, otp.py, proof.py, cod.py).
 """
 
 from decimal import Decimal
@@ -13,6 +13,7 @@ from django.db.models import Q
 
 from apps.core.models import TimeStampedModel
 from apps.core.money import MONEY_FIELD_KWARGS
+from apps.core.storage import private_storage
 from apps.core.uploads import ALLOWED_IMAGE_EXTENSIONS, delivery_proof_path
 from apps.core.validators import MaxFileSizeValidator, phone_validator
 
@@ -147,6 +148,15 @@ class DeliveryPartner(TimeStampedModel):
 
 
 class DeliveryAssignment(TimeStampedModel):
+    """One rider's job: deliver a shipment, or collect an approved return (Phase 10).
+
+    Delivery:       assigned → accepted → picked_up → out_for_delivery → delivered
+    Return pickup:  assigned → accepted → picked_up (from the customer) → delivered (to the store)
+    Either:         assigned/accepted → rejected (by the rider) or cancelled (by staff / order cancelled)
+                    picked_up/out_for_delivery → failed
+    Every change goes through apps.delivery.workflow, which locks, validates and writes history.
+    """
+
     class Status(models.TextChoices):
         ASSIGNED = "assigned", "Assigned"
         ACCEPTED = "accepted", "Accepted"
@@ -154,10 +164,34 @@ class DeliveryAssignment(TimeStampedModel):
         OUT_FOR_DELIVERY = "out_for_delivery", "Out for delivery"
         DELIVERED = "delivered", "Delivered"
         FAILED = "failed", "Delivery failed"
+        REJECTED = "rejected", "Rejected by the delivery partner"
         CANCELLED = "cancelled", "Cancelled / reassigned"
 
-    ACTIVE_STATUSES = (Status.ASSIGNED, Status.ACCEPTED, Status.PICKED_UP, Status.OUT_FOR_DELIVERY)
+    class Kind(models.TextChoices):
+        DELIVERY = "delivery", "Delivery to the customer"
+        RETURN_PICKUP = "return_pickup", "Return pickup from the customer"
 
+    class FailureCode(models.TextChoices):
+        CUSTOMER_UNAVAILABLE = "customer_unavailable", "Customer not available"
+        WRONG_ADDRESS = "wrong_address", "Address wrong or not found"
+        CUSTOMER_REFUSED = "customer_refused", "Customer refused the delivery"
+        PAYMENT_NOT_READY = "payment_not_ready", "Customer could not pay"
+        DAMAGED = "damaged", "Goods damaged on the way"
+        VEHICLE_PROBLEM = "vehicle_problem", "Vehicle breakdown or accident"
+        OTHER = "other", "Other"
+
+    class CodMethod(models.TextChoices):
+        CASH = "cash", "Cash"
+        UPI = "upi", "UPI to the store"
+
+    ACTIVE_STATUSES = (Status.ASSIGNED, Status.ACCEPTED, Status.PICKED_UP, Status.OUT_FOR_DELIVERY)
+    BEFORE_PICKUP = (Status.ASSIGNED, Status.ACCEPTED)
+    WITH_GOODS = (Status.PICKED_UP, Status.OUT_FOR_DELIVERY)
+
+    kind = models.CharField(max_length=15, choices=Kind.choices, default=Kind.DELIVERY)
+    return_request = models.ForeignKey(
+        "orders.ReturnRequest", null=True, blank=True, on_delete=models.PROTECT, related_name="pickups"
+    )
     order = models.ForeignKey("orders.Order", on_delete=models.PROTECT, related_name="delivery_assignments")
     # Phase 9: the shipment (one store's part of the order) this rider carries. One active
     # assignment per shipment is enforced by apps.delivery.assignment (locks, no partial index).
@@ -171,28 +205,66 @@ class DeliveryAssignment(TimeStampedModel):
     picked_up_at = models.DateTimeField(null=True, blank=True)
     out_for_delivery_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
-    # Only a hash of the customer's delivery OTP is stored.
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    reject_reason = models.CharField(max_length=255, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+    failure_code = models.CharField(max_length=30, choices=FailureCode.choices, blank=True)
+    failure_reason = models.CharField(max_length=255, blank=True)
+    # Delivery OTP (apps/delivery/otp.py). The code itself is never stored: `otp_hash` is a keyed
+    # hash of it, and the customer's copy is re-derived from `otp_nonce` with the server secret.
     otp_hash = models.CharField(max_length=128, blank=True)
+    otp_nonce = models.CharField(max_length=32, blank=True)
+    otp_issued_at = models.DateTimeField(null=True, blank=True)
+    otp_expires_at = models.DateTimeField(null=True, blank=True)
+    otp_attempts = models.PositiveSmallIntegerField(default=0, help_text="Wrong codes entered for the current OTP.")
     otp_verified_at = models.DateTimeField(null=True, blank=True)
+    # Proof of delivery: private storage, served only through authenticated API views.
     proof_image = models.ImageField(
         upload_to=delivery_proof_path,
+        storage=private_storage,
         blank=True,
         validators=[FileExtensionValidator(ALLOWED_IMAGE_EXTENSIONS), MaxFileSizeValidator(5)],
     )
+    proof_uploaded_at = models.DateTimeField(null=True, blank=True)
+    received_by = models.CharField(max_length=120, blank=True, help_text="Who took the delivery at the door.")
+    completed_without_otp = models.BooleanField(default=False, help_text="Closed by store staff (audit-logged).")
     delivery_notes = models.CharField(max_length=500, blank=True)
-    failure_reason = models.CharField(max_length=255, blank=True)
     distance_km = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     earning_amount = models.DecimalField(**MONEY_FIELD_KWARGS, default=Decimal("0.00"))
+    # Cash on delivery: what this rider must collect for this shipment, and what happened to it.
+    cod_amount_due = models.DecimalField(**MONEY_FIELD_KWARGS, default=Decimal("0.00"))
+    cod_collected_amount = models.DecimalField(**MONEY_FIELD_KWARGS, null=True, blank=True)
+    cod_method = models.CharField(max_length=10, choices=CodMethod.choices, blank=True)
+    cod_reference = models.CharField(max_length=60, blank=True, help_text="UPI reference, if paid by UPI.")
+    cod_collected_at = models.DateTimeField(null=True, blank=True)
+    cod_handed_over_at = models.DateTimeField(null=True, blank=True, help_text="Cash received by the store.")
+    cod_handed_over_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    cod_handover_note = models.CharField(max_length=255, blank=True)
 
     class Meta:
         ordering = ["-assigned_at"]
         indexes = [
             models.Index(fields=["partner", "status"]),
             models.Index(fields=["order", "status"]),
+            models.Index(fields=["partner", "cod_handed_over_at"]),
         ]
         constraints = [
-            models.CheckConstraint(condition=Q(earning_amount__gte=0), name="assignment_earning_non_negative")
+            models.CheckConstraint(condition=Q(earning_amount__gte=0), name="assignment_earning_non_negative"),
+            models.CheckConstraint(condition=Q(cod_amount_due__gte=0), name="assignment_cod_due_non_negative"),
         ]
+
+    @property
+    def is_active(self) -> bool:
+        return self.status in self.ACTIVE_STATUSES
+
+    @property
+    def cash_in_hand(self) -> Decimal:
+        """Cash this rider still has to hand over to the store for this delivery."""
+        if self.cod_method == self.CodMethod.CASH and self.cod_collected_at and not self.cod_handed_over_at:
+            return self.cod_collected_amount or Decimal("0.00")
+        return Decimal("0.00")
 
     def __str__(self) -> str:
         return f"{self.order_id} → {self.partner_id} ({self.status})"
@@ -202,6 +274,9 @@ class DeliveryStatusHistory(models.Model):
     assignment = models.ForeignKey(DeliveryAssignment, on_delete=models.CASCADE, related_name="status_history")
     from_status = models.CharField(max_length=20, blank=True)
     to_status = models.CharField(max_length=20, choices=DeliveryAssignment.Status.choices)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     note = models.CharField(max_length=255, blank=True)

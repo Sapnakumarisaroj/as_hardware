@@ -21,7 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearUserData = useCallback(() => {
     queryClient.removeQueries({ queryKey: authApi.authKeys.me })
-    for (const key of ['cart', 'wishlist', 'recent-searches', 'orders']) {
+    for (const key of ['cart', 'wishlist', 'recent-searches', 'orders', 'rider']) {
       queryClient.removeQueries({ queryKey: [key] })
     }
   }, [queryClient])

@@ -44,8 +44,41 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--force", action="store_true", help="Allow running with DEBUG=False (staging only).")
         parser.add_argument("--no-images", action="store_true", help="Skip generating demo product images.")
+        parser.add_argument(
+            "--with-rider",
+            action="store_true",
+            help="Also create a demo delivery partner (demo-rider@example.com) to try the rider app. "
+            "Its random password is printed once.",
+        )
 
-    def handle(self, *args, force=False, no_images=False, **options):
+    def _demo_rider(self) -> None:
+        """A verified, offline delivery partner at the first demo store. The password is random
+        and shown only now; nothing about it is stored in the code or the repository."""
+        import secrets
+
+        from django.contrib.auth import get_user_model
+
+        from apps.delivery.models import DeliveryPartner
+
+        User = get_user_model()
+        email = "demo-rider@example.com"
+        if User.objects.filter(email=email).exists():
+            self.stdout.write(f"Demo rider {email} already exists (password unchanged; use `changepassword`).")
+            return
+        password = secrets.token_urlsafe(9) + "a1"
+        user = User.objects.create_user(
+            email, password, role="delivery_partner", full_name="Demo Rider", phone="9000000001"
+        )
+        DeliveryPartner.objects.create(
+            user=user,
+            phone="9000000001",
+            vehicle_number="DEMO-0001",
+            home_store=Store.objects.filter(code="DEMO-PUN-KTH").first(),
+            is_verified=True,
+        )
+        self.stdout.write(self.style.WARNING(f"Demo rider created: {email} / password: {password}  (shown once)"))
+
+    def handle(self, *args, force=False, no_images=False, with_rider=False, **options):
         if not settings.DEBUG and not force:
             raise CommandError("Refusing to seed demo data with DEBUG=False. Use --force only on a staging site.")
         with transaction.atomic():
@@ -58,6 +91,8 @@ class Command(BaseCommand):
             created_stock = self._inventory(stores, products)
             self._coupons()
             self._offers()
+            if with_rider:
+                self._demo_rider()
         created_images = 0 if no_images else self._images(products)
         self.stdout.write(
             self.style.SUCCESS(

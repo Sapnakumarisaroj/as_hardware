@@ -23,6 +23,8 @@ class ShipmentInline(admin.TabularInline):
     fields = (
         "sequence",
         "store",
+        "status",
+        "delivery_attempts",
         "zone",
         "delivery_type",
         "distance_km",

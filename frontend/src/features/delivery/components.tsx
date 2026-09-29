@@ -155,7 +155,7 @@ export function PincodeForm({ current = '', label = 'Check delivery to your PIN 
   )
 }
 
-const FINISHED = ['delivered', 'cancelled', 'return_requested', 'returned']
+const FINISHED = ['delivered', 'delivery_failed', 'cancelled', 'return_requested', 'returned']
 
 /** Delivery section of an order (confirmation and order detail pages). */
 export function OrderDeliveryCard({

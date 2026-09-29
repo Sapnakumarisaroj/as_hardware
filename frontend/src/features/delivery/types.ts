@@ -73,10 +73,56 @@ export interface OrderDelivery {
   label: string
 }
 
+export type ShipmentStatus =
+  | 'pending'
+  | 'assigned'
+  | 'picked_up'
+  | 'out_for_delivery'
+  | 'delivered'
+  | 'failed'
+  | 'cancelled'
+
+/** The code the customer gives the rider at the door. Present only while it is needed. */
+export interface DeliveryCode {
+  state: 'none' | 'active' | 'expired' | 'locked' | 'used'
+  /** null when the code can't be used (expired or locked): ask for a new one. */
+  code: string | null
+  expires_at: string | null
+  can_request_new: boolean
+}
+
+export interface ShipmentRider {
+  name: string
+  vehicle: string
+  /** Shown only while the rider is carrying the goods. */
+  phone: string | null
+  status: string
+}
+
+export interface ShipmentFailure {
+  code: string
+  reason: string
+  failed_at: string | null
+  next_step: string
+}
+
 export interface OrderShipment {
   sequence: number
   store_name: string
   store_area: string
+  status: ShipmentStatus
+  status_label: string
+  delivery_attempts: number
+  picked_up_at: string | null
+  out_for_delivery_at: string | null
+  delivered_at: string | null
+  rider: ShipmentRider | null
+  delivery_code: DeliveryCode | null
+  failure: ShipmentFailure | null
+  proof_available: boolean
+  received_by: string
+  /** Cash on delivery: what to pay the rider for this shipment; null when nothing is due. */
+  amount_to_pay: string | null
   delivery_type: DeliveryType
   distance_km: string | null
   prep_minutes: number

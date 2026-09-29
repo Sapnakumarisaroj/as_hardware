@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useAuth } from '@/features/auth/context'
 import { cartKeys, type Cart } from '@/features/cart/api'
 import type { Paginated } from '@/features/catalog/types'
+import { trackingPollMs } from '@/features/delivery/format'
 import { api } from '@/lib/api/client'
 
 import type { OrderDetail, OrderSummary, PaymentMethod, ReorderLine, ReturnReason, ReturnRequest } from './types'
@@ -27,14 +28,17 @@ export function useOrders(page: number) {
   })
 }
 
-/** `pollMs`: refetch periodically (e.g. while the gateway is still confirming a payment). */
-export function useOrder(number: string, pollMs: number | false = false) {
+/**
+ * `pollMs`: refetch periodically (e.g. while the gateway is still confirming a payment).
+ * `'tracking'`: refetch while the order is on its way to the customer, and not otherwise.
+ */
+export function useOrder(number: string, pollMs: number | false | 'tracking' = false) {
   const { status } = useAuth()
   return useQuery({
     queryKey: orderKeys.detail(number),
     queryFn: async () => (await api.get<OrderDetail>(`/orders/${encodeURIComponent(number)}/`)).data,
     enabled: status === 'authenticated' && Boolean(number),
-    refetchInterval: pollMs,
+    refetchInterval: pollMs === 'tracking' ? (query) => trackingPollMs(query.state.data?.status) : pollMs,
   })
 }
 
@@ -98,6 +102,25 @@ export function useRetryPayment(number: string) {
     mutationFn: async () => (await api.post<OrderDetail>(`/orders/${encodeURIComponent(number)}/retry-payment/`)).data,
     onSuccess: store,
   })
+}
+
+/** The customer asks for a new delivery code (the old one stops working). */
+export function useNewDeliveryCode(number: string) {
+  const store = useOrderResult()
+  return useMutation({
+    mutationFn: async (sequence: number) =>
+      (await api.post<OrderDetail>(`/orders/${encodeURIComponent(number)}/shipments/${sequence}/delivery-code/`)).data,
+    onSuccess: store,
+  })
+}
+
+/**
+ * Proof-of-delivery photos have no public URL: they are fetched with the session's token and
+ * shown from memory. The caller must release the returned object URL when done.
+ */
+export async function fetchPrivateImage(path: string): Promise<string> {
+  const response = await api.get<Blob>(path, { responseType: 'blob' })
+  return URL.createObjectURL(response.data)
 }
 
 export type MockOutcome = 'success' | 'failed' | 'cancelled' | 'pending'

@@ -9,6 +9,11 @@ export function formatClock(iso: string): string {
     .toUpperCase()
 }
 
+/** Orders on the move are refreshed regularly, so the delivery code and the progress stay current. */
+export function trackingPollMs(status: string | undefined): number | false {
+  return status && ['packed', 'assigned', 'picked_up', 'out_for_delivery'].includes(status) ? 20_000 : false
+}
+
 /** "42 minutes" for fast delivery, the delivery window for standard. */
 export function estimateText(quote: Pick<DeliveryQuote, 'delivery_type' | 'eta_minutes' | 'label'>): string {
   if (quote.delivery_type === 'fast' && quote.eta_minutes !== null) return `${quote.eta_minutes} minutes`

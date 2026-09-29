@@ -2,7 +2,7 @@ import re
 
 from django.db import IntegrityError
 from django.db.models import Prefetch, Q
-from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -17,9 +17,10 @@ from apps.payments.services import retry_payment
 
 from . import returns, services
 from .checkout import build_checkout
-from .models import Order, OrderItem, ReturnItem, ReturnRequest
+from .models import Order, OrderItem, OrderShipment, ReturnItem, ReturnRequest
 from .serializers import (
     IDEMPOTENCY_KEY_PATTERN,
+    AssignPickupSerializer,
     CancelOrderSerializer,
     CheckoutPreviewRequestSerializer,
     CheckoutPreviewSerializer,
@@ -38,8 +39,16 @@ IDEMPOTENCY_HEADER = "Idempotency-Key"
 IDEMPOTENCY_KEY_RE = re.compile(IDEMPOTENCY_KEY_PATTERN)
 
 
+def _jobs():
+    """Delivery jobs with their rider, newest first (apps.delivery.serializers.latest_delivery)."""
+    from apps.delivery.models import DeliveryAssignment
+
+    return DeliveryAssignment.objects.select_related("partner__user").order_by("-assigned_at")
+
+
 def _returns_queryset():
     return ReturnRequest.objects.select_related("order", "refund").prefetch_related(
+        Prefetch("pickups", queryset=_jobs()),
         Prefetch(
             "items",
             queryset=ReturnItem.objects.select_related("order_item__product").prefetch_related(
@@ -47,7 +56,7 @@ def _returns_queryset():
                     "order_item__product__images", queryset=ProductImage.objects.order_by("-is_primary", "sort_order")
                 )
             ),
-        )
+        ),
     )
 
 
@@ -80,6 +89,12 @@ class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
                 ),
             ),
             "status_history",
+            Prefetch(
+                "shipments",
+                queryset=OrderShipment.objects.select_related("store", "order").prefetch_related(
+                    "items", Prefetch("assignments", queryset=_jobs())
+                ),
+            ),
             Prefetch("payments", queryset=Payment.objects.prefetch_related(Prefetch("refunds", Refund.objects.all()))),
             Prefetch("returns", queryset=_returns_queryset()),
         )
@@ -162,6 +177,37 @@ class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             "cart": CartSerializer(summarize_cart(request.user), context={"request": request}).data,
         }
         return Response(ReorderResultSerializer(payload).data)
+
+    @extend_schema(request=None, responses=OrderDetailSerializer)
+    @action(detail=True, methods=["post"], url_path=r"shipments/(?P<sequence>\d+)/delivery-code")
+    def delivery_code(self, request, order_number=None, sequence=None):
+        """The customer asks for a new delivery code (the old one stops working). At most one
+        per DELIVERY_OTP_RESEND_SECONDS."""
+        from apps.delivery import workflow
+
+        order = self.get_object()
+        workflow.new_delivery_code(order, int(sequence), user=request.user)
+        return self._detail(order)
+
+    @extend_schema(request=None, responses={(200, "image/jpeg"): OpenApiTypes.BINARY})
+    @action(detail=True, methods=["get"], url_path=r"shipments/(?P<sequence>\d+)/proof")
+    def delivery_proof(self, request, order_number=None, sequence=None):
+        """Photo taken when this shipment was delivered. Visible to the customer who ordered
+        and to the staff of the store; never by URL."""
+        from apps.delivery.models import DeliveryAssignment
+        from apps.delivery.views import proof_response
+
+        order = self.get_object()
+        job = (
+            DeliveryAssignment.objects.filter(
+                order=order, shipment__sequence=int(sequence), kind="delivery", status="delivered"
+            )
+            .exclude(proof_image="")
+            .first()
+        )
+        if job is None:
+            raise NotFoundError("No photo was uploaded for this delivery.")
+        return proof_response(job)
 
     @extend_schema(request=TransitionOrderSerializer, responses=OrderDetailSerializer)
     @action(detail=True, methods=["post"], permission_classes=[IsStaffRole])
@@ -254,6 +300,22 @@ class ReturnViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
         serializer.is_valid(raise_exception=True)
         ret = returns.reject_return(self._managed(), actor=request.user, note=serializer.validated_data["note"])
         return self._detail(ret)
+
+    @extend_schema(request=AssignPickupSerializer, responses={201: ReturnRequestSerializer})
+    @action(detail=True, methods=["post"], permission_classes=[IsStaffRole], url_path="assign-pickup")
+    def assign_pickup(self, request, return_number=None):
+        """Send a delivery partner to collect an approved return from the customer (Phase 10)."""
+        from apps.delivery.assignment import assign_return_pickup
+        from apps.delivery.models import DeliveryPartner
+
+        serializer = AssignPickupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ret = self._managed()
+        partner = DeliveryPartner.objects.filter(pk=serializer.validated_data["partner_id"]).first()
+        if partner is None:
+            raise NotFoundError("Delivery partner not found.")
+        assign_return_pickup(ret, partner, actor=request.user)
+        return self._detail(ret, status.HTTP_201_CREATED)
 
     @extend_schema(request=ReceiveReturnSerializer, responses=ReturnRequestSerializer)
     @action(detail=True, methods=["post"], permission_classes=[IsStaffRole])

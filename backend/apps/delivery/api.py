@@ -3,7 +3,7 @@ staff side of rider assignment. Every estimate comes from the fulfilment engine;
 promises a fixed time."""
 
 from django.db.models import Prefetch
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotAuthenticated
@@ -15,29 +15,50 @@ from apps.accounts.models import Address
 from apps.carts.services import summarize_cart
 from apps.catalog.models import ProductVariant
 from apps.catalog.selectors import stock_status
-from apps.core.exceptions import NotFoundError
+from apps.core.audit import record_audit
+from apps.core.exceptions import ConflictError, NotFoundError
 from apps.core.money import q
 from apps.core.permissions import IsStaffRole, managed_store_ids
 from apps.inventory.models import Inventory
 from apps.orders.checkout import quote_from_plan
-from apps.orders.models import OrderShipment
+from apps.orders.models import OrderShipment, ShipmentStatus
 from apps.orders.serializers import DeliveryQuoteSerializer
 
-from .assignment import ASSIGNABLE_ORDER_STATUSES, assign_shipment, eligible_partners
+from . import workflow
+from .assignment import (
+    ASSIGNABLE_ORDER_STATUSES,
+    ASSIGNABLE_SHIPMENT_STATUSES,
+    assign_shipment,
+    eligible_partners,
+    partners_with_load,
+    reassign_shipment,
+    unassign_shipment,
+)
+from .cod import cash_by_partner
 from .eta import estimate, straight_line_km
 from .fulfillment import covering_candidates, fulfilment_stores, plan_fulfillment, zone_covers
 from .locations import resolve_location
 from .models import DeliveryAssignment, DeliveryPartner, DeliveryZone
 from .serializers import (
     AssignShipmentSerializer,
+    CodCollectionSerializer,
+    CompleteWithoutOtpSerializer,
     EligiblePartnerSerializer,
+    HandoverSerializer,
     LocationQuerySerializer,
+    PartnerAvailabilitySerializer,
     ProductEstimateQuerySerializer,
+    ReassignSerializer,
     ServiceabilitySerializer,
+    StaffShipmentDetailSerializer,
     StaffShipmentSerializer,
     StoreAvailabilitySerializer,
+    UnassignSerializer,
     ZoneSerializer,
 )
+from .views import proof_response
+
+KIND = DeliveryAssignment.Kind
 
 LOCATION_PARAMS = [
     OpenApiParameter("postal_code", str, description="6-digit PIN code"),
@@ -211,8 +232,19 @@ class StoreAvailabilityView(APIView):
         return Response(StoreAvailabilitySerializer(rows, many=True).data)
 
 
-class ShipmentViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
-    """Staff: shipments waiting for a rider at their stores; see eligible riders; assign one."""
+SHIPMENT_SCOPES = ["waiting", "active", "failed", "delivered", "all"]
+
+
+def _partner(partner_id: int) -> DeliveryPartner:
+    partner = DeliveryPartner.objects.filter(pk=partner_id).first()
+    if partner is None:
+        raise NotFoundError("Delivery partner not found.")
+    return partner
+
+
+class ShipmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Staff: shipments of their stores. Assign, reassign or unassign riders, follow the delivery
+    status, see the delivery history and the proof of delivery."""
 
     permission_classes = [IsStaffRole]
     serializer_class = StaffShipmentSerializer
@@ -221,23 +253,46 @@ class ShipmentViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         if getattr(self, "swagger_fake_view", False):
             return OrderShipment.objects.none()
         qs = OrderShipment.objects.select_related("order", "store").prefetch_related(
-            Prefetch("assignments", DeliveryAssignment.objects.select_related("partner__user"))
+            "items",
+            Prefetch(
+                "assignments",
+                DeliveryAssignment.objects.select_related("partner__user").prefetch_related("status_history"),
+            ),
         )
         store_ids = managed_store_ids(self.request.user)
         if store_ids is not None:
             qs = qs.filter(store_id__in=store_ids)
-        if self.request.query_params.get("scope", "waiting") == "waiting":
-            qs = qs.filter(order__status__in=ASSIGNABLE_ORDER_STATUSES).exclude(
-                assignments__status__in=DeliveryAssignment.ACTIVE_STATUSES
-            )
-        return qs.order_by("estimated_ready_at", "id")
+        if self.action != "list":
+            return qs
+        scope = self.request.query_params.get("scope", "waiting")
+        active = DeliveryAssignment.objects.filter(kind=KIND.DELIVERY, status__in=DeliveryAssignment.ACTIVE_STATUSES)
+        if scope == "waiting":
+            qs = qs.filter(
+                order__status__in=ASSIGNABLE_ORDER_STATUSES, status__in=ASSIGNABLE_SHIPMENT_STATUSES
+            ).exclude(pk__in=active.values("shipment_id"))
+        elif scope == "active":
+            qs = qs.filter(pk__in=active.values("shipment_id"))
+        elif scope == "failed":
+            qs = qs.filter(status=ShipmentStatus.FAILED)
+        elif scope == "delivered":
+            qs = qs.filter(status=ShipmentStatus.DELIVERED).order_by("-delivered_at")
+        if status_filter := self.request.query_params.get("status"):
+            qs = qs.filter(status=status_filter)
+        return qs if scope == "delivered" else qs.order_by("estimated_ready_at", "id")
+
+    def get_serializer_class(self):
+        return StaffShipmentDetailSerializer if self.action == "retrieve" else StaffShipmentSerializer
 
     @extend_schema(
-        parameters=[OpenApiParameter("scope", str, enum=["waiting", "all"])],
+        parameters=[OpenApiParameter("scope", str, enum=SHIPMENT_SCOPES), OpenApiParameter("status", str)],
         responses=StaffShipmentSerializer(many=True),
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    def _detail(self, shipment, status_code=status.HTTP_200_OK) -> Response:
+        fresh = self.get_queryset().get(pk=shipment.pk)
+        return Response(StaffShipmentDetailSerializer(fresh).data, status=status_code)
 
     @extend_schema(responses=EligiblePartnerSerializer(many=True))
     @action(detail=True, methods=["get"], url_path="eligible-partners")
@@ -248,17 +303,74 @@ class ShipmentViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     @extend_schema(request=AssignShipmentSerializer, responses={201: None})
     @action(detail=True, methods=["post"])
     def assign(self, request, pk=None):
+        """Also sends a shipment out again after a failed delivery."""
         shipment = self._shipment(pk)
         body = AssignShipmentSerializer(data=request.data)
         body.is_valid(raise_exception=True)
-        partner = DeliveryPartner.objects.filter(pk=body.validated_data["partner_id"]).first()
-        if partner is None:
-            raise NotFoundError("Delivery partner not found.")
+        partner = _partner(body.validated_data["partner_id"])
         assignment = assign_shipment(shipment, partner, actor=request.user)
         return Response(
             {"assignment_id": assignment.pk, "order_status": assignment.order.status, "partner_id": partner.pk},
             status=status.HTTP_201_CREATED,
         )
+
+    @extend_schema(request=ReassignSerializer, responses={201: StaffShipmentDetailSerializer})
+    @action(detail=True, methods=["post"])
+    def reassign(self, request, pk=None):
+        shipment = self._shipment(pk)
+        body = ReassignSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        partner = _partner(body.validated_data["partner_id"])
+        reassign_shipment(shipment, partner, actor=request.user, reason=body.validated_data["reason"])
+        return self._detail(shipment, status.HTTP_201_CREATED)
+
+    @extend_schema(request=UnassignSerializer, responses=StaffShipmentDetailSerializer)
+    @action(detail=True, methods=["post"])
+    def unassign(self, request, pk=None):
+        shipment = self._shipment(pk)
+        body = UnassignSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        unassign_shipment(shipment, actor=request.user, reason=body.validated_data["reason"])
+        return self._detail(shipment)
+
+    @extend_schema(request=CompleteWithoutOtpSerializer, responses=StaffShipmentDetailSerializer)
+    @action(detail=True, methods=["post"], url_path="complete-without-otp")
+    def complete_without_otp(self, request, pk=None):
+        """The customer could not show the delivery code. Needs a note; audit-logged."""
+        shipment = self._shipment(pk)
+        body = CompleteWithoutOtpSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        job = shipment.assignments.filter(kind=KIND.DELIVERY, status=DeliveryAssignment.Status.OUT_FOR_DELIVERY).first()
+        if job is None:
+            raise ConflictError("This shipment is not out for delivery with a partner.", code="invalid_delivery_state")
+        workflow.complete_without_otp(
+            job.pk,
+            actor=request.user,
+            note=data["note"],
+            cod={
+                "collected": data["cod_collected"],
+                "amount": data.get("cod_amount"),
+                "method": data.get("cod_method"),
+                "reference": data["cod_reference"],
+            },
+        )
+        return self._detail(shipment)
+
+    @extend_schema(responses={(200, "image/jpeg"): OpenApiTypes.BINARY})
+    @action(detail=True, methods=["get"])
+    def proof(self, request, pk=None):
+        shipment = self._shipment(pk)
+        job = (
+            shipment.assignments.filter(kind=KIND.DELIVERY)
+            .exclude(proof_image="")
+            .order_by("-proof_uploaded_at")
+            .first()
+        )
+        if job is None:
+            raise NotFoundError("No photo was uploaded for this delivery.")
+        record_audit(action="delivery.proof_viewed", actor=request.user, target=job, request=request)
+        return proof_response(job)
 
     def _shipment(self, pk) -> OrderShipment:
         shipment = OrderShipment.objects.select_related("store", "order").filter(pk=pk).first()
@@ -266,3 +378,70 @@ class ShipmentViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         if shipment is None or (allowed is not None and shipment.store_id not in allowed):
             raise NotFoundError("Shipment not found.")
         return shipment
+
+
+def _staff_scoped_assignments(user):
+    """Jobs at the stores this staff member runs (admins: all)."""
+    qs = DeliveryAssignment.objects.select_related("order", "shipment__store", "partner__user", "cod_handed_over_to")
+    store_ids = managed_store_ids(user)
+    return qs if store_ids is None else qs.filter(shipment__store_id__in=store_ids)
+
+
+class PartnerAvailabilityView(APIView):
+    """Staff: the riders of their stores, who is online, their load and the cash they carry."""
+
+    permission_classes = [IsStaffRole]
+
+    @extend_schema(
+        parameters=[OpenApiParameter("status", str, enum=["offline", "available", "busy"])],
+        responses=PartnerAvailabilitySerializer(many=True),
+    )
+    def get(self, request):
+        partners = partners_with_load().order_by("home_store__name", "user__full_name")
+        store_ids = managed_store_ids(request.user)
+        if store_ids is not None:
+            partners = partners.filter(home_store_id__in=store_ids)
+        if wanted := request.query_params.get("status"):
+            partners = partners.filter(status=wanted)
+        partners = list(partners)
+        cash = cash_by_partner([p.pk for p in partners])
+        return Response(PartnerAvailabilitySerializer(partners, many=True, context={"cash": cash}).data)
+
+
+class CodCollectionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """Staff: cash-on-delivery money collected by riders, and its handover to the store."""
+
+    permission_classes = [IsStaffRole]
+    serializer_class = CodCollectionSerializer
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return DeliveryAssignment.objects.none()
+        qs = _staff_scoped_assignments(self.request.user).filter(cod_collected_at__isnull=False)
+        handed = self.request.query_params.get("handed_over")
+        if handed in ("true", "false"):
+            qs = qs.filter(cod_handed_over_at__isnull=handed == "false")
+        if partner_id := self.request.query_params.get("partner"):
+            qs = qs.filter(partner_id=partner_id) if partner_id.isdigit() else qs.none()
+        return qs.order_by("-cod_collected_at")
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("handed_over", str, enum=["true", "false"]),
+            OpenApiParameter("partner", int, description="Delivery partner id"),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(request=HandoverSerializer, responses=CodCollectionSerializer)
+    @action(detail=True, methods=["post"])
+    def handover(self, request, pk=None):
+        """The store received the cash of this delivery from the rider."""
+        job = _staff_scoped_assignments(request.user).filter(pk=pk).first()
+        if job is None:
+            raise NotFoundError("Delivery not found.")
+        body = HandoverSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        workflow.hand_over_cash(job.pk, actor=request.user, note=body.validated_data["note"])
+        return Response(CodCollectionSerializer(_staff_scoped_assignments(request.user).get(pk=job.pk)).data)

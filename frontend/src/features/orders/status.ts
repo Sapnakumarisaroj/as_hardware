@@ -9,6 +9,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   picked_up: 'Picked up',
   out_for_delivery: 'Out for delivery',
   delivered: 'Delivered',
+  delivery_failed: 'Delivery attempt failed',
   cancelled: 'Cancelled',
   return_requested: 'Return requested',
   returned: 'Returned',
@@ -40,7 +41,7 @@ export type Tone = 'neutral' | 'progress' | 'success' | 'danger' | 'warning'
 export function orderTone(status: OrderStatus): Tone {
   if (status === 'delivered') return 'success'
   if (status === 'cancelled' || status === 'returned') return 'danger'
-  if (status === 'pending' || status === 'return_requested') return 'warning'
+  if (status === 'pending' || status === 'return_requested' || status === 'delivery_failed') return 'warning'
   return 'progress'
 }
 
@@ -60,15 +61,34 @@ export interface TimelineStep {
  * Cancelled/returned orders show only what really happened.
  */
 export function buildTimeline(order: Pick<OrderDetail, 'status' | 'status_history'>): TimelineStep[] {
+  // After a failed delivery the order goes out again: only what happened since then counts as
+  // progress of the current attempt. The failed attempt itself stays visible.
+  const history = order.status_history
+  const lastFailure = history.map((entry) => entry.to_status).lastIndexOf('delivery_failed')
+  const failedAt = lastFailure >= 0 ? history[lastFailure]!.created_at : null
   const reached = new Map<string, string>()
-  for (const entry of order.status_history) reached.set(entry.to_status, entry.created_at)
-  const terminal = order.status === 'cancelled' || order.status === 'returned' || order.status === 'return_requested'
+  history.forEach((entry, index) => {
+    const beforePacking = ['pending', 'confirmed', 'processing', 'packed'].includes(entry.to_status)
+    if (index > lastFailure || beforePacking) reached.set(entry.to_status, entry.created_at)
+  })
+  const terminal = ['cancelled', 'returned', 'return_requested', 'delivery_failed'].includes(order.status)
 
   const steps: TimelineStep[] = []
   for (const status of TIMELINE) {
     const at = reached.get(status) ?? (status === 'out_for_delivery' ? (reached.get('picked_up') ?? null) : null)
     if (at) steps.push({ status, label: ORDER_STATUS_LABELS[status], at, state: 'done' })
     else if (!terminal) steps.push({ status, label: ORDER_STATUS_LABELS[status], at: null, state: 'upcoming' })
+  }
+  if (failedAt) {
+    const failure: TimelineStep = {
+      status: 'delivery_failed',
+      label: ORDER_STATUS_LABELS.delivery_failed,
+      at: failedAt,
+      state: 'done',
+    }
+    // In time order: after the steps reached before it, before those of the new attempt.
+    const position = steps.findIndex((step) => step.state === 'upcoming' || (step.at !== null && step.at > failedAt))
+    steps.splice(position < 0 ? steps.length : position, 0, failure)
   }
   for (const status of ['cancelled', 'return_requested', 'returned'] as const) {
     const at = reached.get(status)

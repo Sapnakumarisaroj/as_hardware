@@ -71,19 +71,24 @@ function useSubmit() {
 
 export function LoginPage() {
   usePageMeta('Login')
-  const { status, login } = useAuth()
+  const { status, user, login } = useAuth()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const next = safeNext(params.get('next'))
   const { error, busy, run, fieldError } = useSubmit()
+  // Delivery partners land in the rider app unless they were on their way somewhere else.
+  const homeFor = (role: string | undefined) => (role === 'delivery_partner' && next === '/' ? '/rider' : next)
 
-  if (status === 'authenticated') return <Navigate to={next} replace />
+  if (status === 'authenticated') return <Navigate to={homeFor(user?.role)} replace />
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
-    const ok = await run(() => login(String(form.get('email')), String(form.get('password'))))
-    if (ok) navigate(next, { replace: true })
+    let role: string | undefined
+    const ok = await run(async () => {
+      role = (await login(String(form.get('email')), String(form.get('password')))).role
+    })
+    if (ok) navigate(homeFor(role), { replace: true })
   }
 
   return (

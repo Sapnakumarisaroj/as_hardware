@@ -16,8 +16,10 @@ from .models import (
     PaymentStatus,
     ReturnItem,
     ReturnRequest,
+    ShipmentStatus,
 )
 from .returns import can_request_return, counted_quantities, return_deadline, returnable_quantities
+from .shipments import LEFT_THE_STORE
 from .state_machine import CUSTOMER_CANCELLABLE
 
 IDEMPOTENCY_KEY_PATTERN = r"^[A-Za-z0-9_\-]{8,64}$"  # e.g. a browser crypto.randomUUID()
@@ -131,10 +133,27 @@ class OrderDeliverySerializer(serializers.Serializer):
     label = serializers.CharField()
 
 
+def _first_name(user) -> str:
+    return (user.full_name or "").split(" ")[0] or "Delivery partner"
+
+
 class ShipmentSerializer(serializers.ModelSerializer):
+    """One store's part of the order, with its delivery progress (Phase 10).
+
+    `rider.phone` is shown only while the rider is carrying the goods. `delivery_code` is shown
+    only to the customer who placed the order, and only while the shipment is out for delivery.
+    """
+
     store_name = serializers.CharField(source="store.name", read_only=True)
     store_area = serializers.CharField(source="store.area", read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
     item_ids = serializers.SerializerMethodField()
+    rider = serializers.SerializerMethodField()
+    delivery_code = serializers.SerializerMethodField()
+    failure = serializers.SerializerMethodField()
+    proof_available = serializers.SerializerMethodField()
+    received_by = serializers.SerializerMethodField()
+    amount_to_pay = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderShipment
@@ -142,6 +161,8 @@ class ShipmentSerializer(serializers.ModelSerializer):
             "sequence",
             "store_name",
             "store_area",
+            "status",
+            "status_label",
             "delivery_type",
             "distance_km",
             "prep_minutes",
@@ -151,10 +172,85 @@ class ShipmentSerializer(serializers.ModelSerializer):
             "window_start",
             "window_end",
             "item_ids",
+            "delivery_attempts",
+            "picked_up_at",
+            "out_for_delivery_at",
+            "delivered_at",
+            "rider",
+            "delivery_code",
+            "failure",
+            "proof_available",
+            "received_by",
+            "amount_to_pay",
         ]
+
+    def _job(self, obj):
+        from apps.delivery.serializers import latest_delivery
+
+        return latest_delivery(obj)
+
+    def _is_owner(self, obj) -> bool:
+        request = self.context.get("request")
+        return bool(request and request.user.is_authenticated and request.user.pk == obj.order.user_id)
 
     def get_item_ids(self, obj) -> list[int]:
         return [item.id for item in obj.items.all()]
+
+    def get_rider(self, obj) -> dict | None:
+        job = self._job(obj)
+        if job is None or obj.status in (ShipmentStatus.PENDING, ShipmentStatus.CANCELLED):
+            return None
+        carrying = job.status in ("picked_up", "out_for_delivery")
+        return {
+            "name": _first_name(job.partner.user),
+            "vehicle": job.partner.get_vehicle_type_display(),
+            "phone": job.partner.phone if carrying else None,
+            "status": job.status,
+        }
+
+    def get_delivery_code(self, obj) -> dict | None:
+        """{state, code, expires_at, can_request_new}; null unless the customer needs it now."""
+        from apps.delivery import otp
+
+        job = self._job(obj)
+        if job is None or job.status != "out_for_delivery" or not self._is_owner(obj):
+            return None
+        state = otp.state(job)
+        return {
+            "state": state,
+            "code": otp.code_for_customer(job),
+            "expires_at": job.otp_expires_at,
+            "can_request_new": otp.can_reissue(job),
+        }
+
+    def get_failure(self, obj) -> dict | None:
+        if obj.status != ShipmentStatus.FAILED:
+            return None
+        from apps.delivery.models import DeliveryAssignment
+
+        code = obj.failure_reason
+        known = code in DeliveryAssignment.FailureCode.values
+        return {
+            "code": code,
+            "reason": DeliveryAssignment.FailureCode(code).label if known else "Delivery attempt failed",
+            "failed_at": obj.failed_at,
+            "next_step": "The store will contact you to arrange another delivery attempt.",
+        }
+
+    def get_proof_available(self, obj) -> bool:
+        job = self._job(obj)
+        return bool(job and job.status == "delivered" and job.proof_image)
+
+    def get_received_by(self, obj) -> str:
+        job = self._job(obj)
+        return job.received_by if job and job.status == "delivered" else ""
+
+    def get_amount_to_pay(self, obj) -> str | None:
+        """Cash on delivery: what to pay the rider for this shipment. Null when nothing is due."""
+        job = self._job(obj)
+        if job is None or job.cod_amount_due <= 0 or job.cod_collected_at or not job.is_active:
+            return None
+        return str(job.cod_amount_due)
 
 
 class OrderListSerializer(serializers.ModelSerializer):
@@ -221,11 +317,13 @@ class ReturnRequestSerializer(serializers.ModelSerializer):
     refund_method_label = serializers.CharField(source="get_refund_method_display", read_only=True)
     refund_status = serializers.CharField(source="refund.status", read_only=True, default=None)
     can_cancel = serializers.SerializerMethodField()
+    pickup = serializers.SerializerMethodField()
     items = ReturnItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = ReturnRequest
         fields = [
+            "pickup",
             "return_number",
             "order_number",
             "status",
@@ -250,6 +348,30 @@ class ReturnRequestSerializer(serializers.ModelSerializer):
     def get_can_cancel(self, obj) -> bool:
         return obj.status == ReturnRequest.Status.REQUESTED
 
+    def get_pickup(self, obj) -> dict | None:
+        """The rider sent to collect the return (Phase 10), if any: newest job first."""
+        jobs = list(obj.pickups.all())
+        job = next((j for j in jobs if j.is_active), None) or next(
+            (j for j in jobs if j.status in ("delivered", "failed")), None
+        )
+        if job is None:
+            return None
+        return {
+            "status": job.status,
+            "status_label": {
+                "assigned": "A delivery partner will collect your items",
+                "accepted": "A delivery partner will collect your items",
+                "picked_up": "Collected from you, on the way to the store",
+                "out_for_delivery": "Collected from you, on the way to the store",
+                "delivered": "Handed over at the store",
+                "failed": "Pickup attempt failed",
+            }.get(job.status, job.get_status_display()),
+            "rider_name": _first_name(job.partner.user),
+            "rider_phone": job.partner.phone if job.is_active else None,
+            "picked_up_at": job.picked_up_at,
+            "failure_reason": job.failure_reason if job.status == "failed" else "",
+        }
+
 
 class _ReturnLineInputSerializer(serializers.Serializer):
     order_item_id = serializers.IntegerField(min_value=1)
@@ -267,6 +389,10 @@ class CreateReturnSerializer(serializers.Serializer):
 
 class ReturnDecisionSerializer(serializers.Serializer):
     note = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+
+
+class AssignPickupSerializer(serializers.Serializer):
+    partner_id = serializers.IntegerField(min_value=1)
 
 
 class ReceiveReturnSerializer(ReturnDecisionSerializer):
@@ -368,7 +494,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         return RefundSummarySerializer(refunds, many=True).data
 
     def get_can_cancel(self, obj) -> bool:
-        return obj.status in CUSTOMER_CANCELLABLE
+        return obj.status in CUSTOMER_CANCELLABLE and not any(s.status in LEFT_THE_STORE for s in obj.shipments.all())
 
     def get_can_retry_payment(self, obj) -> bool:
         return (

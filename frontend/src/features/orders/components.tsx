@@ -175,7 +175,7 @@ export function OrderTimeline({ order }: { order: Pick<OrderDetail, 'status' | '
     <ol className="relative space-y-4" aria-label="Order progress">
       {steps.map((step, index) => {
         const done = step.state !== 'upcoming'
-        const cancelled = step.status === 'cancelled' || step.status === 'returned'
+        const cancelled = ['cancelled', 'returned', 'delivery_failed'].includes(step.status)
         const dot = cancelled ? 'bg-danger-600' : done ? 'bg-success-600' : 'bg-white ring-2 ring-steel-200'
         return (
           <li key={step.status} className="relative flex gap-3" aria-current={step.state === 'current' ? 'step' : undefined}>

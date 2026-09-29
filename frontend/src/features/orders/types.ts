@@ -13,6 +13,7 @@ export type OrderStatus =
   | 'picked_up'
   | 'out_for_delivery'
   | 'delivered'
+  | 'delivery_failed'
   | 'cancelled'
   | 'return_requested'
   | 'returned'
@@ -82,6 +83,15 @@ export interface ReturnRequest {
   received_at: string | null
   cancelled_at: string | null
   can_cancel: boolean
+  /** The delivery partner sent to collect the items, if the store arranged a pickup. */
+  pickup: {
+    status: string
+    status_label: string
+    rider_name: string
+    rider_phone: string | null
+    picked_up_at: string | null
+    failure_reason: string
+  } | null
   items: {
     order_item_id: number
     sku: string

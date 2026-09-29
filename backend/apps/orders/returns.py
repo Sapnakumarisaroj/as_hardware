@@ -244,6 +244,13 @@ def cancel_return(ret: ReturnRequest, *, user) -> ReturnRequest:
     return ret
 
 
+def _close_pickups(ret: ReturnRequest, actor, *, received: bool) -> None:
+    """A rider sent to collect this return (Phase 10) is no longer needed."""
+    from apps.delivery.assignment import close_return_pickups  # delivery imports orders
+
+    close_return_pickups(ret, actor=actor, received=received)
+
+
 def _decide(ret: ReturnRequest, status: str, actor, note: str) -> None:
     ret.status, ret.decision_note = status, note.strip()[:255]
     ret.decided_by, ret.decided_at = actor, timezone.now()
@@ -274,6 +281,7 @@ def reject_return(ret: ReturnRequest, *, actor, note: str) -> ReturnRequest:
     ret, order = _lock(ret)
     _require(ret, RS.REQUESTED, RS.APPROVED, action="rejected")
     _decide(ret, RS.REJECTED, actor, note)
+    _close_pickups(ret, actor, received=False)
     _reopen_order(order, ret, actor, f"Return {ret.return_number} rejected")
     record_audit(action="return.reject", actor=actor, target=ret, changes={"note": note})
     notify(
@@ -324,6 +332,7 @@ def receive_return(ret: ReturnRequest, *, actor, note: str = "", restock: bool =
     if note.strip():
         ret.decision_note = note.strip()[:255]
     ret.save(update_fields=["status", "received_at", "restocked", "refund", "decision_note", "updated_at"])
+    _close_pickups(ret, actor, received=True)
 
     received = counted_quantities(order.returns.prefetch_related("items"), statuses=(RS.RECEIVED,))
     everything_back = all(received.get(item.id, 0) >= item.quantity for item in order.items.all())

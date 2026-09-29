@@ -1,33 +1,49 @@
-"""Rider assignment foundation (Phase 9). The rider's own workflow (accept, pickup, OTP, proof of
-delivery) is Phase 10; this module decides *who may* carry a shipment and records the assignment.
+"""Who carries a shipment: eligibility, assigning, reassigning and releasing riders.
+
+Phase 9 built eligibility and safe assignment; Phase 10 adds reassignment, re-dispatch after a
+failed delivery, return pickups and the cash a rider must collect. What the rider then does
+with the job (accept … deliver) is apps.delivery.workflow.
 
 Eligible partner: active, verified, status "available", fewer active assignments than
 `max_active_assignments`, and either based at the shipment's store or currently within
 DELIVERY_PARTNER_PICKUP_RADIUS_KM of it. Ranked: same store first, fewest active deliveries,
 then distance to the store.
 
-`assign_shipment` locks the order, then the partner, and refuses:
-  - orders that are not waiting for a rider (confirmed / processing / packed)
+Every function here locks the order first and the rider second, and refuses:
+  - orders that are not waiting for a rider
   - a shipment that already has an active assignment (no duplicates)
   - a partner who is not eligible or is at capacity
-When every shipment of a packed order has a rider, the order moves to "assigned".
+  - taking a shipment away from a rider who already has the goods
 """
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Q
+from django.utils import timezone
 
 from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError
-from apps.orders.models import Order, OrderShipment, OrderStatus
+from apps.notifications.services import notify
+from apps.orders.models import Order, OrderShipment, OrderStatus, PaymentMethod, PaymentStatus, ShipmentStatus
+from apps.orders.shipments import shipment_amounts, sync_order_status
 from integrations.maps import Point, haversine_km
 
 from .models import DeliveryAssignment, DeliveryPartner, DeliveryStatusHistory
 
-ASSIGNABLE_ORDER_STATUSES = (OrderStatus.CONFIRMED, OrderStatus.PROCESSING, OrderStatus.PACKED)
+ASSIGNABLE_ORDER_STATUSES = (
+    OrderStatus.CONFIRMED,
+    OrderStatus.PROCESSING,
+    OrderStatus.PACKED,
+    OrderStatus.ASSIGNED,
+    OrderStatus.DELIVERY_FAILED,  # send it out again
+)
+ASSIGNABLE_SHIPMENT_STATUSES = (ShipmentStatus.PENDING, ShipmentStatus.ASSIGNED, ShipmentStatus.FAILED)
 ACTIVE = DeliveryAssignment.ACTIVE_STATUSES
+A = DeliveryAssignment.Status
+KIND = DeliveryAssignment.Kind
 
 
 class AssignmentError(ConflictError):
@@ -42,11 +58,13 @@ class Candidate:
     distance_km: float | None
 
 
-def _partners_with_load():
-    return (
-        DeliveryPartner.objects.filter(is_active=True, is_verified=True)
-        .select_related("user", "home_store")
-        .annotate(active_count=Count("assignments", filter=Q(assignments__status__in=ACTIVE)))
+# --- Riders --------------------------------------------------------------------------------------
+
+
+def partners_with_load(queryset=None):
+    queryset = DeliveryPartner.objects.all() if queryset is None else queryset
+    return queryset.select_related("user", "home_store").annotate(
+        active_count=Count("assignments", filter=Q(assignments__status__in=ACTIVE), distinct=True)
     )
 
 
@@ -55,7 +73,8 @@ def eligible_partners(shipment: OrderShipment) -> list[Candidate]:
     store_point = Point.of(store.latitude, store.longitude)
     radius = float(settings.DELIVERY_PARTNER_PICKUP_RADIUS_KM)
     result = []
-    for partner in _partners_with_load().filter(status=DeliveryPartner.Status.AVAILABLE):
+    available = partners_with_load().filter(is_active=True, is_verified=True, status=DeliveryPartner.Status.AVAILABLE)
+    for partner in available:
         if partner.active_count >= partner.max_active_assignments:
             continue
         here = Point.of(partner.current_latitude, partner.current_longitude)
@@ -70,42 +89,115 @@ def eligible_partners(shipment: OrderShipment) -> list[Candidate]:
     return result
 
 
-@transaction.atomic
-def assign_shipment(shipment: OrderShipment, partner: DeliveryPartner, *, actor) -> DeliveryAssignment:
-    order = Order.objects.select_for_update().get(pk=shipment.order_id)
-    shipment = OrderShipment.objects.select_related("store").get(pk=shipment.pk)
-    if order.status not in ASSIGNABLE_ORDER_STATUSES:
-        raise AssignmentError(
-            f"Order {order.order_number} is {order.get_status_display().lower()} and can't get a rider now.",
-            code="invalid_delivery_state",
-            details={"status": order.status},
-        )
-    if shipment.assignments.filter(status__in=ACTIVE).exists():
-        raise AssignmentError("This shipment already has a delivery partner.", code="already_assigned")
+def refresh_partner_status(partner: DeliveryPartner) -> None:
+    """busy ⇄ available follows the rider's load. Offline riders stay offline."""
+    if partner.status == DeliveryPartner.Status.OFFLINE:
+        return
+    active = partner.assignments.filter(status__in=ACTIVE).count()
+    status = (
+        DeliveryPartner.Status.BUSY if active >= partner.max_active_assignments else DeliveryPartner.Status.AVAILABLE
+    )
+    if status != partner.status:
+        partner.status = status
+        partner.save(update_fields=["status", "updated_at"])
 
+
+def has_rider_in_charge(order: Order) -> bool:
+    """A delivery partner holds (or is about to hold) part of this order."""
+    return DeliveryAssignment.objects.filter(order=order, kind=KIND.DELIVERY, status__in=ACTIVE).exists()
+
+
+def record_history(assignment, from_status: str, *, actor=None, note: str = "", latitude=None, longitude=None) -> None:
+    DeliveryStatusHistory.objects.create(
+        assignment=assignment,
+        from_status=from_status,
+        to_status=assignment.status,
+        changed_by=actor if getattr(actor, "pk", None) else None,
+        note=note[:255],
+        latitude=latitude,
+        longitude=longitude,
+    )
+
+
+# --- Assigning -----------------------------------------------------------------------------------
+
+
+def _require_eligible(shipment: OrderShipment, partner: DeliveryPartner) -> DeliveryPartner:
     partner = DeliveryPartner.objects.select_for_update().get(pk=partner.pk)
     if partner.pk not in {c.partner.pk for c in eligible_partners(shipment)}:
         raise AssignmentError(
             "This delivery partner isn't available for this store right now (offline, busy or too far).",
             code="partner_unavailable",
         )
+    return partner
 
+
+def _cod_due(order: Order, shipment: OrderShipment) -> Decimal:
+    if order.payment_method != PaymentMethod.COD or order.payment_status == PaymentStatus.PAID:
+        return Decimal("0.00")
+    return shipment_amounts(order).get(shipment.pk, Decimal("0.00"))
+
+
+def _create(order, shipment, partner, *, actor, note: str, kind=KIND.DELIVERY, return_request=None):
     assignment = DeliveryAssignment.objects.create(
-        order=order, shipment=shipment, partner=partner, distance_km=shipment.distance_km
+        order=order,
+        shipment=shipment,
+        partner=partner,
+        kind=kind,
+        return_request=return_request,
+        distance_km=shipment.distance_km if shipment else None,
+        cod_amount_due=_cod_due(order, shipment) if kind == KIND.DELIVERY and shipment else Decimal("0.00"),
     )
-    DeliveryStatusHistory.objects.create(
-        assignment=assignment, to_status=DeliveryAssignment.Status.ASSIGNED, note="Assigned by store"
+    record_history(assignment, "", actor=actor, note=note)
+    refresh_partner_status(partner)
+    what = "A delivery" if kind == KIND.DELIVERY else "A return pickup"
+    notify(
+        partner.user,
+        event="delivery.assigned",
+        title=f"New job: order {order.order_number}",
+        body=f"{what} for order {order.order_number} was assigned to you. Open the rider app to accept it.",
+        data={"assignment_id": assignment.pk, "order_number": order.order_number, "kind": kind},
+        channels=("in_app",),
     )
-    active_now = partner.assignments.filter(status__in=ACTIVE).count()
-    if active_now >= partner.max_active_assignments:
-        partner.status = DeliveryPartner.Status.BUSY
-        partner.save(update_fields=["status", "updated_at"])
+    return assignment
 
-    unassigned = order.shipments.exclude(assignments__status__in=ACTIVE).exists()
-    if order.status == OrderStatus.PACKED and not unassigned:
-        from apps.orders.services import apply_locked_transition
 
-        apply_locked_transition(order, OrderStatus.ASSIGNED, actor=actor, note="Delivery partner assigned")
+def _locked(shipment: OrderShipment) -> tuple[Order, OrderShipment]:
+    order = Order.objects.select_for_update().get(pk=shipment.order_id)
+    return order, OrderShipment.objects.select_related("store").get(pk=shipment.pk)
+
+
+def _active_delivery(shipment: OrderShipment) -> DeliveryAssignment | None:
+    return (
+        DeliveryAssignment.objects.select_for_update()
+        .filter(shipment=shipment, kind=KIND.DELIVERY, status__in=ACTIVE)
+        .first()
+    )
+
+
+def _require_assignable(order: Order, shipment: OrderShipment) -> None:
+    if order.status not in ASSIGNABLE_ORDER_STATUSES or shipment.status not in ASSIGNABLE_SHIPMENT_STATUSES:
+        raise AssignmentError(
+            f"Order {order.order_number} is {order.get_status_display().lower()} and can't get a rider now.",
+            code="invalid_delivery_state",
+            details={"status": order.status},
+        )
+
+
+@transaction.atomic
+def assign_shipment(shipment: OrderShipment, partner: DeliveryPartner, *, actor) -> DeliveryAssignment:
+    """Give a waiting shipment (or one that came back undelivered) to a rider."""
+    order, shipment = _locked(shipment)
+    _require_assignable(order, shipment)
+    if _active_delivery(shipment) is not None:
+        raise AssignmentError("This shipment already has a delivery partner.", code="already_assigned")
+    partner = _require_eligible(shipment, partner)
+
+    again = shipment.status == ShipmentStatus.FAILED
+    assignment = _create(order, shipment, partner, actor=actor, note="Sent out again" if again else "Assigned by store")
+    shipment.status = ShipmentStatus.ASSIGNED
+    shipment.save(update_fields=["status"])
+    sync_order_status(order, actor=actor, note="Delivery partner assigned")
     record_audit(
         action="delivery.assign",
         actor=actor,
@@ -115,20 +207,145 @@ def assign_shipment(shipment: OrderShipment, partner: DeliveryPartner, *, actor)
     return assignment
 
 
-def release_assignments(order: Order, *, reason: str) -> int:
-    """Cancel the order's active assignments (order cancelled or sent back to packing) and free
-    the riders. Caller holds the order lock."""
-    released = 0
-    for assignment in DeliveryAssignment.objects.select_for_update().filter(order=order, status__in=ACTIVE):
-        previous = assignment.status
-        assignment.status = DeliveryAssignment.Status.CANCELLED
-        assignment.save(update_fields=["status", "updated_at"])
-        DeliveryStatusHistory.objects.create(
-            assignment=assignment, from_status=previous, to_status=assignment.status, note=reason[:255]
+def _take_away(assignment: DeliveryAssignment, *, actor, note: str) -> None:
+    previous = assignment.status
+    assignment.status = A.CANCELLED
+    assignment.save(update_fields=["status", "updated_at"])
+    record_history(assignment, previous, actor=actor, note=note)
+    refresh_partner_status(DeliveryPartner.objects.select_for_update().get(pk=assignment.partner_id))
+    notify(
+        assignment.partner.user,
+        event="delivery.unassigned",
+        title=f"Job removed: order {assignment.order.order_number}",
+        body=f"The store took order {assignment.order.order_number} off your list. {note}".strip(),
+        data={"assignment_id": assignment.pk},
+        channels=("in_app",),
+    )
+
+
+def _require_before_pickup(current: DeliveryAssignment | None) -> DeliveryAssignment:
+    if current is None:
+        raise AssignmentError("This shipment has no delivery partner.", code="not_assigned")
+    if current.status not in DeliveryAssignment.BEFORE_PICKUP:
+        raise AssignmentError(
+            "The delivery partner already has the goods. They must deliver them or report a failed delivery.",
+            code="already_picked_up",
+            details={"status": current.status},
         )
-        partner = assignment.partner
-        if partner.status == DeliveryPartner.Status.BUSY and not partner.assignments.filter(status__in=ACTIVE).exists():
-            partner.status = DeliveryPartner.Status.AVAILABLE
-            partner.save(update_fields=["status", "updated_at"])
+    return current
+
+
+@transaction.atomic
+def reassign_shipment(shipment: OrderShipment, partner: DeliveryPartner, *, actor, reason: str = ""):
+    """Give the shipment to another rider. Only before pickup: goods never change hands silently."""
+    order, shipment = _locked(shipment)
+    current = _require_before_pickup(_active_delivery(shipment))
+    if current.partner_id == partner.pk:
+        raise AssignmentError("This delivery partner already has the shipment.", code="same_partner")
+    partner = _require_eligible(shipment, partner)
+    _take_away(current, actor=actor, note=f"Reassigned. {reason}".strip())
+    assignment = _create(order, shipment, partner, actor=actor, note=f"Reassigned by store. {reason}".strip())
+    record_audit(
+        action="delivery.reassign",
+        actor=actor,
+        target=assignment,
+        changes={"order": order.order_number, "from": current.partner_id, "to": partner.pk, "reason": reason},
+    )
+    return assignment
+
+
+@transaction.atomic
+def unassign_shipment(shipment: OrderShipment, *, actor, reason: str = "") -> OrderShipment:
+    """Take the shipment off its rider (before pickup); it waits for a rider again."""
+    order, shipment = _locked(shipment)
+    current = _require_before_pickup(_active_delivery(shipment))
+    _take_away(current, actor=actor, note=f"Unassigned. {reason}".strip())
+    shipment.status = ShipmentStatus.PENDING
+    shipment.save(update_fields=["status"])
+    sync_order_status(order, actor=actor, note="Delivery partner unassigned")
+    record_audit(
+        action="delivery.unassign",
+        actor=actor,
+        target=current,
+        changes={"order": order.order_number, "partner": current.partner_id, "reason": reason},
+    )
+    return shipment
+
+
+def release_assignments(order: Order, *, reason: str) -> int:
+    """The order was cancelled or sent back to packing: cancel the jobs of riders who have not
+    picked anything up yet and free them. Caller holds the order lock."""
+    released = 0
+    waiting = DeliveryAssignment.objects.select_for_update().filter(
+        order=order, kind=KIND.DELIVERY, status__in=DeliveryAssignment.BEFORE_PICKUP
+    )
+    for assignment in waiting:
+        previous = assignment.status
+        assignment.status = A.CANCELLED
+        assignment.save(update_fields=["status", "updated_at"])
+        record_history(assignment, previous, note=reason)
+        refresh_partner_status(assignment.partner)
         released += 1
     return released
+
+
+# --- Return pickups ------------------------------------------------------------------------------
+
+
+@transaction.atomic
+def assign_return_pickup(return_request, partner: DeliveryPartner, *, actor) -> DeliveryAssignment:
+    """Send a rider to collect an approved return from the customer and bring it to the store."""
+    from apps.orders.models import ReturnRequest
+
+    order = Order.objects.select_for_update().get(pk=return_request.order_id)
+    ret = ReturnRequest.objects.select_for_update().get(pk=return_request.pk)
+    if ret.status != ReturnRequest.Status.APPROVED:
+        raise AssignmentError(
+            f"This return is {ret.get_status_display().lower()}; only approved returns are picked up.",
+            code="invalid_delivery_state",
+            details={"status": ret.status},
+        )
+    if DeliveryAssignment.objects.filter(return_request=ret, status__in=ACTIVE).exists():
+        raise AssignmentError("A delivery partner is already collecting this return.", code="already_assigned")
+    line = ret.items.select_related("order_item__shipment__store").first()
+    shipment = line.order_item.shipment if line else None
+    if shipment is None:
+        raise AssignmentError("This order has no store to bring the return to.", code="invalid_delivery_state")
+    partner = _require_eligible(shipment, partner)
+    assignment = _create(
+        order,
+        shipment,
+        partner,
+        actor=actor,
+        note="Return pickup assigned",
+        kind=KIND.RETURN_PICKUP,
+        return_request=ret,
+    )
+    record_audit(
+        action="delivery.assign_return_pickup",
+        actor=actor,
+        target=assignment,
+        changes={"return": ret.return_number, "partner": partner.pk},
+    )
+    return assignment
+
+
+def close_return_pickups(return_request, *, actor, received: bool) -> None:
+    """The return was received at the store or rejected: no rider needs to go any more.
+    Caller holds the order lock."""
+    from .workflow import earning_for
+
+    now = timezone.now()
+    for assignment in DeliveryAssignment.objects.select_for_update().filter(
+        return_request=return_request, status__in=ACTIVE
+    ):
+        previous = assignment.status
+        if received and previous in DeliveryAssignment.WITH_GOODS:
+            assignment.status, assignment.delivered_at = A.DELIVERED, now
+            assignment.earning_amount = earning_for(assignment)
+        else:
+            assignment.status = A.CANCELLED
+        assignment.save(update_fields=["status", "delivered_at", "earning_amount", "updated_at"])
+        note = "Return received at the store" if received else "Return rejected"
+        record_history(assignment, previous, actor=actor, note=note)
+        refresh_partner_status(assignment.partner)

@@ -20,6 +20,11 @@ REST_FRAMEWORK = {
     },
 }
 FRONTEND_URL = "http://testserver-frontend"
+# Proof-of-delivery photos written by tests go to a throwaway folder.
+import tempfile as _tempfile  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+PRIVATE_MEDIA_ROOT = _Path(_tempfile.gettempdir()) / "boltrun_test_private_media"
 # Never call OpenStreetMap services from tests (providers are exercised with fakes).
 GEOCODING_PROVIDER = "none"
 ROUTING_PROVIDER = "haversine"

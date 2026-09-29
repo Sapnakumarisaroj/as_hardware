@@ -56,13 +56,16 @@ as_hardware/
 │   │   ├── carts/           ✅ Cart, CartItem, Wishlist, WishlistItem (+ API)
 │   │   ├── orders/          ✅ Order, OrderItem (snapshots), OrderStatusHistory, state machine, pricing, placement (+ API)
 │   │   ├── payments/        ✅ Payment, Refund, WebhookEvent; verification, webhooks, refunds, reconciliation, jobs
-│   │   ├── delivery/        ✅ DeliveryZone, DeliveryPartner, DeliveryAssignment, DeliveryStatusHistory (logic Phase 9–10)
+│   │   ├── delivery/        ✅ zones, PIN codes, fulfilment + ETA engine (Phase 9); riders, assignments, rider workflow,
+│   │   │                       delivery code, proof of delivery, cash on delivery (Phase 10) (+ rider and staff API)
 │   │   ├── reviews/         ✅ Review (verified buyers only, moderation) (+ API)
 │   │   ├── notifications/   ✅ Notification (sending in Phase 20)
 │   │   ├── support/         ✅ SupportConversation, SupportMessage (channels in Phase 20)
 │   │   ├── ai/              ✅ AIConversation, AIMessage, Project, ProjectItem (AI logic Phases 12–19)
 │   │   └── analytics/       🔜 whitelisted reporting queries + business assistant (Phase 21)
-│   ├── integrations/        payments/ ✅ (PaymentProvider, MockPaymentProvider, RazorpayPaymentProvider); llm/, messaging/, maps/ 🔜
+│   ├── integrations/        payments/ ✅ (PaymentProvider, MockPaymentProvider, RazorpayPaymentProvider); maps/ ✅ (Phase 9);
+│   │                        llm/, messaging/ 🔜
+│   ├── private_media/       proof-of-delivery photos: NOT web-served, not in git (PRIVATE_MEDIA_ROOT)
 │   ├── passenger_wsgi.py    shared-hosting entry point
 │   └── requirements/        base / dev / prod / mysql
 ├── frontend/                React 19 + TS + Vite + Tailwind v4; builds to static dist/
@@ -104,7 +107,9 @@ call services.
 ### Order state machine (implemented in Phase 2: `orders/state_machine.py`)
 `pending → confirmed → processing → packed → assigned → picked_up → out_for_delivery → delivered`,
 with exits `cancelled` (before pickup) and `return_requested → returned`. `orders.services.transition_order()` validates
-each transition and writes an `OrderStatusHistory` row in the same transaction.
+each transition and writes an `OrderStatusHistory` row in the same transaction. Phase 10 adds `delivery_failed`
+(reached from `packed`…`out_for_delivery`; leaves to `assigned`/`packed` for another attempt, or `cancelled`) and
+derives the order status from its shipments once it is packed (see *Delivery partner workflow*).
 
 ### Inventory integrity
 Stock is held per `(store, variant)` with `quantity` and `reserved`. Checkout locks rows (`select_for_update`), reserves
@@ -251,7 +256,7 @@ competing orders spread over two stores and competing split orders.
 aren't waiting for a rider (`invalid_delivery_state`), a shipment that already has an active assignment
 (`already_assigned`) and riders who are offline, unverified, too far or at capacity (`partner_unavailable`). A rider
 at capacity becomes `busy`; cancelling or unassigning frees them. Threaded tests cover two staff assigning one shipment
-and three shipments competing for one rider. The rider's own workflow is Phase 10.
+and three shipments competing for one rider. What the rider then does with the job is the next section.
 
 **Maps** (`integrations/maps`): `MapsProvider` = geocoder + router, chosen by `GEOCODING_PROVIDER` (`none` |
 `nominatim`) and `ROUTING_PROVIDER` (`haversine` | `osrm`). The default is fully offline. Network providers use
@@ -259,6 +264,89 @@ the standard library over https only, time out after `MAPS_TIMEOUT_SECONDS`, and
 estimate, so an outage never blocks checkout. Geocoding answers (including "not found") are stored in `GeocodeCache`;
 OSRM routes are cached for `ROUTE_CACHE_SECONDS`. OSRM's car timings are never trusted below the configured
 two-wheeler speed.
+
+### Delivery partner workflow (Phase 10)
+`apps/delivery`: `assignment.py` (who carries a shipment: assign, reassign, unassign, return pickups) →
+`workflow.py` (the rider's steps) with `otp.py`, `proof.py` and `cod.py`. `orders/shipments.py` keeps shipments,
+stock and the order status consistent.
+
+**1. One job, one rider, fixed steps.** A `DeliveryAssignment` is a delivery or a return pickup.
+
+    Delivery:       assigned ─accept→ accepted ─pickup→ picked_up ─start→ out_for_delivery ─complete→ delivered
+    Return pickup:  assigned ─accept→ accepted ─pickup (customer)→ picked_up ─complete (store)→ delivered
+    Either:         assigned/accepted ─reject→ rejected · cancelled (by staff, or the order was cancelled)
+                    picked_up/out_for_delivery ─fail→ failed
+
+Each step is valid from exactly one status; anything else is refused with `invalid_delivery_state` and changes
+nothing (tested for every action × every status). There is no generic "set status" for riders and no writable job
+field: the API is a list of actions, each validated on the server.
+
+**2. Shipments carry the progress; the order follows.** Each `OrderShipment` has its own `status` and
+`stock_state`. From `packed` onwards the order status is *derived*: `delivery_failed` if any shipment failed,
+otherwise the least advanced shipment (`sync_order_status` walks the order through the state machine one valid
+transition at a time, so the history shows every step). An order from two stores is therefore "out for delivery"
+only when nothing is still waiting at a store, and "delivered" (and a COD order "paid") only when both parts arrived.
+Two callers change shipments:
+- a **rider's step** changes one shipment, then the order catches up;
+- an **order-level change** (staff transition, customer cancel, payment expiry) moves the order and
+  `mirror_order_status` brings its shipments along. This path serves stores whose own riders don't use the app.
+  While a delivery partner holds a job, staff cannot push the order through the delivery statuses from here
+  (`rider_in_charge`): they reassign or unassign instead.
+
+**3. Stock moves once per shipment**, tracked by `stock_state`: `reserved → sold` at pickup (the goods left the
+store), or `reserved → released` when the order is cancelled before pickup. After a failed delivery the goods are
+back at the store but still belong to the order (`sold`); sending them out again moves no stock, and cancelling the
+order then puts them back on the shelf (`sold → restocked`, a `return` stock movement). An order can't be cancelled
+while part of it is with a rider or already delivered (`shipment_on_the_way`).
+
+**4. Delivery code (OTP)**, `otp.py`. Six digits, issued when the rider starts the delivery.
+- **Never stored.** The code is derived with HMAC-SHA256 from a random per-issue nonce and a key derived from
+  `SECRET_KEY`. The database holds the nonce and a keyed hash of the code, so a copy of the database alone reveals
+  no code, while the customer's order page can show the current code again.
+- **Only the customer sees it**: in `shipments[].delivery_code`, for the order's owner, while the shipment is out for
+  delivery. Not the rider, not staff, not the Django admin, not notifications (which only say "open the order page").
+- **Expires** after `DELIVERY_OTP_TTL_MINUTES`; **locked** after `DELIVERY_OTP_MAX_ATTEMPTS` wrong codes, after which
+  even the right code is refused. A wrong code is counted in a committed transaction although the request fails.
+  Six simultaneous wrong guesses are counted one by one (row lock) and cannot exceed the limit.
+- **Single use**: the right code completes the delivery in the same transaction; the job is then no longer active and
+  accepts nothing. A new code (customer's request, at most one per `DELIVERY_OTP_RESEND_SECONDS`) replaces the old
+  one; a failed attempt destroys it.
+- Store staff can close a delivery without the code when the customer cannot show it; this needs a note, is flagged
+  on the job (`completed_without_otp`) and audit-logged.
+
+**5. Cash on delivery**, `cod.py`. The job stores `cod_amount_due` when it is created: the shipment's share of the
+order total (`shipment_amounts`: what was paid for its lines after offers and coupon; the delivery fee travels with
+the first shipment; the last takes the rounding remainder, so shares add up to the order total exactly). Completing
+the delivery requires the rider to confirm exactly that amount; the number sent by the app is compared, never
+stored. Cash stays "in hand" on the rider until store staff record the handover (once; audit-logged); UPI goes to
+the store directly. The order's payment record is captured when the whole order is delivered, as before.
+
+**6. Proof of delivery**, `proof.py` + `core/storage.py`. Uploads are opened and verified with Pillow, stripped of
+metadata (phones embed GPS position and device model), scaled to at most 1600 px and re-encoded as JPEG under a
+random name. They are stored with `PrivateStorage` under `PRIVATE_MEDIA_ROOT`, **outside the web-served media
+folder**, and have no URL. Three API views stream them after checking who asks: the rider (own job), the customer
+(own order, once delivered) and staff of the shipment's store (each view audit-logged). Responses are
+`Cache-Control: private, no-store`.
+
+**7. Privacy between the parties.** The rider sees the customer's name, phone, address and delivery note only while
+the job is active, and item names and quantities but no prices. The customer sees the rider's first name and
+vehicle, and the phone number only while the rider carries the goods. The rider's free-text failure note goes to the
+store, not to the customer.
+
+**8. Locks.** Every function locks **order → assignment → delivery partner**, in that order (also
+`assignment.py` and the availability switch), so people acting on the same job wait for each other instead of
+deadlocking. Threaded tests: double tap on accept / pickup / deliver (one wins, stock sold once, cash recorded
+once), deliver racing with "failed", wrong codes in parallel, the right code racing with a new code, accept racing
+with reassignment (never two riders on a shipment), pickup racing with unassign and cancel, two shipments of one
+order delivered at the same moment (order delivered once, paid once), cash handover recorded once, going offline
+racing with an assignment.
+
+**9. Return pickups.** Staff can send a rider to collect an approved return. The job runs customer → store with the
+same steps (no code, no cash). It never changes the return or the order: the store still checks the goods and
+receives the return, which restocks and starts the refund. Receiving or rejecting a return closes an open pickup.
+
+**10. Earnings** are calculated on completion: `DELIVERY_EARNING_BASE + DELIVERY_EARNING_PER_KM × distance`
+(the store → customer route stored on the shipment); a failed attempt earns `DELIVERY_EARNING_FAILED_ATTEMPT`.
 
 ### Background jobs without Celery/Redis
 `core.Job` table (built in Phase 8) plus `enqueue(name, payload, dedupe_key=…)`, `@job` handlers and `@periodic`
@@ -332,6 +420,10 @@ Nominatim's usage policy (1 req/s, identifying User-Agent) is respected: geocode
   table (no Redis).
 - CORS allow-list. CSRF protects the session-auth Django admin. SPA and API on separate subdomains.
 - Upload validation: type, size and Pillow verification, with random filenames.
+- Proof-of-delivery photos are private files (Phase 10): stored outside the web root, re-encoded without metadata,
+  served only by authenticated API views. Delivery codes are never stored and are shown to the order's owner only.
+- Delivery partners can act only on their own jobs, through fixed actions; they have no access to orders, prices,
+  customers, inventory or staff endpoints.
 - Secrets come only from environment variables (control-panel variables or a `.env` outside the web root).
 - `AuditLog` for admin and sensitive actions. `prod` settings add HSTS, secure cookies and `check --deploy`.
 - `PAYMENT_PROVIDER=mock` raises at startup in production unless explicitly overridden for staging.
@@ -429,6 +521,28 @@ display components. The browser never calculates a time or a fee; it shows what 
 - If an estimate can't be loaded the page still works: the product page falls back to the PIN form, the cart hides
   the block, and checkout (which needs the plan) shows its normal retry.
 - Main bundle measured at the Phase 9 build: 481 kB (148 kB gzipped).
+
+### Delivery tracking and the rider app (Phase 10)
+- **Customer** (`features/delivery/tracking.tsx`, on the order page and the confirmation page): one block per
+  shipment with its steps, the rider's name and vehicle, a call link while the rider carries the goods, the cash to
+  pay, the delivery code in large digits (read out digit by digit to screen readers) with its validity and a
+  "Get a new code" button, the failure reason and next step, and after delivery who received it and the photo. The
+  photo is fetched only when asked for, with the session token, and shown from memory (`fetchPrivateImage`).
+  Orders on the move are refetched every 20 s (`useOrder(number, 'tracking')`); finished orders are not polled.
+- **Rider app** (`/rider`, `/rider/jobs/:id`, `/rider/history`; `features/rider`, `pages/RiderPages.tsx`,
+  `RiderLayout`): a separate plain shell with large touch targets. Dashboard (availability switch, active jobs,
+  earnings, cash to hand over), job page (what to do next, the one button for the next step, store and customer
+  cards with "Navigate" (`geo:` link to the phone's maps app), "Open map" (OpenStreetMap) and "Call" links, items,
+  delivery note, history) and delivery history. The handover form takes the customer's code, the cash confirmation
+  for COD, who received it and the photo. The app shows buttons from the server's `next_actions` and shows the
+  server's reason when a step is refused; it never decides a status itself.
+- Delivery partners who log in land on `/rider`; the account menu links to it. Everyone else is told the area is for
+  delivery partners (and the API refuses them). The rider pages are a lazy chunk (≈ 29 kB), not part of the shop.
+- Active job lists refresh every 30 s, so a new job appears without reloading. The rider's position is sent with
+  pickup/start/complete only when the browser already has permission; it never blocks a step.
+- Staff work through the staff API and the Django admin (Shipments, Delivery assignments, Delivery partners); the
+  React dashboard is Phase 11.
+- Main bundle measured at the Phase 10 build: 484 kB (149 kB gzipped).
 
 ## 9. Environments
 | | Local (Windows) | Production (existing hosting) |

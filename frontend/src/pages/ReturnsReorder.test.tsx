@@ -45,6 +45,7 @@ function returnRequest(overrides: Partial<ReturnRequest> = {}): ReturnRequest {
     received_at: null,
     cancelled_at: null,
     can_cancel: true,
+    pickup: null,
     items: [
       {
         order_item_id: 1,
@@ -179,6 +180,30 @@ describe('returns', () => {
     await user.click(within(open).getByRole('button', { name: 'Cancel return request' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/returns/RT260925ABCDEF/cancel/'))
     expect(await screen.findByText('Return RT260925ABCDEF cancelled')).toBeInTheDocument()
+  })
+
+  it('shows the delivery partner who collects an approved return', async () => {
+    signIn()
+    const approved = returnRequest({
+      status: 'approved',
+      status_label: 'Approved — awaiting pickup/drop',
+      can_cancel: false,
+      pickup: {
+        status: 'accepted',
+        status_label: 'A delivery partner will collect your items',
+        rider_name: 'Ravi',
+        rider_phone: '9123456780',
+        picked_up_at: null,
+        failure_reason: '',
+      },
+    })
+    mockApi({
+      get: baseGet({ [`/orders/${NUMBER}/`]: delivered({ status: 'return_requested', can_return: false, returns: [approved] }) }),
+    })
+    renderRoute(`/account/orders/${NUMBER}`)
+    const card = await screen.findByRole('article', { name: 'Return RT260925ABCDEF' })
+    expect(card).toHaveTextContent('Pickup: A delivery partner will collect your items (Ravi)')
+    expect(within(card).getByRole('link', { name: 'Call Ravi' })).toHaveAttribute('href', 'tel:9123456780')
   })
 
   it('returns page lists returns with a link to the order, or an empty state', async () => {

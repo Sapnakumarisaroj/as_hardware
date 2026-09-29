@@ -9,6 +9,7 @@ import { AddressFormModal, AddressList, AddressText } from '@/features/addresses
 import { useAuth } from '@/features/auth/context'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { OrderDeliveryCard } from '@/features/delivery/components'
+import { DeliveryTracking } from '@/features/delivery/tracking'
 import { orderStatusLabel } from '@/features/orders/status'
 import { ORDERS_PAGE_SIZE, useOrder, useOrders, useRetryPayment, useReturns } from '@/features/orders/api'
 import {
@@ -223,7 +224,7 @@ function PaymentInfo({ order }: { order: OrderDetail }) {
 export function OrderDetailPage() {
   const { number = '' } = useParams()
   usePageMeta(`Order ${number}`)
-  const order = useOrder(number)
+  const order = useOrder(number, 'tracking')
   const retry = useRetryPayment(number)
   const [cancelling, setCancelling] = useState(false)
   const [returning, setReturning] = useState(false)
@@ -291,6 +292,7 @@ export function OrderDetailPage() {
             {data.delivery_message && <p className="mb-4 text-sm font-semibold text-ink-900">{data.delivery_message}</p>}
             <OrderTimeline order={data} />
           </section>
+          <DeliveryTracking order={data} />
           <OrderDeliveryCard order={data} statusLabel={orderStatusLabel(data)} headingId="delivery-heading" />
           <section aria-labelledby="items-heading" className="rounded-lg bg-white px-5 py-4 ring-1 ring-steel-200">
             <h2 id="items-heading" className="text-base font-bold">
@@ -342,7 +344,7 @@ export function OrderDetailPage() {
               Cancel order
             </button>
           )}
-          {!data.can_cancel && !['cancelled', 'delivered', 'returned'].includes(data.status) && (
+          {!data.can_cancel && !['cancelled', 'delivered', 'returned', 'delivery_failed'].includes(data.status) && (
             <p className="text-xs text-ink-600">This order is already being packed or delivered, so it can’t be cancelled online.</p>
           )}
         </div>

@@ -123,7 +123,7 @@ Movement effects (only via `inventory.services.apply_movement`, which locks the 
 |---|---|---|
 | `orders_order` | public_id UUID, order_number (unique), user FK, store FK, address_snapshot JSON, status (fulfilment), payment_method (cod/online), payment_status, subtotal, mrp_total, discount_total, delivery_fee, tax_total, grand_total, coupon FK, coupon_code, customer_note, delivery promise (Phase 9): delivery_type (fast/standard, blank for older orders), eta_minutes, estimated_ready_at, estimated_delivery_at, delivery_window_start, delivery_window_end; cancellation_reason, cancelled_at, delivered_at, idempotency_key (Phase 5, nullable), offer_discount + coupon_discount (= discount_total) and applied_offers JSON snapshot (Phase 6) | CHECK grand_total ≥ 0, discount ≥ 0; **unique (user, idempotency_key)**; indexes (user, created_at), (store, status), (status, created_at) |
 | `orders_orderitem` | order FK, variant FK (SET NULL), product FK (SET NULL) + snapshot: product_name, variant_name, sku, brand_name, unit, unit_mrp, unit_price, gst_rate, hsn_code, quantity, line_total, offer_discount (Phase 6: this line's share of automatic offers), shipment FK (Phase 9, SET NULL: the store this line is reserved at and ships from) | CHECK quantity ≥ 1 |
-| `orders_ordershipment` (Phase 9) | order FK (CASCADE), sequence, store FK (PROTECT), zone FK (SET NULL), delivery_type, distance_km, prep_minutes, wait_minutes, travel_minutes, eta_minutes, estimated_ready_at, estimated_delivery_at, window_start, window_end, eta_source (haversine / osrm / pin / zone / legacy), created_at | **unique (order, sequence)**; index (store, created_at). One row per store the order ships from |
+| `orders_ordershipment` (Phase 9) | order FK (CASCADE), sequence, store FK (PROTECT), zone FK (SET NULL), delivery_type, distance_km, prep_minutes, wait_minutes, travel_minutes, eta_minutes, estimated_ready_at, estimated_delivery_at, window_start, window_end, eta_source (haversine / osrm / pin / zone / legacy), created_at. Phase 10: status (pending / assigned / picked_up / out_for_delivery / delivered / failed / cancelled), stock_state (reserved / sold / released / restocked), delivery_attempts, picked_up_at, out_for_delivery_at, delivered_at, failed_at, failure_reason (code), failure_note | **unique (order, sequence)**; indexes (store, created_at), (store, status). One row per store the order ships from |
 | `orders_orderstatushistory` | order FK, from_status, to_status, changed_by, note, created_at | index (order, created_at) |
 | `orders_returnrequest` (Phase 7) | return_number (unique), order FK (PROTECT), user FK, status (requested/approved/rejected/received/cancelled), reason, details, refund_amount (fixed at request time), refund_method (original_payment/manual), refund 1:1 → `payments_refund` (set when received), decision_note, decided_by, decided_at, received_at, restocked, cancelled_at | CHECK refund_amount ≥ 0; indexes (order, status), (status, created_at) |
 | `orders_returnitem` (Phase 7) | return_request FK (CASCADE), order_item FK (PROTECT), quantity, refund_amount | CHECK quantity ≥ 1; unique (return_request, order_item) |
@@ -133,7 +133,12 @@ Status flow (`orders/state_machine.py`, the single source of truth):
 ```
 pending → confirmed → processing → packed → assigned → picked_up → out_for_delivery → delivered → return_requested → returned
    └──────────┴────────────┴──────────┴─────────┴──→ cancelled            (assigned → packed = unassign; return_requested → delivered = rejected)
+
+Phase 10:  packed / assigned / picked_up / out_for_delivery ──→ delivery_failed ──→ assigned or packed (another attempt) or cancelled
 ```
+From `packed` onwards the order status is derived from its shipments (`orders/shipments.py`): `delivery_failed` if
+any shipment failed, otherwise the least advanced shipment. An order with goods at a rider or already delivered
+cannot be cancelled.
 Customers can cancel while `pending`, `confirmed` or `processing`. Cancelling releases reserved stock, voids uncaptured
 payments, records a *pending* `payments_refund` for captured ones (submitted to the gateway by the Phase 8 refund job) and deletes
 the coupon redemption (decrementing `used_count`), so the customer can use the coupon again. `picked_up` converts the
@@ -162,6 +167,20 @@ store (`eta_source = "legacy"`, no estimate invented) and attaches its items, so
 using the right store. `order.store` stays as the primary fulfilment store (the shipment with the most lines); stock
 is always moved at the **line's shipment store**. The order's estimate is the latest of its shipments.
 
+**Shipment status and stock (Phase 10).** `orders 0007` adds the shipment's `status`, `stock_state` and timestamps
+and the order status `delivery_failed` (a new choice; no column change). `orders 0008_backfill_shipment_status` gives
+existing shipments the status of their order: `pending`/`reserved` up to `packed`, `assigned`/`reserved`,
+`picked_up` or `out_for_delivery`/`sold`, `delivered`/`sold` (+ `delivered_at`) for delivered and returned orders,
+`cancelled`/`released` for cancelled ones (tested in `orders/tests/test_migrations.py`). Each stock movement of a
+shipment happens once, guarded by `stock_state`:
+
+| stock_state | Meaning | Stock movement that led to it |
+|---|---|---|
+| reserved | Reserved at the store since the order was placed | `reservation` |
+| sold | Left the store with a rider (also while it is back after a failed delivery) | `sale` at pickup |
+| released | Order cancelled before pickup | `release` |
+| restocked | Order cancelled after a failed delivery: the goods are back on the shelf | `return` |
+
 ## payments ✅
 | Table | Key columns | Constraints |
 |---|---|---|
@@ -188,8 +207,8 @@ payment of orders already delivered/returned as captured and the order `paid`, s
 | `delivery_pincode` (Phase 9) | postal_code (unique), area, city, state, latitude, longitude, is_active. Approximate centre of a PIN code for distance estimates; **not** a serviceability list (zones decide that) |
 | `delivery_geocodecache` (Phase 9) | query (unique; `pin:411038` or `addr:<address>`), latitude/longitude (NULL = "not found"), display_name, source, created_at. Each query reaches the geocoder once |
 | `delivery_deliverypartner` | user 1:1, phone, vehicle_type, vehicle_number, home_store FK, status (offline/available/busy), max_active_assignments (Phase 9, default 1), is_verified, is_active, current lat/lng, last_location_at. Index (home_store, status, is_active) |
-| `delivery_deliveryassignment` | order FK, shipment FK (Phase 9, nullable for older rows), partner FK, status, assigned/accepted/picked_up/out_for_delivery/delivered timestamps, otp_hash (hash only), otp_verified_at, proof_image, delivery_notes, failure_reason, distance_km, earning_amount |
-| `delivery_deliverystatushistory` | assignment FK, from_status, to_status, lat, lng, note, created_at |
+| `delivery_deliveryassignment` | One rider's job. kind (delivery / return_pickup), order FK, shipment FK (nullable for rows older than Phase 9), return_request FK (return pickups), partner FK, status (assigned / accepted / picked_up / out_for_delivery / delivered / failed / rejected / cancelled), timestamps assigned/accepted/picked_up/out_for_delivery/delivered/rejected/failed, reject_reason, failure_code, failure_reason, **OTP:** otp_nonce, otp_hash, otp_issued_at, otp_expires_at, otp_attempts, otp_verified_at, completed_without_otp; **proof:** proof_image (private storage), proof_uploaded_at, received_by; delivery_notes, distance_km, earning_amount; **COD:** cod_amount_due, cod_collected_amount, cod_method (cash / upi), cod_reference, cod_collected_at, cod_handed_over_at, cod_handed_over_to FK, cod_handover_note. CHECK earning ≥ 0, cod_amount_due ≥ 0; indexes (partner, status), (order, status), (partner, cod_handed_over_at) |
+| `delivery_deliverystatushistory` | assignment FK, from_status, to_status, changed_by FK (Phase 10), lat, lng (the rider's position at that step, when shared), note, created_at |
 
 Migrations: `delivery 0003_geocodecache_pincode` (two new tables), `delivery 0004` (zone PIN list, fast cutoff and
 free-delivery threshold; partner capacity; assignment → shipment). No data is changed; existing zones keep working
@@ -198,6 +217,17 @@ as radius-only zones with the global fee rule.
 **One active assignment per shipment** is enforced in `delivery.assignment.assign_shipment` under the order row lock
 rather than by a partial unique index, which MySQL doesn't have (portability rule above). "Active" = assigned,
 accepted, picked_up or out_for_delivery.
+
+**Rider workflow (Phase 10, migration `delivery 0005`).** Only new columns with defaults or NULLs, the new statuses
+and the change of `proof_image` to private storage; no data is changed (no proof photos existed before).
+- **The delivery code is not in the database.** `otp_nonce` is random per issue; the code is derived from it with
+  HMAC-SHA256 and a key derived from `SECRET_KEY`; `otp_hash` is a keyed hash of the code. Changing `SECRET_KEY`
+  invalidates codes of deliveries that are out at that moment (customers get a new one from the order page).
+- **`proof_image`** holds a path relative to `PRIVATE_MEDIA_ROOT` (not `MEDIA_ROOT`): random name, always JPEG,
+  metadata removed. The files are not web-served. Back them up with the database if delivery disputes matter.
+- **Cash:** `cod_amount_due` is fixed when the job is created (the shipment's share of the order total).
+  "Cash in hand" of a rider = `cod_collected_amount` of jobs with `cod_method = cash`, collected and not handed over.
+- A rider's job is never deleted or edited; `delivery_deliverystatushistory` is its append-only history.
 
 ## reviews ✅
 | Table | Key columns | Constraints |
@@ -244,6 +274,11 @@ in `running` for more than 10 minutes are re-queued.
   re-checks the order status, the shipment's active assignment and the partner's eligibility and capacity, then
   writes the assignment and its history. Tested with threads: one winner per shipment, never more than a rider's
   capacity.
+- `delivery.workflow` (Phase 10): every rider step, reassignment, unassignment, cash handover and the customer's
+  request for a new code lock **order → assignment → delivery partner** and re-check the status under the lock, so
+  a double tap or two people acting at once produce one change and one clean refusal. A wrong delivery code is
+  counted in a transaction that commits, and the error is raised afterwards, so the count survives the failed
+  request. The rider's availability switch locks the partner row for the same reason.
 - `payments.services` (Phase 8): checkout verification, webhooks and reconciliation all call the gateway **outside** any
   transaction, then lock payment → order and apply the result through the same `_record_capture` / `_record_failure`,
   so concurrent reports capture once. Webhook rows are created under the unique constraint and locked while

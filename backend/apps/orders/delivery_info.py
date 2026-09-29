@@ -16,7 +16,13 @@ from .checkout import ETA_PENDING_MESSAGE
 from .models import DeliveryType, Order, OrderStatus, PaymentMethod
 
 IN_TRANSIT = (OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY)
-FINISHED = (OrderStatus.DELIVERED, OrderStatus.CANCELLED, OrderStatus.RETURN_REQUESTED, OrderStatus.RETURNED)
+FINISHED = (
+    OrderStatus.DELIVERED,
+    OrderStatus.DELIVERY_FAILED,  # the promise no longer holds; a new attempt is arranged
+    OrderStatus.CANCELLED,
+    OrderStatus.RETURN_REQUESTED,
+    OrderStatus.RETURNED,
+)
 
 
 def minutes_left(order: Order, now: datetime | None = None) -> int | None:
@@ -55,6 +61,8 @@ def delivery_message(order: Order, now: datetime | None = None) -> str:
     """One honest line for lists and notifications, following the order status."""
     if order.status == OrderStatus.DELIVERED:
         return "Delivered"
+    if order.status == OrderStatus.DELIVERY_FAILED:
+        return "We couldn't deliver your order. The store will contact you to arrange another attempt."
     if order.status in (OrderStatus.CANCELLED, OrderStatus.RETURNED, OrderStatus.RETURN_REQUESTED):
         return ""
     if order.status == OrderStatus.PENDING and order.payment_method == PaymentMethod.ONLINE:

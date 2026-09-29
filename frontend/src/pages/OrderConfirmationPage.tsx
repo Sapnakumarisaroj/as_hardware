@@ -4,6 +4,7 @@ import { ErrorState, PageSpinner, SignInPrompt } from '@/components/feedback'
 import { AddressText } from '@/features/addresses/components'
 import { useAuth } from '@/features/auth/context'
 import { OrderDeliveryCard } from '@/features/delivery/components'
+import { DeliveryTracking } from '@/features/delivery/tracking'
 import { useOrder } from '@/features/orders/api'
 import { OrderItemsList, OrderStatusBadge, PaymentStatusBadge } from '@/features/orders/components'
 import { orderStatusLabel } from '@/features/orders/status'
@@ -17,7 +18,7 @@ export function OrderConfirmationPage() {
   const { number = '' } = useParams()
   usePageMeta('Order confirmed')
   const { status } = useAuth()
-  const order = useOrder(number)
+  const order = useOrder(number, 'tracking')
 
   if (status === 'loading') return <PageSpinner />
   if (status === 'anonymous') {
@@ -69,6 +70,7 @@ export function OrderConfirmationPage() {
           </p>
         </section>
 
+        <DeliveryTracking order={data} />
         {data.status !== 'cancelled' && (
           <OrderDeliveryCard order={data} statusLabel={orderStatusLabel(data)} headingId="confirm-delivery" />
         )}

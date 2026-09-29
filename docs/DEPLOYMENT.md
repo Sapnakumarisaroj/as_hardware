@@ -97,6 +97,8 @@ All configuration comes from environment variables. See `.env.example` for the f
 | `CSRF_TRUSTED_ORIGINS` | – | `https://api.yourdomain.com` |
 | `DATABASE_URL` | blank → SQLite | `mysql://…` or `postgres://…` from the hosting panel |
 | `STATIC_ROOT` / `MEDIA_ROOT` | blank → `backend/staticfiles`, `backend/media` | absolute paths on the host (§6, §7) |
+| `PRIVATE_MEDIA_ROOT` | blank → `backend/private_media` | a folder outside the document roots (§7) |
+| `DELIVERY_OTP_*`, `DELIVERY_PROOF_REQUIRED`, `DELIVERY_EARNING_*` | defaults | optional; see `.env.example` (Phase 10) |
 | `PAYMENT_PROVIDER` | `mock` | `razorpay` (prod **refuses** `mock` unless `ALLOW_MOCK_PAYMENTS_IN_PROD=true`) |
 | `WHATSAPP_PROVIDER`, `SMS_PROVIDER` | `mock` | `mock` until you connect real accounts |
 | `LLM_PROVIDER` | `none` or `ollama` | `none` unless you choose and approve a provider |
@@ -237,7 +239,12 @@ Re-run `collectstatic` after every deploy. The SPA's own assets are the static `
 Stored on the host's disk. Two options:
 - **Simple (recommended):** `MEDIA_ROOT=/home/USER/api.yourdomain.com/media` (the subdomain's document root) and
   `MEDIA_URL=https://api.yourdomain.com/media/`. Apache serves the files directly.
-- **Private files** (e.g. delivery proof photos) are stored outside the document root and served through an authenticated API endpoint.
+- **Private files** (proof-of-delivery photos, Phase 10) are stored in `PRIVATE_MEDIA_ROOT` and served only through
+  authenticated API endpoints. Set it to a folder **outside every document root**, e.g.
+  `PRIVATE_MEDIA_ROOT=/home/USER/boltrun_private`, writable by the app. The default (`private_media/` inside the
+  app root) is safe as long as the app root is not web-served, which is the case in §5. Never put it under
+  `public_html` or under `MEDIA_ROOT`. Check after deploying: uploading a delivery photo works, and
+  `https://api.yourdomain.com/media/delivery-proofs/` answers 404. Include the folder in your backups.
 
 Uploads are validated (type, size, Pillow verification) and renamed randomly. Watch the disk and inode quota (§0 #9).
 Add `Options -Indexes` in the media folder's `.htaccess`, and block script execution there:
@@ -288,6 +295,8 @@ Options -Indexes
 - [ ] SSL active on all three hostnames
 - [ ] DB backups scheduled
 - [ ] Cron job for `run_jobs` (if `BACKGROUND_JOBS_MODE=cron`)
+- [ ] `PRIVATE_MEDIA_ROOT` is outside the document roots and writable; proof photos are not reachable by URL (§7)
+- [ ] Delivery partners: user with role `delivery_partner` + a Delivery partner record (home store, verified) in the Django admin; they sign in at `/login` and work at `/rider`. The site must run on HTTPS for the phone camera and location to work
 - [ ] Stores have coordinates, opening hours and at least one active delivery zone; PIN codes entered (§2a)
 - [ ] `GET /api/delivery/check/?postal_code=<a PIN you serve>` answers `serviceable: true`, and a PIN you don't serve `false`
 

@@ -31,8 +31,10 @@ from integrations.payments import get_payment_provider
 from .delivery_info import delivery_sentence, refresh_delivery_estimate
 from .models import Order, OrderItem, OrderShipment, OrderStatus, OrderStatusHistory, PaymentMethod, PaymentStatus
 from .pricing import line_from_variant, price_lines
+from .shipments import LEFT_THE_STORE, mirror_order_status, sync_order_status
 from .state_machine import (
     CUSTOMER_CANCELLABLE,
+    DELIVERY_STATUSES,
     RETURN_WORKFLOW_STATUSES,
     STOCK_RESERVED_STATUSES,
     can_transition,
@@ -320,8 +322,13 @@ def create_payment_for_order(order: Order) -> Payment:
     )
 
 
-def _apply_transition(order: Order, to_status: str, *, actor, note: str = "") -> Order:
-    """Validate + apply side effects + history. Caller must hold a lock on `order`."""
+def _apply_transition(order: Order, to_status: str, *, actor, note: str = "", mirror: bool = True) -> Order:
+    """Validate + apply side effects + history. Caller must hold a lock on `order`.
+
+    `mirror=True` (staff, customers, payments): the order leads and its shipments follow, with
+    their stock. `mirror=False`: a delivery partner already changed the shipment
+    (apps.delivery.workflow) and the order only catches up.
+    """
     from_status = order.status
     if not can_transition(from_status, to_status):
         raise InvalidTransition(
@@ -329,14 +336,28 @@ def _apply_transition(order: Order, to_status: str, *, actor, note: str = "") ->
             details={"from": from_status, "to": to_status},
         )
 
-    if to_status == OrderStatus.CANCELLED or (from_status == OrderStatus.ASSIGNED and to_status == OrderStatus.PACKED):
-        from apps.delivery.assignment import release_assignments
+    if mirror:
+        if to_status == OrderStatus.CANCELLED:
+            on_the_way = [s for s in order.shipments.all() if s.status in LEFT_THE_STORE]
+            if on_the_way:
+                raise InvalidTransition(
+                    "Part of this order is already with the delivery partner or delivered, so it can't be cancelled.",
+                    code="shipment_on_the_way",
+                    details={"from": from_status, "to": to_status},
+                )
+        # Going *back* to packed takes the riders off; reaching packed from processing does not.
+        unassigning = to_status == OrderStatus.PACKED and from_status != OrderStatus.PROCESSING
+        if to_status == OrderStatus.CANCELLED or unassigning:
+            from apps.delivery.assignment import release_assignments
 
-        release_assignments(order, reason="Order cancelled" if to_status == OrderStatus.CANCELLED else "Unassigned")
-    if to_status == OrderStatus.CANCELLED and from_status in STOCK_RESERVED_STATUSES:
-        _move_order_stock(order, StockMovement.Type.RELEASE, actor, "Order cancelled")
-    elif to_status == OrderStatus.PICKED_UP:
-        _move_order_stock(order, StockMovement.Type.SALE, actor, "Picked up for delivery")
+            release_assignments(order, reason="Order cancelled" if to_status == OrderStatus.CANCELLED else "Unassigned")
+        # Lines without a shipment exist only on orders placed before Phase 9 without a store.
+        if to_status == OrderStatus.CANCELLED and from_status in STOCK_RESERVED_STATUSES:
+            _move_unshipped_stock(order, StockMovement.Type.RELEASE, actor, "Order cancelled")
+        elif to_status == OrderStatus.PICKED_UP:
+            _move_unshipped_stock(order, StockMovement.Type.SALE, actor, "Picked up for delivery")
+        if to_status != OrderStatus.PACKED or unassigning:
+            mirror_order_status(order, to_status, actor=actor)
 
     order.status = to_status
     fields = ["status", "updated_at"]
@@ -374,9 +395,9 @@ def _apply_transition(order: Order, to_status: str, *, actor, note: str = "") ->
     return order
 
 
-def apply_locked_transition(order: Order, to_status: str, *, actor, note: str = "") -> Order:
+def apply_locked_transition(order: Order, to_status: str, *, actor, note: str = "", mirror: bool = True) -> Order:
     """For other services that already hold `select_for_update` on the order (e.g. payments)."""
-    return _apply_transition(order, to_status, actor=actor, note=note)
+    return _apply_transition(order, to_status, actor=actor, note=note, mirror=mirror)
 
 
 def _release_coupon(order: Order) -> None:
@@ -387,13 +408,13 @@ def _release_coupon(order: Order) -> None:
     redemptions.delete()
 
 
-def _move_order_stock(order: Order, movement_type: str, actor, reason: str) -> None:
-    """Each line moves at the store it was reserved at (its shipment's; legacy orders: order.store)."""
-    for item in order.items.select_related("shipment"):
-        if item.variant_id is None:
+def _move_unshipped_stock(order: Order, movement_type: str, actor, reason: str) -> None:
+    """Lines that belong to no shipment move at the order's store. Every other line moves with
+    its shipment, at that shipment's store (orders.shipments)."""
+    for item in order.items.filter(shipment__isnull=True):
+        if item.variant_id is None or order.store_id is None:
             continue
-        store_id = item.shipment.store_id if item.shipment_id else order.store_id
-        inventory = Inventory.objects.filter(store_id=store_id, variant_id=item.variant_id).first()
+        inventory = Inventory.objects.filter(store_id=order.store_id, variant_id=item.variant_id).first()
         if inventory is None:
             raise OrderError(f"Inventory record missing for {item.sku}.", code="inventory_missing")
         apply_movement(
@@ -416,7 +437,20 @@ def transition_order(order: Order, to_status: str, *, actor, note: str = "") -> 
             "Returns are handled through the return request (approve, reject or receive it).",
             details={"from": locked.status, "to": to_status},
         )
+    if to_status in DELIVERY_STATUSES and can_transition(locked.status, to_status):
+        from apps.delivery.assignment import has_rider_in_charge
+
+        if has_rider_in_charge(locked):
+            raise ConflictError(
+                "A delivery partner is handling this order and updates it from the rider app. "
+                "Reassign or unassign the partner to change it from here.",
+                code="rider_in_charge",
+                details={"from": locked.status, "to": to_status},
+            )
     _apply_transition(locked, to_status, actor=actor, note=note)
+    if to_status == OrderStatus.PACKED:
+        # Riders may have been assigned while the order was being packed.
+        sync_order_status(locked, actor=actor, note="Delivery partner already assigned")
     record_audit(action="order.transition", actor=actor, target=locked, changes={"to": to_status, "note": note})
     return locked
 

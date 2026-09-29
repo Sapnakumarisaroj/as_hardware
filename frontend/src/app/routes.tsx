@@ -9,14 +9,16 @@ import { SearchPage } from '@/pages/SearchPage'
 
 import { AppProviders } from './AppProviders'
 import { CustomerLayout } from './layouts/CustomerLayout'
+import { RiderLayout } from './layouts/RiderLayout'
 
 /* Cart, checkout, auth and account pages load on demand, so browsing the catalogue doesn't download them. */
 const account = () => import('@/pages/AccountPages')
 const auth = () => import('@/pages/AuthPages')
+const rider = () => import('@/pages/RiderPages')
 
 /**
  * Route table. Readable slug URLs: /c/<category-slug>, /p/<product-slug>.
- * Admin (/admin/*) and delivery (/delivery/*) shells are added in later phases.
+ * /rider/* is the delivery partner app. The admin shell (/admin/*) is added in a later phase.
  */
 export const routes: RouteObject[] = [
   {
@@ -47,6 +49,17 @@ export const routes: RouteObject[] = [
           { path: 'account/addresses', lazy: async () => ({ Component: (await account()).AddressesPage }) },
           { path: 'account/returns', lazy: async () => ({ Component: (await account()).ReturnsPage }) },
           { path: '*', element: <NotFoundPage /> },
+        ],
+      },
+      {
+        // Delivery partners (Phase 10). The API checks the role on every request; this shell only shows it.
+        path: 'rider',
+        element: <RiderLayout />,
+        errorElement: <RouteErrorPage />,
+        children: [
+          { index: true, lazy: async () => ({ Component: (await rider()).RiderDashboardPage }) },
+          { path: 'history', lazy: async () => ({ Component: (await rider()).RiderHistoryPage }) },
+          { path: 'jobs/:id', lazy: async () => ({ Component: (await rider()).RiderJobPage }) },
         ],
       },
     ],

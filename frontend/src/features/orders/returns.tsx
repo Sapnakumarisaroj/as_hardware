@@ -188,6 +188,22 @@ export function ReturnCard({ ret, showOrder = false }: { ret: ReturnRequest; sho
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CLASSES[ret.status]}`}>{ret.status_label}</span>
       </div>
       <p className="mt-1 text-ink-800">{NEXT_STEP[ret.status]}</p>
+      {ret.pickup && ret.status === 'approved' && (
+        <p className="mt-1 rounded-md bg-steel-50 px-3 py-2 text-ink-900">
+          <span className="font-semibold">Pickup: </span>
+          {ret.pickup.status_label}
+          {ret.pickup.status !== 'failed' && ` (${ret.pickup.rider_name})`}
+          {ret.pickup.failure_reason && ` — ${ret.pickup.failure_reason}`}
+          {ret.pickup.rider_phone && (
+            <>
+              {' · '}
+              <a href={`tel:${ret.pickup.rider_phone}`} className="font-semibold text-amber-600 hover:underline">
+                Call {ret.pickup.rider_name}
+              </a>
+            </>
+          )}
+        </p>
+      )}
       {ret.decision_note && ret.status !== 'cancelled' && <p className="mt-1 text-ink-600">Store note: {ret.decision_note}</p>}
       <ul className="mt-2 space-y-1">
         {ret.items.map((item) => (

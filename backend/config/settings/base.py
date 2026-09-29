@@ -159,6 +159,9 @@ STATIC_URL = env("STATIC_URL", default="") or "static/"
 STATIC_ROOT = Path(env("STATIC_ROOT", default="") or BASE_DIR / "staticfiles")
 MEDIA_URL = env("MEDIA_URL", default="") or "media/"
 MEDIA_ROOT = Path(env("MEDIA_ROOT", default="") or BASE_DIR / "media")
+# Files that must NOT be web-served (proof-of-delivery photos). Keep this folder outside the
+# document root; the API streams these files only to people allowed to see them.
+PRIVATE_MEDIA_ROOT = Path(env("PRIVATE_MEDIA_ROOT", default="") or BASE_DIR / "private_media")
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
@@ -249,6 +252,19 @@ SPLIT_FULFILLMENT_ENABLED = env.bool("SPLIT_FULFILLMENT_ENABLED", default=True)
 # A partner based elsewhere may take a shipment if currently within this distance of the store.
 DELIVERY_PARTNER_PICKUP_RADIUS_KM = env.float("DELIVERY_PARTNER_PICKUP_RADIUS_KM", default=3.0)
 MAX_SHIPMENTS_PER_ORDER = env.int("MAX_SHIPMENTS_PER_ORDER", default=3)
+
+# --- Delivery partner workflow (Phase 10, apps/delivery/workflow.py) -----------------------
+# The customer's delivery code: valid this long, locked after this many wrong tries, and a new
+# one can be requested at most this often.
+DELIVERY_OTP_TTL_MINUTES = env.int("DELIVERY_OTP_TTL_MINUTES", default=30)
+DELIVERY_OTP_MAX_ATTEMPTS = env.int("DELIVERY_OTP_MAX_ATTEMPTS", default=5)
+DELIVERY_OTP_RESEND_SECONDS = env.int("DELIVERY_OTP_RESEND_SECONDS", default=60)
+# A photo is required to complete a delivery (the OTP is always required).
+DELIVERY_PROOF_REQUIRED = env.bool("DELIVERY_PROOF_REQUIRED", default=False)
+# What a partner earns per completed job: base + per km of the store → customer route.
+DELIVERY_EARNING_BASE = Decimal(env.str("DELIVERY_EARNING_BASE", default="") or "25.00")
+DELIVERY_EARNING_PER_KM = Decimal(env.str("DELIVERY_EARNING_PER_KM", default="") or "6.00")
+DELIVERY_EARNING_FAILED_ATTEMPT = Decimal(env.str("DELIVERY_EARNING_FAILED_ATTEMPT", default="") or "0.00")
 
 # --- Maps (Phase 9, integrations/maps). Offline by default; OpenStreetMap services are opt-in. ---
 GEOCODING_PROVIDER = env("GEOCODING_PROVIDER", default="none")  # none | nominatim

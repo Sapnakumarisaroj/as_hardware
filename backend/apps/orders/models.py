@@ -22,9 +22,32 @@ class OrderStatus(models.TextChoices):
     PICKED_UP = "picked_up", "Picked up"
     OUT_FOR_DELIVERY = "out_for_delivery", "Out for delivery"
     DELIVERED = "delivered", "Delivered"
+    DELIVERY_FAILED = "delivery_failed", "Delivery attempt failed"  # Phase 10: back at the store
     CANCELLED = "cancelled", "Cancelled"
     RETURN_REQUESTED = "return_requested", "Return requested"
     RETURNED = "returned", "Returned"
+
+
+class ShipmentStatus(models.TextChoices):
+    """Where one store's part of an order is (Phase 10). The order status is derived from its
+    shipments by `orders.shipments.sync_order_status`."""
+
+    PENDING = "pending", "Waiting for a delivery partner"
+    ASSIGNED = "assigned", "Delivery partner assigned"
+    PICKED_UP = "picked_up", "Picked up"
+    OUT_FOR_DELIVERY = "out_for_delivery", "Out for delivery"
+    DELIVERED = "delivered", "Delivered"
+    FAILED = "failed", "Delivery attempt failed"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class StockState(models.TextChoices):
+    """What has happened to the stock of a shipment's lines, so each movement is made once."""
+
+    RESERVED = "reserved", "Reserved at the store"
+    SOLD = "sold", "Left the store"
+    RELEASED = "released", "Released (cancelled before pickup)"
+    RESTOCKED = "restocked", "Back on the shelf (cancelled after a failed delivery)"
 
 
 class PaymentStatus(models.TextChoices):
@@ -168,11 +191,23 @@ class OrderShipment(models.Model):
     window_end = models.DateTimeField(null=True, blank=True)
     eta_source = models.CharField(max_length=20, blank=True, help_text="haversine, osrm, pin or legacy.")
     created_at = models.DateTimeField(auto_now_add=True)
+    # Phase 10: delivery progress of this shipment (changed only by orders.shipments / delivery.workflow).
+    status = models.CharField(
+        max_length=20, choices=ShipmentStatus.choices, default=ShipmentStatus.PENDING, db_index=True
+    )
+    stock_state = models.CharField(max_length=10, choices=StockState.choices, default=StockState.RESERVED)
+    delivery_attempts = models.PositiveSmallIntegerField(default=0, help_text="Times a rider took it out.")
+    picked_up_at = models.DateTimeField(null=True, blank=True)
+    out_for_delivery_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+    failure_reason = models.CharField(max_length=30, blank=True, help_text="Code of the last failed attempt.")
+    failure_note = models.CharField(max_length=255, blank=True)
 
     class Meta:
         ordering = ["order_id", "sequence"]
         constraints = [models.UniqueConstraint(fields=["order", "sequence"], name="uniq_shipment_sequence")]
-        indexes = [models.Index(fields=["store", "created_at"])]
+        indexes = [models.Index(fields=["store", "created_at"]), models.Index(fields=["store", "status"])]
 
     def __str__(self) -> str:
         return f"{self.order_id}/{self.sequence} from {self.store_id}"

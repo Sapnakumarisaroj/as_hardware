@@ -89,7 +89,19 @@ self-host or use a provider that offers the same software (both are configuratio
 | OSRM demo server (`router.project-osrm.org`) | Demo server for **light, non-commercial-scale use**: about **1 request per second**, no heavy or commercial load, may be slow or offline at any time | Routes are cached for 24 h (`ROUTE_CACHE_SECONDS`); 4 s timeout; any error falls back to the offline haversine estimate; for production traffic set `OSRM_BASE_URL` to a self-hosted OSRM (free software, needs a VPS and a map extract) |
 | OSM tile server (`tile.openstreetmap.org`) | No bulk downloading or prefetching; keep the visible "© OpenStreetMap contributors" attribution; a valid `Referer` (browsers send it); heavy users must switch to another tile source | Tiles load only while a customer has the address map open; attribution is shown on the map; `VITE_MAP_TILE_URL` switches to any other tile server |
 
-## Frontend (no new runtime packages in Phases 4–8; Leaflet added in Phase 9)
+## Delivery partner workflow (Phase 10): no new dependencies
+No SMS gateway, no paid maps, no file-storage service and no new package (backend or frontend).
+
+| Feature | Tool | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Delivery code (OTP) | Python `hmac`, `hashlib`, `secrets` | ✅ PSF | ✅ | No | Shown on the customer's order page instead of being sent by SMS, so no SMS provider is needed. SMS/WhatsApp delivery of the code can be added in Phase 20 |
+| Proof-of-delivery photos | Pillow (already a dependency) + Django `FileSystemStorage` on the hosting disk | ✅ HPND / BSD | ✅ | No | Re-encoded without metadata; stored under `PRIVATE_MEDIA_ROOT`, outside the web root. Uses hosting disk space (about 150–400 kB per photo) |
+| Rider navigation | `geo:` links (open the phone's own maps app) and openstreetmap.org links | ✅ open standard / ODbL | n/a | No | Plain links opened by the rider; nothing is embedded and no quota applies to the project |
+| Rider position | W3C Geolocation API in the browser | ✅ built into browsers | ✅ | No | Optional; needs HTTPS and the rider's permission |
+| Camera | `<input type="file" capture>` | ✅ web standard | ✅ | No | Opens the phone camera from the browser; no native app needed |
+| Rider app | The existing React SPA (`/rider`) | ✅ | ✅ | No | A web page, not an app-store app: nothing to publish or pay for |
+
+## Frontend (no new runtime packages in Phases 4–8; Leaflet added in Phase 9; none in Phase 10)
 | Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
 |---|---|---|---|---|---|
 | UI library | React 19 | ✅ MIT | ✅ | No | |

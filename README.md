@@ -3,10 +3,11 @@
 AI-powered hardware marketplace with fast delivery from nearby stores: a Django REST API and a React SPA. Delivery
 times are calculated per order (store, distance, preparation, riders, workload), never a fixed promise.
 
-> Status: **Phase 9 complete** (catalogue, cart, checkout with addresses, automatic offers and coupons, cash on delivery,
+> Status: **Phase 10 complete** (catalogue, cart, checkout with addresses, automatic offers and coupons, cash on delivery,
 > online payments via Razorpay (ready; needs your keys) or the development mock gateway, verified webhooks, gateway
-> refunds, order history, cancellation, returns and "Buy again", **delivery zones, store selection and calculated
-> delivery estimates**). Cron: `manage.py run_jobs` every 5 minutes. See [TASKS.md](TASKS.md)
+> refunds, order history, cancellation, returns and "Buy again", delivery zones, store selection and calculated
+> delivery estimates, **the delivery partner app with delivery code, proof of delivery and cash collection, and
+> live delivery tracking for customers**). Cron: `manage.py run_jobs` every 5 minutes. See [TASKS.md](TASKS.md)
 > and [docs/ROADMAP.md](docs/ROADMAP.md).
 >
 > Try it locally: run `seed_demo_data`, register on the site, add products, check out with **Cash on delivery** or
@@ -17,6 +18,20 @@ times are calculated per order (store, distance, preparation, riders, workload),
 > from their nearest store, `411001` gets **standard delivery** (extended zone, ₹60 fee), `411014` is **outside the
 > delivery area**. Zones, fees, preparation time and riders are configured in the Django admin (Stores, Delivery).
 > Maps are free and offline by default (OpenStreetMap services are optional: [docs/FREE_TOOLS.md](docs/FREE_TOOLS.md)).
+>
+> Rider demo: `python manage.py seed_demo_data --with-rider` creates `demo-rider@example.com` and prints its random
+> password once. Then:
+> 1. Sign in as the rider (you land on `/rider`) and press **Go online**.
+> 2. As a customer (another browser or a private window), place an order to PIN `411038`.
+> 3. In the Django admin, move the order to *Processing*, then *Packed* (order actions); under **Orders → Order
+>    shipments** open the shipment and choose the rider in "Assign or reassign to".
+> 4. In the rider app: accept the job, pick up, start the delivery.
+> 5. The customer's order page now shows the **delivery code**; the rider enters it (and confirms the cash for a
+>    cash-on-delivery order) to complete the delivery. Cash handover is recorded under **Delivery → Delivery
+>    assignments**.
+>
+> Real delivery partners are created in the Django admin: a user with role *Delivery partner*, plus a *Delivery
+> partner* record (home store, verified).
 
 | | |
 |---|---|
@@ -44,6 +59,7 @@ npm run dev
 ```
 
 - App: http://localhost:5173
+- Rider app (delivery partners): http://localhost:5173/rider
 - API health: http://127.0.0.1:8000/api/health/
 - API docs: http://127.0.0.1:8000/api/docs/ (Swagger) · `/api/redoc/` · `/api/schema/`
 - Django admin: http://127.0.0.1:8000/django-admin/ (`python manage.py createsuperuser`)
