@@ -75,6 +75,18 @@ class IsDeliveryPartner(BasePermission):
         return is_delivery_partner(request.user) and hasattr(request.user, "delivery_partner")
 
 
+class IsAdminOrStaffReadOnly(BasePermission):
+    """Dashboard data that store managers may look at but only admins may change
+    (catalogue, store records, delivery zones). Querysets are still scoped per store where needed."""
+
+    message = "Administrator access required."
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return is_staff_member(request.user)
+        return is_admin(request.user)
+
+
 class IsAdminOrReadOnly(BasePermission):
     """Anyone may read; only admins may write."""
 

@@ -240,7 +240,15 @@ class CheckoutPreviewView(APIView):
         return Response(CheckoutPreviewSerializer(summary, context={"request": request}).data)
 
 
-@extend_schema_view(list=extend_schema(parameters=[OpenApiParameter("status", str)]))
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter("status", str),
+            OpenApiParameter("q", str, description="Return number, order number, customer name, email or phone"),
+            OpenApiParameter("store", int),
+        ]
+    )
+)
 class ReturnViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """Return requests. Customers create, view and cancel their own; store managers (their
     stores) and admins approve, reject and receive them. Refund amounts are server-calculated."""
@@ -252,8 +260,22 @@ class ReturnViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
         if getattr(self, "swagger_fake_view", False):
             return ReturnRequest.objects.none()
         qs = _scope_by_role(_returns_queryset(), self.request.user)
-        if status_filter := self.request.query_params.get("status"):
+        status_filter = self.request.query_params.get("status")
+        if status_filter == "open":  # waiting for a decision, or approved and not received yet
+            qs = qs.filter(status__in=ReturnRequest.OPEN_STATUSES)
+        elif status_filter:
             qs = qs.filter(status=status_filter)
+        params = self.request.query_params
+        if term := (params.get("q") or "").strip():
+            qs = qs.filter(
+                Q(return_number__icontains=term)
+                | Q(order__order_number__icontains=term)
+                | Q(user__full_name__icontains=term)
+                | Q(user__email__icontains=term)
+                | Q(user__phone__icontains=term)
+            )
+        if (store := params.get("store")) and store.isdigit():
+            qs = qs.filter(order__store_id=store)
         return qs
 
     def _detail(self, ret: ReturnRequest, status_code=status.HTTP_200_OK) -> Response:

@@ -39,6 +39,16 @@ def normalize_sku(value: str) -> str:
     return (value or "").strip().upper()
 
 
+def unique_slug(instance, max_length: int) -> str:
+    """A slug from the name that no other row (deleted ones included) uses: "drill", "drill-2", …"""
+    base = slugify(instance.name)[: max_length - 4] or "item"
+    rows = type(instance)._base_manager.exclude(pk=instance.pk) if instance.pk else type(instance)._base_manager
+    slug, n = base, 2
+    while rows.filter(slug=slug).exists():
+        slug, n = f"{base}-{n}", n + 1
+    return slug
+
+
 class Category(SoftDeleteModel):
     name = models.CharField(max_length=120)
     slug = models.SlugField(max_length=140, unique=True)
@@ -72,7 +82,7 @@ class Category(SoftDeleteModel):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.name)[:140]
+            self.slug = unique_slug(self, 140)
         super().save(*args, **kwargs)
 
 
@@ -123,7 +133,7 @@ class Brand(SoftDeleteModel):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.name)[:140]
+            self.slug = unique_slug(self, 140)
         super().save(*args, **kwargs)
 
 
@@ -193,7 +203,7 @@ class Product(SoftDeleteModel):
     def save(self, *args, **kwargs):
         self.sku = normalize_sku(self.sku)
         if not self.slug:
-            self.slug = slugify(self.name)[:220]
+            self.slug = unique_slug(self, 220)
         super().save(*args, **kwargs)
 
     @property

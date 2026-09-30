@@ -24,6 +24,9 @@ export default defineConfig(({ mode }) => {
       css: false,
       // Tests wait up to 10 s for lazy routes (src/test/setup.ts); the test itself needs longer than that.
       testTimeout: 30_000,
+      // Each test file renders the whole app in its own jsdom. One worker per core starves them
+      // all on a developer laptop, and waits for lazy routes then time out.
+      maxWorkers: '50%',
     },
   }
 })

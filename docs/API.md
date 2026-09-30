@@ -429,7 +429,7 @@ model is removed, the picture is scaled to at most 1600 px and saved as JPEG.
 ## Returns ✅ (Phase 7)
 | Method | Path | Access | Notes |
 |---|---|---|---|
-| GET | `/api/returns/` | customer: own · store manager: returns of their stores' orders (+ own) · admin: all | Newest first, paginated. `?status=` filter |
+| GET | `/api/returns/` | customer: own · store manager: returns of their stores' orders (+ own) · admin: all | Newest first, paginated. `?status=` (a status, or `open` = requested + approved), `?q=` (return/order number, customer), `?store=` |
 | GET | `/api/returns/{return_number}/` | as above | |
 | POST | `/api/returns/` | order owner | `{order_number, reason, details?, items: [{order_item_id, quantity}]}`. `reason`: `damaged`, `defective`, `wrong_item`, `not_as_described`, `no_longer_needed`, `other` (needs `details`). **201** with the return. The refund amount is calculated by the server |
 | POST | `/api/returns/{return_number}/cancel/` | owner | Only while `requested` (409 `return_state_invalid` afterwards) |
@@ -468,7 +468,7 @@ brings the items to the store; the store still checks them and calls `receive`, 
 | Method | Path | Access | Notes |
 |---|---|---|---|
 | POST | `/api/payments/webhooks/{provider}/` | gateway (no login) | Only the configured `PAYMENT_PROVIDER` (others → 404). **Razorpay:** header `X-Razorpay-Signature` = HMAC-SHA256(raw body, `RAZORPAY_WEBHOOK_SECRET`), de-duplicated by `X-Razorpay-Event-Id`. Events: `payment.captured`, `order.paid`, `payment.authorized` (captured), `payment.failed`, `refund.processed`, `refund.failed`; others are stored as `ignored`. Bad signature → 400 `invalid_webhook` (nothing stored). Each event is applied **once**: a redelivery → 200 without side effects (`deliveries` is counted). A processing error → 500 so the gateway redelivers. Not throttled. **Mock:** `X-Mock-Signature` = HMAC-SHA256(body, `SECRET_KEY + ":mock-webhook"`), `X-Mock-Event-Id`, same body format |
-| GET | `/api/payments/refunds/` | store manager (their stores) / admin | `?status=pending\|processed\|failed`. Fields: `public_id, order_number, payment_provider, amount, status, reason, is_manual, provider_refund_id, attempts, failure_reason, manual_reference, created_at, processed_at` |
+| GET | `/api/payments/refunds/` | store manager (their stores) / admin | `?status=pending\|processed\|failed`, `?q=` (order number, customer, reference), `?store=`. Fields: `public_id, order_number, payment_provider, customer_name, store_name, amount, status, reason, is_manual, provider_refund_id, attempts, failure_reason, manual_reference, created_at, processed_at` |
 | POST | `/api/payments/refunds/{public_id}/mark-processed/` | staff / admin | `{reference}` (required: UPI/bank ref or cash receipt). For **COD refunds** (`is_manual`), or gateway refunds that **failed** and were paid another way. A pending gateway refund → 409 `refund_state_invalid` |
 | POST | `/api/payments/refunds/{public_id}/retry/` | staff / admin | Failed gateway refund → pending again with a **new** gateway reference and queued. Anything else → 409 |
 
@@ -490,7 +490,7 @@ log consistency issues. `python manage.py payments_check` lists orders/payments/
 ## Inventory ✅ (staff only)
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/inventory/` | Filters: `store`, `sku`, `low_stock=true` |
+| GET | `/api/inventory/` | Filters: `store`, `sku`, `low_stock=true`, `q` (SKU, product, variant or store name), `stock=out\|low\|ok` |
 | POST | `/api/inventory/` | `{store, variant, low_stock_threshold?, opening_quantity?}`. Opening stock is booked as a `purchase` movement |
 | GET/PATCH | `/api/inventory/{id}/` | Only `low_stock_threshold` / `is_active` are editable. Quantities are read-only |
 | POST | `/api/inventory/{id}/adjust/` | `{movement_type: purchase\|adjustment\|return, quantity, reason, reference?}`. Adjustments may be negative and need a reason. Never below zero (409) |
@@ -502,6 +502,43 @@ log consistency issues. `python manage.py payments_check` lists orders/payments/
 `GET /api/auth/me/` · `GET/PATCH /api/profile/`, `POST /api/profile/avatar/`, `POST /api/profile/deactivate/` ·
 admin only: `/api/admin/users/`. Login/register return `{access, refresh, user}`. See `/api/docs/` for bodies.
 
+## Business dashboard ✅ (Phase 11, `/api/admin/…`)
+The React dashboard at `/admin` uses these endpoints plus the staff endpoints of earlier phases (orders `transition`,
+inventory, shipments, COD, returns, refunds). **Roles:** `admin` may read and change everything; a `store_manager`
+reads the staff sections for the stores assigned to them (`Store.managers`) and changes only what runs their store;
+customers and delivery partners get **403** on every path here. A manager asking for another store (`?store=`, an
+order, a shipment, a rider, a conversation) gets **404**. Every change is audit-logged (`core.AuditLog`). Lists are
+paginated (`page`, `page_size` ≤ 100) and searched on the server; the browser never downloads whole tables.
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET | `/api/admin/session/` | staff | `user, is_admin, sections[]` (what the menu shows), `stores[]` (the ones this person works with), `can{manage_catalog, manage_stores, manage_offers, manage_customers, manage_riders, adjust_stock, handle_orders, handle_returns}` |
+| GET | `/api/admin/summary/` | staff | Live dashboard numbers, `?store=`. `orders{total, today, pending, processing, on_the_way, delivered, cancelled, delivery_failed, by_status}`, `revenue{total, today, this_month, refunded_total}`, `returns{total, open}`, `refunds{pending, pending_amount, failed, processed, processed_amount}`, `inventory{low_stock, out_of_stock}`, `delivery{partners, partners_online, partners_available, waiting_for_rider, cash_with_riders}`, `stores{active, accepting_orders, warehouses}`, `customers` / `products` (administrators, shop-wide; `null` for managers), `trend[]` (14 days), `attention[{code, label, count, link}]` |
+| GET | `/api/admin/analytics/` | staff | `?from=&to=` (YYYY-MM-DD, ≤ 366 days, default last 30), `?group_by=day\|week\|month` (default by length), `?store=`. `period, totals{orders, paid_orders, revenue, refunded, net_revenue, average_order_value, delivered, cancelled, cancellation_rate, payment_methods}, series[]` (per period: orders, paid_orders, revenue, refunded, net_revenue, average_order_value, cancelled, delivered), `category_sales[]`, `top_products[]`, `low_performing_products[]`, `cancellations{count, rate, value, reasons}`, `returns{…, reasons}`, `refunds{…}`, `delivery{all, fast, standard: {delivered, with_estimate, on_time, on_time_rate, average_promised_minutes, average_actual_minutes}, first_attempt_rate, failed_attempts, failure_reasons, delivered_by_partners}`. 400 `invalid_date`, `range_too_long` |
+| GET | `/api/admin/orders/` | staff | `?q=` (order number, customer name/email/phone, product name, SKU), `?status=` (one or more statuses, or a group `open`, `preparing`, `on_the_way`, `closed`), `payment_status`, `payment_method`, `delivery_type`, `store`, `customer`, `from`, `to`, `has_return`, `ordering`. Rows add `customer{id, name, email, phone, is_active}`, `store_name, item_count, item_names, shipments[{id, sequence, store_name, status, rider}], open_return, refund_status` |
+| GET | `/api/admin/orders/{order_number}/` | staff | The customer's order detail plus `customer`, `staff_shipments[]` (the staff shipment rows of Phase 10), `allowed_actions[{status, label}]` (status changes possible now, as the state machine and the delivery rules stand; empty while a rider is in charge) and `can_manage`. Status changes go through `POST /api/orders/{n}/transition/`. The delivery code is never included |
+| GET/POST | `/api/admin/products/` | staff read · admin write | `?q=` (name, product or variant SKU), `category` (or subcategory), `brand`, `state=live\|draft\|inactive\|deleted\|all` (default: not deleted), `featured`, `stock=in\|out`, `ordering`. Create with the Phase 4 write body (`variants[]` with `sku, name, mrp, price, is_default, is_active`; `specifications[]`); price ≤ MRP and SKU uniqueness are checked by the catalogue service (400 / 409 `duplicate_sku`) |
+| GET/PATCH/DELETE | `/api/admin/products/{id}/` | staff read · admin write | Detail with `variants[]` (+ `stock_available`, `stock_reserved` across stores), `specifications[]`, `images[]`, `state`. PATCH is partial (publish/unpublish = `is_published`; variants are upserted by `id`). DELETE is a **soft delete** (409 `product_deleted` on later changes) |
+| POST | `/api/admin/products/{id}/restore/` | admin | Brings a deleted product back, unpublished |
+| POST | `/api/admin/products/{id}/images/` | admin | multipart `image` (JPG/PNG/WebP ≤ 5 MB), `alt_text?`, `is_primary?`, `variant?`; at most 12 pictures; the first one becomes primary |
+| PATCH/DELETE | `/api/admin/products/{id}/images/{image_id}/` | admin | `{alt_text?, sort_order?, is_primary?}`; deleting the primary picture promotes the next one |
+| GET | `/api/admin/variants/?q=` | staff | Up to 20 active variants by product name, variant name or SKU (for stock records, offers) |
+| GET/POST, GET/PATCH/DELETE | `/api/admin/categories/`, `…/{id}/` | staff read · admin write | Tree with subcategories incl. inactive ones and `product_count`; `?flat=true` for one list; `?q=`. Two levels only (400). Delete refused while it has products or subcategories (409) |
+| GET/POST, GET/PATCH/DELETE | `/api/admin/brands/`, `…/{id}/` | staff read · admin write | `?q=`, `?is_active=`; `product_count`. Delete refused while it has products (409 `brand_has_products`) |
+| GET/POST, GET/PATCH/DELETE | `/api/admin/stores/`, `…/{id}/` | staff read (own) · admin write · manager PATCH of own store | `?kind=store\|dark_store\|warehouse\|fulfilment`, `?q=`, `?is_active=`. Rows: `kind_label, zone_count, open_orders, has_location, can_edit (all\|operations\|none)`. Detail adds address, `latitude/longitude`, `opening_hours` (`{"mon": ["09:00","21:00"], "sun": null}`, `{}` = always open; validated), `prep_minutes_per_item`, `managers[]` (+ `manager_ids` to set them), `zones[]`, `inventory{stock_records, units_available, units_reserved, low_stock, out_of_stock}`, `riders{partners, online, own_riders}`. A manager may change only `opening_hours, avg_prep_minutes, prep_minutes_per_item, own_riders, accepts_orders, phone` (403 otherwise). DELETE soft-deletes; 409 `store_has_open_orders`, `store_has_stock` |
+| GET/POST, PATCH/DELETE | `/api/admin/zones/`, `…/{id}/` | staff read (own stores) · admin write | Delivery zones: `store, name, radius_km, postal_codes` (6-digit PIN codes, validated), `pin_codes[]`, `polygon` (≥ 3 `[lat, lng]` points), `fast_delivery_enabled, fast_delivery_max_minutes, delivery_fee_override, free_delivery_min_order, effective_fee, effective_free_from, is_active`. Warehouses can't have zones |
+| GET/POST, PATCH/DELETE | `/api/admin/pincodes/`, `…/{id}/` | staff read · admin write | PIN code centre points (`?q=`) |
+| GET/POST, GET/PATCH/DELETE | `/api/admin/offers/`, `/api/admin/coupons/`, `…/{id}/` | **admin only** | The discount **rules** of Phase 6; the checkout calculates the money (`orders/pricing.py`), never the dashboard. Fields as in `offers.models` plus `products[]`/`categories[]` (ids), `product_details[]`, `category_details[]`, `state=live\|scheduled\|expired\|inactive` (also a list filter), `summary` (the rule in words). Coupons add `remaining_uses`; `used_count` is read-only; a code is stored upper-case and must be unique. Validation: percent ≤ 100, end after start, cap only on percentages, `usage_limit` ≥ `used_count`. A used coupon can't be deleted (409 `coupon_in_use`): switch it off |
+| GET | `/api/admin/customers/`, `…/{id}/` | **admin only** | `?q=` (name, email, phone), `?role=` (default `customer`; `all`), `is_active`, `has_orders`, `ordering=-date_joined\|date_joined\|-total_spend\|-order_count\|-last_order_at`. Rows: contact, `order_count` (not cancelled), `total_spend` (paid orders), `last_order_at`. Detail adds `deactivated_at, cancelled_orders, returns, addresses[]` (area/city/PIN), `managed_stores[]`, `recent_orders[]`. Never contains password hashes or tokens. Changes go through `PATCH /api/admin/users/{id}/` (`is_active`, `role`) |
+| GET, GET/PATCH | `/api/admin/riders/`, `…/{partner_id}/` | staff read (own stores) · admin PATCH | `?q=`, `?status=offline\|available\|busy\|online`, `?store=`, `?is_verified=`, `?is_active=`. Rows: contact, vehicle, `home_store(_name), status, is_verified, is_active, active_assignments, capacity, can_take_jobs, cash_in_hand, delivered, delivered_today, failed, earnings_today, earnings_7_days, earnings_total`. PATCH `{is_verified?, is_active?, max_active_assignments? (1–10), home_store?, vehicle_type?, vehicle_number?}`; switching a rider off with a job in hand → 409 `active_delivery` |
+| GET | `/api/admin/jobs/` | staff (own stores) | Every rider job: `?status=` (a status, or `active`, `completed`, `failed`), `?kind=delivery\|return_pickup`, `?partner=`, `?store=`, `?q=` (order number, rider). Rows: the Phase 10 assignment fields plus `order_number, order_status, shipment_id, store_name, return_number, distance_km` |
+| GET, GET | `/api/admin/support/`, `…/{id}/` | staff | Conversations; managers see those about orders of their stores. `?status=` (a status or `active`), `?q=` (subject, customer name/email/phone, order number), `?mine=true`, `?store=`. Rows: `customer{id, name, email, phone}`, `order_number, store_name, assigned_to(_name), message_count, last_message, waiting_for_reply`; detail adds `messages[{sender_type, sender_name, body, created_at}]` |
+| POST | `/api/admin/support/{id}/reply/` | staff | `{body}` → 201. Posts an agent message, sets `waiting_customer`, assigns the conversation to the sender if nobody has it |
+| PATCH | `/api/admin/support/{id}/` | staff | `{status?, assign_to_me?}` |
+
+Also extended for the dashboard: `GET /api/inventory/` takes `?q=` (SKU, product, variant, store) and `?stock=out\|low\|ok`
+and rows carry `store_name`; `GET /api/returns/` takes `?q=` and `?store=` and `?status=open` (requested + approved);
+`GET /api/payments/refunds/` takes `?q=` and `?store=` and rows carry `customer_name`, `store_name`.
+
 ## Planned 🔜
-- **Admin dashboard APIs** `/api/admin/…` (Phase 11). Until then, use the Django admin at `/django-admin/`.
-- **AI** `/api/ai/…` (Phases 12–19). **Notifications/support** (Phase 20).
+- **AI** `/api/ai/…` (Phases 12–19). **Notifications/support channels** (Phase 20).

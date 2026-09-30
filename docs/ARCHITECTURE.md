@@ -540,9 +540,44 @@ display components. The browser never calculates a time or a fee; it shows what 
   delivery partners (and the API refuses them). The rider pages are a lazy chunk (≈ 29 kB), not part of the shop.
 - Active job lists refresh every 30 s, so a new job appears without reloading. The rider's position is sent with
   pickup/start/complete only when the browser already has permission; it never blocks a step.
-- Staff work through the staff API and the Django admin (Shipments, Delivery assignments, Delivery partners); the
-  React dashboard is Phase 11.
+- Staff worked through the staff API and the Django admin until Phase 11 added the dashboard below.
 - Main bundle measured at the Phase 10 build: 484 kB (149 kB gzipped).
+
+### Business dashboard (Phase 11)
+- **Where.** `/admin/*` in the React app (`app/layouts/AdminLayout.tsx`, `pages/admin/*`, `features/admin/*`).
+  Django's admin moved to `/django-admin/` in Phase 1 for this reason; it stays available for rare tasks (e.g. site
+  configuration) but daily operations no longer need it.
+- **Who.** `AdminLayout` lets administrators and store managers in, tells customers and delivery partners the area is
+  not for them, and asks visitors to sign in. It then loads `GET /api/admin/session/`, which says which sections the
+  role may open (the menu is built from it) and which stores the person works with. Hiding a menu entry or a button is
+  a convenience: **every request is checked again by the API** (`IsStaffRole`, `IsAdminRole`, the new
+  `IsAdminOrStaffReadOnly`, and `dashboard/scope.py` which narrows every list to a manager's stores and turns a
+  request for another store into 404).
+- **Backend.** A new app `apps/dashboard` with **no models**: it reads and reuses the existing services (catalogue
+  `save_product`, inventory `apply_movement`, orders `transition_order`, the Phase 10 assignment and workflow modules,
+  returns and refunds services, `accounts.admin_services.update_user`, support `post_message`). Modules: `scope.py`
+  (store scoping, date ranges), `metrics.py` (dashboard summary and analytics), `orders.py`, `catalog.py`,
+  `stores.py`, `offers.py`, `people.py` (customers, riders, jobs, support), `views.py` (session/summary/analytics).
+  Offers and coupons are stored here but priced only by the Phase 6 engine at checkout; refund amounts come from the
+  Phase 7 returns service; stock changes only through the Phase 2 ledger. Nothing is calculated twice.
+- **Numbers.** `metrics.py` aggregates with the ORM at request time; nothing is sampled, cached or estimated. Days,
+  weeks and months are bucketed in Python from a narrow `values_list`, not with database date functions, because
+  time-zone-aware truncation needs time-zone tables on MySQL that shared hosting often lacks. Periods are capped at
+  366 days. Definitions (also in the UI): orders count by the local day they were placed; revenue = paid orders;
+  refunded = processed refunds by the day they were paid back; net = revenue − refunded; on time = delivered within
+  the window promised at checkout.
+- **Frontend.** Sidebar + top bar (quick order search, "To do" list from the summary's `attention` items, sign-out),
+  a drawer menu on phones, breadcrumbs, and shared primitives in `features/admin/ui.tsx`: a `DataTable` that is a
+  real table on desktop and one card per row on phones (one DOM, CSS only), `ListView` (loading / error / empty /
+  paginated), URL-backed filters (`useListParams`: bookmarkable, back button works, search only on submit),
+  `ConfirmDialog` for anything that touches money, stock, access or what customers see, `FormDialog`, badges.
+  Server errors are shown in the dialog that caused them, so the person can correct and retry.
+- **Bundles.** The dashboard shell and each section are separate lazy chunks (7–26 kB each); the customer bundle is
+  unchanged (488 kB / 150 kB gzipped at this build). Recharts (MIT) is in its own 408 kB chunk, fetched the first
+  time a chart is shown, through a plain dynamic import rather than `React.lazy` so a slow chart download never holds
+  back a filter change. Every chart is `aria-hidden` and paired with the same numbers as a table.
+- **Not built (see TASKS.md):** live push (lists refresh every 60 s while open), a map editor for zone polygons,
+  bulk product import, settlement reports, and a change log screen for the audit trail.
 
 ## 9. Environments
 | | Local (Windows) | Production (existing hosting) |

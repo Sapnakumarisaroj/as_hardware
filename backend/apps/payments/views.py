@@ -65,6 +65,8 @@ class WebhookView(APIView):
 class StaffRefundSerializer(serializers.ModelSerializer):
     order_number = serializers.CharField(source="payment.order.order_number", read_only=True)
     payment_provider = serializers.CharField(source="payment.provider", read_only=True)
+    customer_name = serializers.CharField(source="payment.order.user.full_name", read_only=True)
+    store_name = serializers.CharField(source="payment.order.store.name", read_only=True, default=None)
     is_manual = serializers.BooleanField(read_only=True)
 
     class Meta:
@@ -73,6 +75,8 @@ class StaffRefundSerializer(serializers.ModelSerializer):
             "public_id",
             "order_number",
             "payment_provider",
+            "customer_name",
+            "store_name",
             "amount",
             "status",
             "reason",
@@ -90,7 +94,15 @@ class ManualRefundSerializer(serializers.Serializer):
     reference = serializers.CharField(max_length=100, help_text="UPI/bank reference or cash receipt number.")
 
 
-@extend_schema_view(list=extend_schema(parameters=[OpenApiParameter("status", str)]))
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter("status", str),
+            OpenApiParameter("q", str, description="Order number, customer name or email, refund reference"),
+            OpenApiParameter("store", int),
+        ]
+    )
+)
 class StaffRefundViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """Refunds of the staff member's stores (admins: all). Customers see theirs on the order."""
 
@@ -99,12 +111,23 @@ class StaffRefundViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
     lookup_field = "public_id"
 
     def get_queryset(self):
-        qs = Refund.objects.select_related("payment__order")
+        qs = Refund.objects.select_related("payment__order__user", "payment__order__store")
         store_ids = managed_store_ids(self.request.user)
         if store_ids is not None:
             qs = qs.filter(Q(payment__order__store_id__in=store_ids))
         if status_filter := self.request.query_params.get("status"):
             qs = qs.filter(status=status_filter)
+        params = self.request.query_params
+        if term := (params.get("q") or "").strip():
+            qs = qs.filter(
+                Q(payment__order__order_number__icontains=term)
+                | Q(payment__order__user__full_name__icontains=term)
+                | Q(payment__order__user__email__icontains=term)
+                | Q(provider_refund_id__icontains=term)
+                | Q(manual_reference__icontains=term)
+            )
+        if (store := params.get("store")) and store.isdigit():
+            qs = qs.filter(payment__order__store_id=store)
         return qs
 
     def _done(self, refund):

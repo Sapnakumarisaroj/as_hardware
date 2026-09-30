@@ -118,7 +118,8 @@ Never commit `.env`. `VITE_*` values are public (compiled into the JS bundle), s
 ### 2a. Delivery engine setup (Phase 9)
 
 Delivery works out of the box with **no external service** (`ROUTING_PROVIDER=haversine`, `GEOCODING_PROVIDER=none`).
-What it needs is real data, entered once in the Django admin (`/django-admin/`):
+What it needs is real data, entered once in the business dashboard (`/admin` → Stores, as an administrator; the
+Django admin at `/django-admin/` works too):
 
 1. **Stores** → each store: address, PIN code, **latitude/longitude** (right-click the spot on openstreetmap.org →
    "Show address" shows the coordinates), opening hours, preparation time, and "Own riders" if riders don't use the
@@ -177,6 +178,12 @@ npm run build          # -> frontend/dist/
 Upload the **contents** of `dist/` (including the hidden `.htaccess`) to the main domain's document root
 (usually `public_html/`). `.htaccess` provides the SPA route fallback (`/products/123` → `index.html`), security headers,
 and long-lived caching for hashed assets.
+
+The business dashboard (Phase 11) is part of this build at `https://yourdomain.com/admin` and needs nothing extra on
+the server: the same SPA fallback serves it, and it talks to the API like the shop does. Sign in with an `admin` or
+`store_manager` account (create the first administrator with `python manage.py createsuperuser`, or give an existing
+account the role in the dashboard under Customers). Django's own admin stays at `https://api.yourdomain.com/django-admin/`
+for rare tasks and is protected by the same accounts.
 
 ## 5. Backend deployment (cPanel "Setup Python App" / Passenger)
 

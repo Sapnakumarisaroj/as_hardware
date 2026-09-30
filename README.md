@@ -60,9 +60,10 @@ npm run dev
 
 - App: http://localhost:5173
 - Rider app (delivery partners): http://localhost:5173/rider
+- Business dashboard (administrators, store managers): http://localhost:5173/admin
 - API health: http://127.0.0.1:8000/api/health/
 - API docs: http://127.0.0.1:8000/api/docs/ (Swagger) · `/api/redoc/` · `/api/schema/`
-- Django admin: http://127.0.0.1:8000/django-admin/ (`python manage.py createsuperuser`)
+- Django admin (rarely needed since Phase 11): http://127.0.0.1:8000/django-admin/ (`python manage.py createsuperuser` creates the first administrator, who can then use the dashboard)
 
 Optional: `docker compose up --build` runs PostgreSQL + API + frontend locally. It is not needed for production.
 

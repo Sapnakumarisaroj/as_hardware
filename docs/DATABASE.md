@@ -259,6 +259,14 @@ in `running` for more than 10 minutes are re-queued.
 |---|---|
 | `core_auditlog` | append-only admin/sensitive action log (actor, action, target, changes JSON, IP, request_id) |
 
+## dashboard ✅ (Phase 11): no tables
+The business dashboard app (`apps.dashboard`) has **no models and no migrations**: it reads the tables above with
+ORM aggregation at request time and writes through the existing services, so every change lands in the same tables
+as before and in `core_auditlog` (actions `product.*`, `category.*`, `brand.*`, `store.*`, `zone.*`, `offer.*`,
+`coupon.*`, `delivery.partner_update`, `support.update`, plus the earlier `inventory.*`, `order.*`, `user.*`).
+Analytics buckets days/weeks/months in Python from `created_at`/`processed_at`/`delivered_at` (no database date
+functions), which keeps the PostgreSQL/MySQL/SQLite portability rules above.
+
 ## Planned tables 🔜
 `accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 13–19) · `ai_productembedding` (JSON vectors, Phase 13) · `django_cache` (prod DB cache, created by `createcachetable`).
 

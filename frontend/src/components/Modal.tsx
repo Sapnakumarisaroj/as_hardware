@@ -15,12 +15,19 @@ export function Modal({ open, onClose, title, children, footer }: Props) {
   const panelRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
 
+  // The latest onClose, without re-running the effect below when the parent passes a new
+  // function on every render (that would move the focus away from the field being typed in).
+  const closeRef = useRef(onClose)
+  useEffect(() => {
+    closeRef.current = onClose
+  }, [onClose])
+
   useEffect(() => {
     if (!open) return
     const previous = document.activeElement as HTMLElement | null
     panelRef.current?.focus()
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') closeRef.current()
     }
     document.addEventListener('keydown', onKey)
     const overflow = document.body.style.overflow
@@ -30,7 +37,7 @@ export function Modal({ open, onClose, title, children, footer }: Props) {
       document.body.style.overflow = overflow
       previous?.focus()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
   return (

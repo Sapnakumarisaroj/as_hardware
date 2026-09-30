@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -25,6 +25,8 @@ from .serializers import (
             OpenApiParameter("store", int),
             OpenApiParameter("sku", str),
             OpenApiParameter("low_stock", bool),
+            OpenApiParameter("q", str, description="SKU, product, variant or store"),
+            OpenApiParameter("stock", str, enum=["out", "low", "ok"]),
         ]
     )
 )
@@ -57,6 +59,21 @@ class InventoryViewSet(
             qs = qs.filter(variant__sku__icontains=sku)
         if params.get("low_stock") in ("1", "true"):
             qs = qs.filter(available_quantity__lte=F("low_stock_threshold"))
+        if term := (params.get("q") or "").strip():
+            qs = qs.filter(
+                Q(variant__sku__icontains=term)
+                | Q(variant__name__icontains=term)
+                | Q(variant__product__name__icontains=term)
+                | Q(store__name__icontains=term)
+                | Q(store__code__icontains=term)
+            )
+        stock = params.get("stock")
+        if stock == "out":
+            qs = qs.filter(available_quantity=0)
+        elif stock == "low":
+            qs = qs.filter(available_quantity__gt=0, available_quantity__lte=F("low_stock_threshold"))
+        elif stock == "ok":
+            qs = qs.filter(available_quantity__gt=F("low_stock_threshold"))
         return qs
 
     @extend_schema(request=InventoryCreateSerializer, responses={201: InventorySerializer})

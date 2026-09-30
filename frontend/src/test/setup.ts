@@ -12,6 +12,15 @@ configure({ asyncUtilTimeout: 10_000 })
 // jsdom does not implement scrolling.
 window.scrollTo = vi.fn() as unknown as typeof window.scrollTo
 
+// ...nor element sizes, which the dashboard charts observe. Charts render empty in tests; the
+// numbers are checked in the table each chart comes with.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+window.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()

@@ -64,6 +64,11 @@ function AccountMenu() {
             Rider app
           </Link>
         )}
+        {(user.role === 'admin' || user.role === 'store_manager') && (
+          <Link to="/admin" onClick={close} className="block px-4 py-2 font-semibold hover:bg-steel-50">
+            Business dashboard
+          </Link>
+        )}
         <Link to="/account" onClick={close} className="block px-4 py-2 hover:bg-steel-50">
           My account
         </Link>

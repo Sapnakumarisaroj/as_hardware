@@ -101,9 +101,20 @@ No SMS gateway, no paid maps, no file-storage service and no new package (backen
 | Camera | `<input type="file" capture>` | ✅ web standard | ✅ | No | Opens the phone camera from the browser; no native app needed |
 | Rider app | The existing React SPA (`/rider`) | ✅ | ✅ | No | A web page, not an app-store app: nothing to publish or pay for |
 
-## Frontend (no new runtime packages in Phases 4–8; Leaflet added in Phase 9; none in Phase 10)
+## Business dashboard (Phase 11): one new frontend package
+No analytics service, no BI tool, no admin-panel product and no paid chart library. The dashboard is part of the
+existing React app and reads the project's own database through the Django API.
+
+| Feature | Tool | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Charts | **Recharts 3** (React + D3 internals) | ✅ MIT | ✅ | No | Added in Phase 11. Loaded only on the dashboard and analytics pages (own 408 kB chunk, 115 kB gzipped); customers never download it. Every chart has the same numbers as an accessible table |
+| Statistics | Django ORM aggregation + Python bucketing | ✅ BSD / PSF | ✅ | No | No analytics database, no cron pre-aggregation; portable across PostgreSQL / MySQL / SQLite |
+| Dashboard UI | The existing React SPA (`/admin`) | ✅ | ✅ | No | Replaces day-to-day use of the Django admin (`/django-admin/` stays for rare tasks) |
+
+## Frontend (no new runtime packages in Phases 4–8; Leaflet added in Phase 9; none in Phase 10; Recharts in Phase 11)
 | Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
 |---|---|---|---|---|---|
+| Charts | Recharts 3 | ✅ MIT | ✅ | No | Dashboard/analytics only (lazy chunk) |
 | UI library | React 19 | ✅ MIT | ✅ | No | |
 | Routing | React Router | ✅ MIT | ✅ | No | |
 | Server state / caching | TanStack Query | ✅ MIT | ✅ | No | |

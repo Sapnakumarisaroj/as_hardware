@@ -8,6 +8,7 @@ from .models import Inventory, StockMovement
 
 class InventorySerializer(serializers.ModelSerializer):
     store_code = serializers.CharField(source="store.code", read_only=True)
+    store_name = serializers.CharField(source="store.name", read_only=True)
     sku = serializers.CharField(source="variant.sku", read_only=True)
     product_name = serializers.CharField(source="variant.product.name", read_only=True)
     variant_name = serializers.CharField(source="variant.name", read_only=True)
@@ -19,6 +20,7 @@ class InventorySerializer(serializers.ModelSerializer):
             "id",
             "store",
             "store_code",
+            "store_name",
             "variant",
             "sku",
             "product_name",

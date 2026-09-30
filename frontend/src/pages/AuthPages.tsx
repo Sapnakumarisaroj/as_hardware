@@ -76,8 +76,13 @@ export function LoginPage() {
   const navigate = useNavigate()
   const next = safeNext(params.get('next'))
   const { error, busy, run, fieldError } = useSubmit()
-  // Delivery partners land in the rider app unless they were on their way somewhere else.
-  const homeFor = (role: string | undefined) => (role === 'delivery_partner' && next === '/' ? '/rider' : next)
+  // Delivery partners land in the rider app and staff in the dashboard, unless they were on
+  // their way somewhere else.
+  const homeFor = (role: string | undefined) => {
+    if (next !== '/') return next
+    if (role === 'delivery_partner') return '/rider'
+    return role === 'admin' || role === 'store_manager' ? '/admin' : next
+  }
 
   if (status === 'authenticated') return <Navigate to={homeFor(user?.role)} replace />
 
