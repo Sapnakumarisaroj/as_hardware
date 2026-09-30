@@ -3,7 +3,7 @@
 AI-powered hardware marketplace with fast delivery from nearby stores: a Django REST API and a React SPA. Delivery
 times are calculated per order (store, distance, preparation, riders, workload), never a fixed promise.
 
-> Status: **Phase 10 complete** (catalogue, cart, checkout with addresses, automatic offers and coupons, cash on delivery,
+> Status: **Phase 12 complete** (adds the AI hardware assistant at `/ai-assistant`: ask in English, Hindi or Hinglish, get real catalog products; works without an AI model in basic mode, see [docs/FREE_TOOLS.md](docs/FREE_TOOLS.md)). Earlier: **Phase 10 complete** (catalogue, cart, checkout with addresses, automatic offers and coupons, cash on delivery,
 > online payments via Razorpay (ready; needs your keys) or the development mock gateway, verified webhooks, gateway
 > refunds, order history, cancellation, returns and "Buy again", delivery zones, store selection and calculated
 > delivery estimates, **the delivery partner app with delivery code, proof of delivery and cash collection, and

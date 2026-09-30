@@ -540,5 +540,26 @@ Also extended for the dashboard: `GET /api/inventory/` takes `?q=` (SKU, product
 and rows carry `store_name`; `GET /api/returns/` takes `?q=` and `?store=` and `?status=open` (requested + approved);
 `GET /api/payments/refunds/` takes `?q=` and `?store=` and rows carry `customer_name`, `store_name`.
 
+## AI hardware assistant (Phase 12)
+Customers only (JWT). Each customer sees and changes only their own conversations (another customer's id gives 404).
+Asking is limited by the `ai` throttle (`THROTTLE_AI`, default 30/min). Products in answers are read from the database
+when the answer is built and again when it is shown, so a price or stock change is never stale and no product can be invented.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/api/ai/assistant/` | public | `{ai_mode: basic\|llm, provider, model, languages, suggested_prompts, greeting, max_products}`. Never exposes keys or URLs |
+| GET, POST | `/api/ai/conversations/` | customer | List (with `message_count`) / start a conversation. POST `{message?, language?: en\|hi\|hinglish}`: with `message` the first answer is included |
+| GET, DELETE | `/api/ai/conversations/{id}/` | owner | Detail with messages / delete the conversation |
+| POST | `/api/ai/conversations/{id}/messages/` | owner | `{message (max length enforced), language?}` → 201 `{conversation_id, title, user_message, assistant_message}` |
+| POST | `/api/ai/conversations/{id}/clear/` | owner | Removes the messages, keeps the conversation |
+
+Assistant message fields: `content`, `intent` (PRODUCT_SEARCH, PROJECT_HELP, REPAIR_HELP, COMPATIBILITY, QUANTITY, BUDGET,
+GENERAL_HARDWARE_QUESTION), `products[]` (catalog product cards with live price, discount, stock and delivery data, plus the
+`reason` and `variant_id` chosen), `questions[]` (follow-ups), `actions[]` (e.g. add these items to the cart), `knowledge[]`
+(general hardware facts, kept apart from catalog facts), `safety[]`, `estimate` (labelled as an estimate), `ai_mode`, `notice`
+("AI is temporarily unavailable. You can search products normally." when a configured model failed).
+Adding to the cart uses the normal cart API (`POST /api/cart/items/`); the assistant has no endpoint that touches prices,
+inventory or orders.
+
 ## Planned 🔜
-- **AI** `/api/ai/…` (Phases 12–19). **Notifications/support channels** (Phase 20).
+- **AI** more endpoints in Phases 13–19 (semantic search, voice, vision, projects). **Notifications/support channels** (Phase 20).

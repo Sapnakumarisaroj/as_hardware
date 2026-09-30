@@ -142,10 +142,21 @@ existing React app and reads the project's own database through the Django API.
 | WhatsApp (dev) | `MockWhatsAppProvider` (Phase 20) | ✅ project code | ✅ | No | Records messages; never claims real delivery |
 | WhatsApp (prod, optional) | WhatsApp Business Cloud API (Meta) | ❌ Meta pricing per conversation/template | ❌ | Yes | Needs owner approval + Meta business account |
 | Maps, distance, ETA | Haversine + PIN table (default); Leaflet + OpenStreetMap tiles; optional Nominatim and OSRM | ✅ | ✅ (default) | No | Built in Phase 9: see "Fulfilment, delivery zones & ETA" above for the usage limits |
-| AI (dev, planned) | Ollama + open models (e.g. Llama 3.1, Qwen 2.5, LLaVA) | ✅ MIT runtime; model licences vary | ✅ | No | Needs local RAM/GPU; not usable on shared hosting |
+| AI (dev, Phase 12) | Ollama + **`qwen2.5:3b`** (about 1.9 GB download; Qwen 2.5 3B is small enough for a laptop CPU) | ✅ MIT runtime; model licence per Qwen | ✅ | No | See "AI assistant" below. Needs roughly 4 GB free RAM; not usable on shared hosting |
 | AI (prod default) | `none` provider: rule-based fallbacks | ✅ project code | ✅ | No | No paid AI API is subscribed automatically |
 | Email (prod) | SMTP mailbox from the hosting plan | ✅ included in hosting | ❌ | SMTP password | Console backend in dev |
 | SMS (prod, optional) | MSG91 / Twilio | ❌ paid per message | ❌ | Yes | Mock provider until approved |
+
+## AI assistant (Phase 12)
+- **Chosen local model:** `qwen2.5:3b` through Ollama (multilingual, so it copes with Hindi and Hinglish). Setup:
+  install Ollama, `ollama pull qwen2.5:3b`, then set `LLM_PROVIDER=ollama` and `LLM_MODEL=qwen2.5:3b` in `backend/.env`
+  (`OLLAMA_BASE_URL` defaults to `http://localhost:11434`; `LLM_TIMEOUT_SECONDS` defaults to 45).
+- **Minimum:** about 4 GB free RAM and a few GB of disk; a GPU is optional (CPU answers take several seconds).
+- **Fallback:** with `LLM_PROVIDER=none` (the default, and the production default), or when the model is down or slow, the
+  assistant answers in *basic mode* (rule-based understanding + keyword catalog search, still from real products). If a
+  configured model fails the customer sees "AI is temporarily unavailable. You can search products normally."
+- **Optional providers, never enabled automatically:** `openai_compatible` (any compatible endpoint: `OPENAI_COMPATIBLE_BASE_URL`,
+  `OPENAI_COMPATIBLE_API_KEY`) and `anthropic` (`ANTHROPIC_API_KEY`). Keys stay on the server; the browser never sees them.
 
 ## Deliberately NOT used
 Redis, Celery, RabbitMQ, Elasticsearch/OpenSearch, pgvector-only features, paid vector databases, AWS/Azure/GCP services,

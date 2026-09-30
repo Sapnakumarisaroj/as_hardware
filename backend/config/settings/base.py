@@ -294,7 +294,14 @@ WHATSAPP_PROVIDER = env("WHATSAPP_PROVIDER", default="mock")  # mock | meta
 SMS_PROVIDER = env("SMS_PROVIDER", default="mock")  # mock | msg91 | twilio
 LLM_PROVIDER = env("LLM_PROVIDER", default="none")  # none | ollama | openai_compatible | anthropic
 OLLAMA_BASE_URL = env("OLLAMA_BASE_URL", default="http://localhost:11434")
+OLLAMA_KEEP_ALIVE = env("OLLAMA_KEEP_ALIVE", default="30m")  # keep the model loaded between questions
 LLM_MODEL = env("LLM_MODEL", default="")
+OPENAI_COMPATIBLE_BASE_URL = env("OPENAI_COMPATIBLE_BASE_URL", default="")
+OPENAI_COMPATIBLE_API_KEY = env("OPENAI_COMPATIBLE_API_KEY", default="")
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+# A slow local model must never hang a request: after this the assistant answers in basic mode.
+LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=45)
+AI_ASSISTANT_MAX_PRODUCTS = env.int("AI_ASSISTANT_MAX_PRODUCTS", default=6)
 BACKGROUND_JOBS_MODE = env("BACKGROUND_JOBS_MODE", default="inline")  # inline | cron (DB queue)
 # Product search backend (dotted path). The portable keyword backend works on every database;
 # Phase 13 adds a semantic/hybrid backend with the same interface.

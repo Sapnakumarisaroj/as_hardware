@@ -241,11 +241,11 @@ and the change of `proof_image` to private storage; no data is changed (no proof
 | `support_supportconversation` | user FK (nullable), contact_phone, channel, subject, order FK, status, assigned_to, last_message_at |
 | `support_supportmessage` | conversation FK, sender_type (customer/agent/bot/system), sender FK, body, attachments JSON, channel_message_id |
 
-## ai ✅ (data only, no AI logic yet)
+## ai ✅ (Phase 12: text assistant on AIConversation / AIMessage)
 | Table | Key columns |
 |---|---|
 | `ai_aiconversation` | user FK (nullable), session_key, kind (assistant/voice/image/project/business), language, title, metadata JSON |
-| `ai_aimessage` | conversation FK, role, content, tool_calls JSON, product_refs JSON (catalog IDs actually shown), provider, model, tokens_in/out |
+| `ai_aimessage` | conversation FK, role, content, tool_calls JSON, product_refs JSON (catalog IDs actually shown), **payload JSON (Phase 12, migration `0002`: intent, questions, actions, knowledge, safety, estimate, ai_mode, notice, so a conversation reopens exactly as answered)**, provider, model, tokens_in/out |
 | `ai_project` | user FK, conversation FK, project_type (painting/bathroom_repair/…), title, inputs JSON, safety_notes, status |
 | `ai_projectitem` | project FK, variant FK (nullable), label, quantity DECIMAL, unit, is_optional, is_estimate, rationale, sort_order |
 

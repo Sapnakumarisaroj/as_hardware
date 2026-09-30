@@ -51,6 +51,9 @@ class AIMessage(models.Model):
     content = models.TextField()
     tool_calls = models.JSONField(default=list, blank=True)
     product_refs = models.JSONField(default=list, blank=True, help_text="Variant/product IDs shown to the customer.")
+    # Phase 12: the structured parts of an assistant answer (intent, questions, actions, safety,
+    # estimate, ai_mode), so a conversation is shown again exactly as it was answered.
+    payload = models.JSONField(default=dict, blank=True)
     provider = models.CharField(max_length=30, blank=True)
     model = models.CharField(max_length=80, blank=True)
     tokens_in = models.PositiveIntegerField(default=0)

@@ -398,6 +398,22 @@ integrations/llm/
   - MySQL/SQLite: token `icontains` over name/brand/SKU/tags/specs, plus a typo-tolerant pass that corrects each query term against a cached vocabulary table using `difflib`.
   - Semantic (Phase 13): embeddings stored as JSON vectors with in-Python cosine similarity, fine for catalogs up to roughly 10–20k products and needing no pgvector. Enabled only when an embedding provider is configured.
 
+### The hardware assistant (Phase 12)
+```
+POST /api/ai/conversations/{id}/messages/  →  HardwareAssistantService.ask
+  IntentService            intent, language (en/hi/hinglish), search words, budget, room size; rules first, model optional
+  CatalogRetrievalService  the Phase 4 keyword search (the only place that reads products; Phase 13 replaces it here)
+  RecommendationService    message, per-product reasons, budget fit, general knowledge, safety notes, quantity estimates
+  AIConversationService    AIConversation / AIMessage records (payload keeps the structured parts)
+```
+- **Grounding:** the model may help understand and phrase; product ids, prices, stock and delivery come from the database and
+  are re-read when a conversation is shown. Products only come from retrieval (a model cannot add one), and a model-written message containing a number that is not in the retrieved products is discarded for the rule-based message.
+- **Input:** `HardwareAssistantService.answer(text)` is independent of HTTP and storage, so Phase 15 speech-to-text can call it.
+- **Safety:** electrical, gas and structural questions get a "use a qualified professional" note, not step-by-step instructions.
+- **Add to cart** goes through the ordinary cart API from the browser; the assistant cannot write prices, stock or orders.
+- **Frontend:** `/ai-assistant` (`pages/AssistantPage.tsx`, `features/ai/`): welcome, suggested prompts, product cards,
+  Add to Cart / Add recommended items, loading, error with retry, history, clear/delete; full-height with a sticky input on phones.
+
 ## 6. Integrations (provider pattern)
 
 | Concern   | Default (free)                         | Optional production provider     | Switch |

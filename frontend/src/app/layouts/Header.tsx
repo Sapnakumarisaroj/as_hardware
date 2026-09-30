@@ -3,7 +3,6 @@ import { Link, NavLink, useLocation, useSearchParams } from 'react-router'
 
 import { Drawer } from '@/components/Drawer'
 import { CartIcon, ChevronDownIcon, HeartIcon, MenuIcon, SparkIcon, UserIcon } from '@/components/icons'
-import { useToast } from '@/components/toast'
 import { useAuth } from '@/features/auth/context'
 import { useCartCount } from '@/features/cart/api'
 import { useCategories } from '@/features/catalog/api'
@@ -214,24 +213,18 @@ export function Header() {
   const [menuOpen, setMenuOpen] = useState(false)
   const cartCount = useCartCount()
   const wishlistCount = useWishlistIds().size
-  const toast = useToast()
   const location = useLocation()
   const [params] = useSearchParams()
   const urlQuery = location.pathname === '/search' ? (params.get('q') ?? '') : ''
 
   const aiButton = (
-    <button
-      type="button"
-      onClick={() =>
-        toast.show('The AI hardware assistant is coming soon. Use search or browse categories for now.', { tone: 'info' })
-      }
+    <Link
+      to="/ai-assistant"
       className="hidden shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-steel-200 ring-1 ring-ink-600 hover:text-amber-500 lg:flex"
-      title="AI assistant — coming soon"
     >
       <SparkIcon className="size-4" />
       Ask AI
-      <span className="rounded bg-ink-800 px-1 text-[10px] uppercase">Soon</span>
-    </button>
+    </Link>
   )
 
   return (

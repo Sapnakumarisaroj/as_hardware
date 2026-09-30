@@ -1,0 +1,625 @@
+# ruff: noqa: E501 — long sentences in three languages read better on one line
+"""What the assistant knows without a language model.
+
+- WORDS: customer words (English, Hindi in Devanagari, Hinglish) → English words to search the
+  catalogue with. Only the catalogue decides what exists; these are search words, not products.
+- TOPICS: common jobs (leaking tap, drilling concrete, painting a room …) with the search words
+  of a typical kit, a follow-up question when the request is too vague, and a safety key.
+- KNOWLEDGE: short, general hardware explanations. They are general knowledge, marked as such
+  in the answer, and never describe a specific product's specification.
+- SAFETY: notes for work where a mistake hurts.
+- TEXT: the sentences of the basic (rule-based) answers in English, Hindi and Hinglish.
+
+Adding a language means adding its words here and a TEXT block; nothing else changes.
+"""
+
+import re
+from dataclasses import dataclass, field
+
+# --- Words ---------------------------------------------------------------------------------------
+# Longer phrases are matched before shorter ones. Values are the English search words.
+WORDS: dict[str, list[str]] = {
+    # taps and plumbing
+    "leaking tap": ["tap", "ptfe tape", "spanner"],
+    "leaky tap": ["tap", "ptfe tape", "spanner"],
+    "tap leak": ["tap", "ptfe tape", "spanner"],
+    "dripping tap": ["tap", "ptfe tape", "spanner"],
+    "nal tapak": ["tap", "ptfe tape", "spanner"],
+    "नल टपक": ["tap", "ptfe tape", "spanner"],
+    "टपकता नल": ["tap", "ptfe tape", "spanner"],
+    "tap": ["tap"],
+    "faucet": ["tap"],
+    "nal": ["tap"],
+    "नल": ["tap"],
+    "pipe": ["pipe"],
+    "paip": ["pipe"],
+    "पाइप": ["pipe"],
+    "cpvc": ["cpvc"],
+    "upvc": ["upvc"],
+    "pvc": ["pvc"],
+    "valve": ["valve"],
+    "connector": ["connector"],
+    "fitting": ["elbow", "connector"],
+    "elbow": ["elbow"],
+    "thread tape": ["ptfe tape"],
+    "teflon tape": ["ptfe tape"],
+    "ptfe": ["ptfe tape"],
+    "seal tape": ["ptfe tape"],
+    "sealant": ["sealant"],
+    "silicone": ["silicone sealant"],
+    "leak": ["ptfe tape", "sealant"],
+    "leakage": ["ptfe tape", "sealant"],
+    "रिसाव": ["ptfe tape", "sealant"],
+    "wrench": ["wrench"],
+    "plumbing": ["pipe", "tap", "valve"],
+    "plumber": ["pipe", "tap", "valve"],
+    "bathroom": ["tap", "connector", "silicone sealant", "ptfe tape"],
+    "washroom": ["tap", "connector", "silicone sealant", "ptfe tape"],
+    "बाथरूम": ["tap", "connector", "silicone sealant", "ptfe tape"],
+    "kitchen sink": ["tap", "connector", "silicone sealant"],
+    # drilling and tools
+    "drill bit": ["drill bit"],
+    "drill machine": ["drill"],
+    "drill": ["drill"],
+    "ड्रिल": ["drill"],
+    "concrete": ["masonry drill bit", "impact drill"],
+    "brick": ["masonry drill bit", "impact drill"],
+    "masonry": ["masonry drill bit"],
+    "wall": [],
+    "deewar": [],
+    "दीवार": [],
+    "metal": ["hss drill bit"],
+    "hammer": ["hammer"],
+    "hathoda": ["hammer"],
+    "हथौड़ा": ["hammer"],
+    "screwdriver": ["screwdriver"],
+    "pechkas": ["screwdriver"],
+    "पेचकस": ["screwdriver"],
+    "spanner": ["spanner"],
+    "pana": ["spanner"],
+    "पाना": ["spanner"],
+    "hacksaw": ["hacksaw"],
+    "saw": ["hacksaw"],
+    "aari": ["hacksaw"],
+    "आरी": ["hacksaw"],
+    "measuring tape": ["measuring tape"],
+    "tape measure": ["measuring tape"],
+    "inch tape": ["measuring tape"],
+    "multimeter": ["multimeter"],
+    "tester": ["line tester"],
+    "tools": ["drill", "screwdriver", "spanner", "hammer"],
+    "auzar": ["drill", "screwdriver", "spanner", "hammer"],
+    "औज़ार": ["drill", "screwdriver", "spanner", "hammer"],
+    # fasteners and adhesives
+    "wall shelf": ["wall plugs", "wood screws", "masonry drill bit"],
+    "shelf": ["wall plugs", "wood screws"],
+    "rack": ["wall plugs", "wood screws"],
+    "screws": ["screws"],
+    "screw": ["screws"],
+    "pech": ["screws"],
+    "पेच": ["screws"],
+    "wall plug": ["wall plugs"],
+    "rawl plug": ["wall plugs"],
+    "anchor": ["wall plugs"],
+    "bolt": ["bolt"],
+    "nut": ["bolt"],
+    "adhesive": ["adhesive"],
+    "glue": ["adhesive"],
+    "fevicol": ["wood adhesive"],
+    "gond": ["adhesive"],
+    "गोंद": ["adhesive"],
+    "wood": ["wood"],
+    "lakdi": ["wood"],
+    "लकड़ी": ["wood"],
+    "tile": ["tile adhesive"],
+    "tiles": ["tile adhesive"],
+    "cement": ["cement"],
+    "सीमेंट": ["cement"],
+    # electrical
+    "wiring": ["wire", "switch", "socket", "mcb"],
+    "wire": ["wire"],
+    "cable": ["wire"],
+    "taar": ["wire"],
+    "तार": ["wire"],
+    "switch": ["switch"],
+    "स्विच": ["switch"],
+    "सॉकेट": ["socket"],
+    "एमसीबी": ["mcb"],
+    "ड्रिल बिट": ["drill bit"],
+    "socket": ["socket"],
+    "plug point": ["socket"],
+    "mcb": ["mcb"],
+    "circuit breaker": ["mcb"],
+    "fan": ["fan"],
+    "pankha": ["fan"],
+    "पंखा": ["fan"],
+    "bulb": ["led bulb"],
+    "light": ["led"],
+    "tube light": ["led batten"],
+    "batten": ["led batten"],
+    "roshni": ["led"],
+    "बल्ब": ["led bulb"],
+    "electrical": ["wire", "switch", "socket"],
+    "electric": ["wire", "switch", "socket"],
+    "bijli": ["wire", "switch", "socket"],
+    "बिजली": ["wire", "switch", "socket"],
+    "insulation tape": ["insulation tape"],
+    # safety gear
+    "gloves": ["gloves"],
+    "dastane": ["gloves"],
+    "दस्ताने": ["gloves"],
+    "helmet": ["helmet"],
+    "mask": ["mask"],
+    "goggles": ["goggles"],
+    "safety shoes": ["safety shoes"],
+    "shoes": ["safety shoes"],
+    "safety": ["gloves", "helmet", "goggles"],
+    "suraksha": ["gloves", "helmet", "goggles"],
+    "सुरक्षा": ["gloves", "helmet", "goggles"],
+    # painting (the demo catalogue has no paint; the words still search, and the answer says so)
+    "painting": ["paint"],
+    "paint": ["paint"],
+    "rang": ["paint"],
+    "रंग": ["paint"],
+    "primer": ["primer"],
+    "putty": ["putty"],
+    "brush": ["paint brush"],
+    "roller": ["paint roller"],
+    "hardware": [],  # too general on its own; the topic/budget logic handles it
+}
+
+# The generic words that, on their own, are too vague to search well (a follow-up is asked).
+GENERIC_WORDS = {"paint", "painting", "rang", "रंग", "bathroom", "washroom", "बाथरूम", "hardware", "tools", "auzar",
+                 "औज़ार", "plumbing", "electrical", "electric", "bijli", "बिजली", "samaan", "saman", "सामान", "material",
+                 "items", "things", "stuff", "something", "kuch", "कुछ", "repair", "fix"}  # fmt: skip
+
+
+# --- Topics --------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Topic:
+    key: str
+    patterns: tuple[str, ...]  # regular expressions, case-insensitive
+    terms: tuple[str, ...]  # a typical kit, as catalogue search words
+    intent: str
+    summary: dict[str, str]  # per language: what the job needs, in one or two sentences
+    clarify: dict[str, str] = field(default_factory=dict)  # asked when only the topic is named
+    safety: str = ""
+    specific: tuple[str, ...] = ()  # words that make the request specific enough (no question)
+
+
+TOPICS: dict[str, Topic] = {
+    "leaking_tap": Topic(
+        key="leaking_tap",
+        patterns=(
+            r"leak\w*\s+(tap|faucet)",
+            r"(tap|faucet)\s+(is\s+)?leak",
+            r"dripp?ing\s+tap",
+            r"nal\s+tapak",
+            r"नल\s*टपक",
+            r"टपकता\s*नल",
+            r"tap\s+repair",
+            r"nal\s+(theek|thik|repair)",
+        ),
+        terms=("ptfe tape", "spanner", "pipe wrench", "pillar tap", "connector"),
+        intent="REPAIR_HELP",
+        summary={
+            "en": "A dripping tap usually needs a new washer or a new tap, plus PTFE thread tape for the joint and a spanner or wrench to open it. Turn the water supply off first.",
+            "hinglish": "Tapakta nal aksar washer ya naya tap maangta hai, saath mein joint ke liye PTFE tape aur kholne ke liye spanner ya wrench. Pehle paani ka supply band karein.",
+            "hi": "टपकते नल के लिए आमतौर पर नया वॉशर या नया नल, जोड़ के लिए PTFE टेप और खोलने के लिए पाना या रिंच चाहिए। पहले पानी की सप्लाई बंद करें।",
+        },
+    ),
+    "drill_concrete": Topic(
+        key="drill_concrete",
+        patterns=(
+            r"drill\w*\s+(for\s+|in\s+|into\s+)?(concrete|brick|wall|masonry|cement)",
+            r"(concrete|brick|wall)\s+drill",
+            r"deewar\s+(mein|me)\s+(hole|drill|chhed)",
+            r"दीवार\s*में\s*(ड्रिल|छेद)",
+        ),
+        terms=("impact drill", "masonry drill bit", "wall plugs", "safety goggles"),
+        intent="PRODUCT_SEARCH",
+        summary={
+            "en": "For concrete or brick you need an impact (hammer) drill with masonry drill bits; a plain drill driver is for wood and metal. Wall plugs hold the screws, and goggles keep the dust out of your eyes.",
+            "hinglish": "Concrete ya brick ke liye impact (hammer) drill aur masonry drill bits chahiye; simple drill driver lakdi aur metal ke liye hota hai. Wall plugs screw ko pakadte hain, aur goggles aankhon ko dust se bachate hain.",
+            "hi": "कंक्रीट या ईंट के लिए इम्पैक्ट (हैमर) ड्रिल और मेसनरी ड्रिल बिट चाहिए; साधारण ड्रिल ड्राइवर लकड़ी और धातु के लिए है। वॉल प्लग स्क्रू को पकड़ते हैं और चश्मा आँखों को धूल से बचाता है।",
+        },
+    ),
+    "wall_shelf": Topic(
+        key="wall_shelf",
+        patterns=(r"(wall\s+)?shelf", r"shelves", r"wall\s+rack", r"(hang|mount|fix)\w*\s+.*\b(on|to)\s+(the\s+)?wall"),
+        terms=("wall plugs", "wood screws", "masonry drill bit", "screwdriver", "measuring tape"),
+        intent="PROJECT_HELP",
+        summary={
+            "en": "A wall shelf is held by screws in wall plugs: drill 6 mm holes with a masonry bit, push in the plugs, then drive the screws. A measuring tape keeps the brackets level.",
+            "hinglish": "Wall shelf wall plugs mein screws se tikta hai: masonry bit se 6 mm ke hole karein, plugs daalein, phir screws kasein. Measuring tape se brackets seedhe rahenge.",
+            "hi": "वॉल शेल्फ वॉल प्लग में लगे स्क्रू से टिकती है: मेसनरी बिट से 6 मिमी के छेद करें, प्लग डालें, फिर स्क्रू कसें। मापने का टेप ब्रैकेट सीधे रखने में मदद करता है।",
+        },
+    ),
+    "painting": Topic(
+        key="painting",
+        patterns=(r"\bpaint", r"\brang\b", r"रंग", r"पेंट"),
+        terms=("paint", "primer", "putty", "paint roller", "paint brush", "masking tape"),
+        intent="PROJECT_HELP",
+        summary={
+            "en": "Painting a room takes putty for cracks, a primer coat, then two coats of emulsion, applied with a roller for walls and a brush for edges.",
+            "hinglish": "Room paint karne ke liye daraaron ke liye putty, ek coat primer, phir emulsion ke do coat lagte hain; walls ke liye roller aur kinaron ke liye brush.",
+            "hi": "कमरे की पुताई के लिए दरारों में पुट्टी, एक कोट प्राइमर और फिर इमल्शन के दो कोट लगते हैं; दीवारों के लिए रोलर और किनारों के लिए ब्रश।",
+        },
+        clarify={
+            "en": "What are you painting — inside walls, outside walls, wood or metal? And roughly how big is the area?",
+            "hinglish": "Aap kya paint kar rahe hain — andar ki deewarein, bahar ki deewarein, lakdi ya metal? Aur area lagbhag kitna bada hai?",
+            "hi": "आप क्या रंग रहे हैं — अंदर की दीवारें, बाहर की दीवारें, लकड़ी या धातु? और जगह लगभग कितनी बड़ी है?",
+        },
+        specific=(
+            "room",
+            "wall",
+            "walls",
+            "ceiling",
+            "door",
+            "gate",
+            "wood",
+            "metal",
+            "kamra",
+            "kamre",
+            "deewar",
+            "कमरा",
+            "दीवार",
+            "interior",
+            "exterior",
+            "x",
+            "ft",
+            "feet",
+            "sq",
+        ),
+    ),
+    "bathroom_repair": Topic(
+        key="bathroom_repair",
+        patterns=(r"bathroom", r"washroom", r"बाथरूम", r"toilet", r"टॉयलेट"),
+        terms=("tap", "connector", "silicone sealant", "ptfe tape", "valve"),
+        intent="REPAIR_HELP",
+        summary={
+            "en": "Common bathroom repairs need a tap or its connector, PTFE tape for threaded joints, silicone sealant for gaps around the basin or tiles, and a valve if a supply line must be shut off.",
+            "hinglish": "Bathroom ki aam repair ke liye tap ya uska connector, threaded joints ke liye PTFE tape, basin ya tiles ke aas-paas ke gaps ke liye silicone sealant, aur supply band karne ke liye valve chahiye hota hai.",
+            "hi": "बाथरूम की आम मरम्मत के लिए नल या उसका कनेक्टर, चूड़ीदार जोड़ों के लिए PTFE टेप, बेसिन या टाइल के आसपास की दरारों के लिए सिलिकॉन सीलेंट और सप्लाई बंद करने के लिए वाल्व चाहिए।",
+        },
+        clarify={
+            "en": "What needs fixing in the bathroom — a tap, a leaking pipe or joint, the shower, or gaps around tiles?",
+            "hinglish": "Bathroom mein kya theek karna hai — tap, leak karta pipe ya joint, shower, ya tiles ke aas-paas ke gaps?",
+            "hi": "बाथरूम में क्या ठीक करना है — नल, रिसता पाइप या जोड़, शॉवर, या टाइल के आसपास की दरारें?",
+        },
+        specific=(
+            "tap",
+            "nal",
+            "नल",
+            "pipe",
+            "paip",
+            "पाइप",
+            "shower",
+            "tile",
+            "tiles",
+            "leak",
+            "tapak",
+            "टपक",
+            "valve",
+            "flush",
+            "seal",
+            "geyser",
+            "connector",
+            "basin",
+        ),
+    ),
+    "electrical_work": Topic(
+        key="electrical_work",
+        patterns=(
+            r"wiring",
+            r"\bre-?wire",
+            r"electrical\s+work",
+            r"bijli\s+ka\s+kaam",
+            r"बिजली\s*का\s*काम",
+            r"install\w*\s+(a\s+)?(fan|switch|socket|light|mcb)",
+            r"(fan|switch|socket|light|mcb)\s+(install|lagana|लगाना)",
+        ),
+        terms=("wire", "switch", "socket", "mcb", "insulation tape", "line tester"),
+        intent="PROJECT_HELP",
+        summary={
+            "en": "Electrical work needs the right wire size for the load, switches and sockets, an MCB for protection, insulation tape and a line tester to check the supply is off.",
+            "hinglish": "Electrical kaam ke liye load ke hisaab se sahi wire size, switch aur socket, protection ke liye MCB, insulation tape aur supply band hai ya nahi check karne ke liye line tester chahiye.",
+            "hi": "बिजली के काम के लिए लोड के अनुसार सही तार, स्विच और सॉकेट, सुरक्षा के लिए MCB, इंसुलेशन टेप और सप्लाई बंद है या नहीं जाँचने के लिए लाइन टेस्टर चाहिए।",
+        },
+        safety="electrical",
+    ),
+}
+
+# --- General knowledge ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Concept:
+    key: str
+    patterns: tuple[str, ...]
+    title: str
+    text: str  # English; a model translates when one is configured, otherwise it is shown in English
+    terms: tuple[str, ...] = ()  # catalogue words worth showing alongside
+
+
+KNOWLEDGE: dict[str, Concept] = {
+    "ptfe_tape": Concept(
+        "ptfe_tape",
+        (r"ptfe", r"teflon\s+tape", r"thread\s+(seal\s+)?tape"),
+        "PTFE (thread seal) tape",
+        "PTFE tape is a thin white tape wound clockwise around the threads of a pipe fitting or tap before it is screwed in. It fills the tiny gaps in the thread so water can't seep through. It is not a glue and won't fix a crack.",
+        ("ptfe tape",),
+    ),
+    "pvc_vs_cpvc": Concept(
+        "pvc_vs_cpvc",
+        (r"pvc.*cpvc", r"cpvc.*pvc", r"difference.*(pvc|cpvc)", r"cpvc\s+(kya|क्या)"),
+        "PVC vs CPVC",
+        "PVC and CPVC are both plastic pipes. Ordinary PVC (and UPVC) is for cold water, drainage and conduit. CPVC is treated to take hot water (up to about 90 °C), so it is used for geyser and hot-water lines. They need their own fittings and solvent cement; they don't glue to each other.",
+        ("cpvc", "upvc"),
+    ),
+    "drill_bit": Concept(
+        "drill_bit",
+        (r"drill\s+bit\s+(kya|क्या|what|means)", r"what\s+(is|are)\s+(a\s+)?drill\s+bits?", r"masonry\s+bit"),
+        "Drill bits",
+        "A drill bit is the replaceable cutting piece that goes in the drill's chuck. Masonry bits (with a hard tip) are for brick and concrete and work best in an impact drill; HSS bits are for metal; wood bits have a sharp centre point. Match the bit to the material and to the size of the wall plug or screw.",
+        ("drill bit",),
+    ),
+    "impact_vs_driver": Concept(
+        "impact_vs_driver",
+        (
+            r"impact\s+drill.*(driver|cordless)",
+            r"(driver|cordless).*impact\s+drill",
+            r"which\s+drill",
+            r"hammer\s+drill",
+        ),
+        "Impact drill vs drill driver",
+        "An impact (hammer) drill adds a hammering action so it can go through brick and concrete. A drill driver is lighter and cordless, good for wood, metal, plastics and driving screws, but slow in masonry. Many people keep both.",
+        ("impact drill", "drill driver"),
+    ),
+    "mcb": Concept(
+        "mcb",
+        (r"\bmcb\b.*(kya|क्या|what|means|use)", r"what\s+is\s+(an\s+)?mcb", r"circuit\s+breaker"),
+        "MCB",
+        "An MCB (miniature circuit breaker) is an automatic switch that cuts the supply when a circuit draws too much current or short-circuits, protecting the wiring from overheating. Unlike a fuse it can be switched back on. Its rating (e.g. 16 A) and curve (B/C) must match the circuit — a job for a licensed electrician.",
+        ("mcb",),
+    ),
+    "wall_plug": Concept(
+        "wall_plug",
+        (r"wall\s+plug", r"rawl\s+plug", r"\banchor\s+(kya|what)"),
+        "Wall plugs",
+        "A wall plug (rawl plug) is a small plastic sleeve pushed into a drilled hole in brick or concrete. When a screw is driven into it, it expands and grips the wall. The plug size (e.g. 6 mm) must match the drill bit and the screw.",
+        ("wall plugs",),
+    ),
+    "emulsion_primer": Concept(
+        "emulsion_primer",
+        (r"primer\s+(kya|what|why)", r"what\s+is\s+(a\s+)?primer", r"emulsion"),
+        "Primer and emulsion",
+        "Primer is the first coat that seals the surface and helps the paint stick evenly; emulsion is the water-based wall paint that goes on top, usually in two coats. Putty fills cracks and holes before either.",
+        ("primer", "paint"),
+    ),
+    "screws_vs_bolts": Concept(
+        "screws_vs_bolts",
+        (r"screw.*bolt", r"bolt.*screw"),
+        "Screws vs bolts",
+        "A screw cuts its own thread into wood, plastic or a wall plug and is driven with a screwdriver. A bolt goes through a hole and is tightened with a nut, which is stronger for joining metal parts or timber that must be taken apart later.",
+        ("screws", "bolt"),
+    ),
+    "multimeter": Concept(
+        "multimeter",
+        (r"multimeter", r"line\s+tester"),
+        "Multimeter and line tester",
+        "A line tester is a screwdriver with a neon lamp that lights when the tip touches a live wire — a quick check that the supply is on or off. A multimeter measures voltage, current and resistance precisely and can check continuity of a wire or a fuse.",
+        ("multimeter", "line tester"),
+    ),
+}
+
+# --- Safety --------------------------------------------------------------------------------------
+
+SAFETY_TRIGGERS: dict[str, tuple[str, ...]] = {
+    "electrical": (
+        r"wiring",
+        r"\bwire",
+        r"\bmcb\b",
+        r"socket",
+        r"switch",
+        r"\bfan\b",
+        r"electric",
+        r"bijli",
+        r"बिजली",
+        r"shock",
+        r"current",
+        r"tar\b",
+        r"तार",
+        r"geyser",
+        r"live\s+wire",
+    ),
+    "structural": (
+        r"beam",
+        r"slab",
+        r"column",
+        r"load[\s-]*bearing",
+        r"demolish",
+        r"break\s+(the\s+)?wall",
+        r"ceiling",
+    ),
+    "gas": (r"\bgas\b", r"cylinder", r"\blpg\b", r"stove"),
+    "heights": (r"ladder", r"\broof", r"chhat", r"छत", r"height"),
+}
+
+SAFETY_TEXT: dict[str, dict[str, str]] = {
+    "electrical": {
+        "en": "Safety: switch off the MCB or main supply and check with a line tester before touching any wiring. Wiring, MCB changes and new circuits should be done by a licensed electrician.",
+        "hinglish": "Safety: kisi bhi wire ko chhune se pehle MCB ya main supply band karein aur line tester se check karein. Wiring, MCB badalna aur naye circuit licensed electrician se hi karwayein.",
+        "hi": "सुरक्षा: किसी भी तार को छूने से पहले MCB या मुख्य सप्लाई बंद करें और लाइन टेस्टर से जाँचें। वायरिंग, MCB बदलना और नए सर्किट लाइसेंस प्राप्त इलेक्ट्रीशियन से ही करवाएँ।",
+    },
+    "structural": {
+        "en": "Safety: never cut or drill into beams, columns or load-bearing walls without a structural engineer's advice.",
+        "hinglish": "Safety: beam, column ya load-bearing wall ko structural engineer ki salah ke bina kabhi na kaatein ya drill karein.",
+        "hi": "सुरक्षा: बीम, कॉलम या लोड-बेयरिंग दीवार को स्ट्रक्चरल इंजीनियर की सलाह के बिना कभी न काटें और न ड्रिल करें।",
+    },
+    "gas": {
+        "en": "Safety: gas connections and appliances must be fitted and tested by an authorised technician. If you smell gas, open windows, don't switch anything on or off, and call your supplier.",
+        "hinglish": "Safety: gas connection aur appliances authorised technician se hi lagwayein aur test karwayein. Gas ki smell aaye to khidkiyan kholein, kuch bhi on/off na karein, aur supplier ko call karein.",
+        "hi": "सुरक्षा: गैस कनेक्शन और उपकरण अधिकृत तकनीशियन से ही लगवाएँ और जाँच करवाएँ। गैस की गंध आए तो खिड़कियाँ खोलें, कुछ भी चालू/बंद न करें और सप्लायर को फ़ोन करें।",
+    },
+    "heights": {
+        "en": "Safety: use a stable ladder with someone holding it, wear a helmet, and don't work at height alone.",
+        "hinglish": "Safety: mazboot ladder use karein jise koi pakde, helmet pehnein, aur height par akele kaam na karein.",
+        "hi": "सुरक्षा: मज़बूत सीढ़ी का उपयोग करें जिसे कोई पकड़े रखे, हेलमेट पहनें और ऊँचाई पर अकेले काम न करें।",
+    },
+}
+
+# --- Language detection ---------------------------------------------------------------------------
+
+DEVANAGARI = re.compile(r"[ऀ-ॿ]")
+HINGLISH_MARKERS = {
+    "mujhe",
+    "chahiye",
+    "chahiye.",
+    "chaiye",
+    "karna",
+    "karne",
+    "karna hai",
+    "hai",
+    "hain",
+    "kya",
+    "kaise",
+    "kitna",
+    "kitne",
+    "kitni",
+    "ke",
+    "ka",
+    "ki",
+    "liye",
+    "mera",
+    "meri",
+    "mere",
+    "saman",
+    "samaan",
+    "wala",
+    "wali",
+    "nahi",
+    "nahin",
+    "batao",
+    "bataye",
+    "bataiye",
+    "dikhao",
+    "dikhaiye",
+    "lagana",
+    "lagane",
+    "banana",
+    "banane",
+    "andar",
+    "bahar",
+    "aur",
+    "theek",
+    "thik",
+    "kharab",
+    "toota",
+    "tuta",
+    "lene",
+    "khareedna",
+    "kharidna",
+    "paise",
+    "rupaye",
+    "rupees",
+    "budget hai",
+    "mein",
+    "par",
+    "se",
+    "ko",
+    "hoga",
+    "hogi",
+    "chahiye?",
+}
+
+# --- Answer sentences (basic mode) -----------------------------------------------------------------
+
+TEXT: dict[str, dict[str, str]] = {
+    "en": {
+        "found": "Here is what we have in the catalogue for that:",
+        "found_budget": "Here is what fits within {budget}:",
+        "kit_total": "Together the marked items come to {total} — within your budget of {budget}.",
+        "over_budget": "The cheapest options together come to {total}, which is over {budget}; you could start with the essentials.",
+        "none": "I couldn't find matching products in the catalogue right now. Try searching with other words, or look through the categories.",
+        "none_terms": "I couldn't find anything in the catalogue for “{terms}” right now. Try other words, or browse the categories.",
+        "partial": "Some of these are not in the catalogue right now: {missing}.",
+        "unclear": "Tell me a bit more so I can find the right products.",
+        "budget_only": "What are you looking for within {budget} — tools, plumbing, electrical, safety gear, or something specific?",
+        "knowledge": "General information (not about one specific product):",
+        "compat": "To check that two things fit together I need both names or sizes (for example the pipe size and the fitting). The product pages list the specifications.",
+        "quantity": "Quantities depend on the size of the job. Tell me the measurements and what you are working on, and I'll estimate.",
+        "estimate_paint": "Estimate for a {length} × {width} ft room with {height} ft walls: about {area} sq ft of wall, roughly {litres} litres of emulsion for two coats and {primer} litres of primer. Actual coverage depends on the paint and the surface.",
+        "estimate_label": "This is an estimate, not a quotation.",
+        "notice_unavailable": "AI is temporarily unavailable. You can search products normally.",
+        "greeting": "Hello! Tell me what you're fixing, building or looking for and I'll find the right products from our catalogue.",
+        "reason_term": "Matches “{term}”",
+        "reason_budget": "Within your budget",
+        "add_all": "Add recommended items to cart",
+    },
+    "hinglish": {
+        "found": "Iske liye humare catalogue mein ye products hain:",
+        "found_budget": "{budget} ke andar ye options hain:",
+        "kit_total": "Marked items milakar {total} ke hain — aapke {budget} ke budget ke andar.",
+        "over_budget": "Sabse saste options milakar {total} ke hain, jo {budget} se zyada hai; aap zaroori cheezon se shuru kar sakte hain.",
+        "none": "Abhi catalogue mein iske liye matching products nahi mile. Doosre words se search karein, ya categories dekhein.",
+        "none_terms": "Abhi catalogue mein “{terms}” ke liye kuch nahi mila. Doosre words try karein, ya categories dekhein.",
+        "partial": "Inme se kuch abhi catalogue mein nahi hain: {missing}.",
+        "unclear": "Thoda aur batayein taaki main sahi products dhoondh sakoon.",
+        "budget_only": "{budget} ke andar aap kya dhoondh rahe hain — tools, plumbing, electrical, safety gear, ya kuch khaas?",
+        "knowledge": "General jaankari (kisi ek product ke baare mein nahi):",
+        "compat": "Do cheezein fit hongi ya nahi, ye batane ke liye dono ke naam ya size chahiye (jaise pipe ka size aur fitting). Product pages par specifications di hui hain.",
+        "quantity": "Quantity kaam ke size par depend karti hai. Naap aur kaam batayein, main andaza laga dunga.",
+        "estimate_paint": "{length} × {width} ft ke kamre ({height} ft ki deewarein) ka andaza: lagbhag {area} sq ft deewar, do coat ke liye lagbhag {litres} litre emulsion aur {primer} litre primer. Asli coverage paint aur surface par depend karti hai.",
+        "estimate_label": "Ye sirf andaza hai, quotation nahi.",
+        "notice_unavailable": "AI abhi uplabdh nahi hai. Aap products normally search kar sakte hain.",
+        "greeting": "Namaste! Batayein aap kya theek kar rahe hain, bana rahe hain ya dhoondh rahe hain — main humare catalogue se sahi products dhoondh dunga.",
+        "reason_term": "“{term}” se match karta hai",
+        "reason_budget": "Aapke budget ke andar",
+        "add_all": "Recommended items cart mein daalein",
+    },
+    "hi": {
+        "found": "इसके लिए हमारे कैटलॉग में ये उत्पाद हैं:",
+        "found_budget": "{budget} के भीतर ये विकल्प हैं:",
+        "kit_total": "चिह्नित वस्तुएँ मिलाकर {total} की हैं — आपके {budget} के बजट के भीतर।",
+        "over_budget": "सबसे सस्ते विकल्प मिलाकर {total} के हैं, जो {budget} से अधिक है; आप ज़रूरी चीज़ों से शुरू कर सकते हैं।",
+        "none": "अभी कैटलॉग में इसके लिए मेल खाते उत्पाद नहीं मिले। दूसरे शब्दों से खोजें, या श्रेणियाँ देखें।",
+        "none_terms": "अभी कैटलॉग में “{terms}” के लिए कुछ नहीं मिला। दूसरे शब्द आज़माएँ, या श्रेणियाँ देखें।",
+        "partial": "इनमें से कुछ अभी कैटलॉग में नहीं हैं: {missing}।",
+        "unclear": "थोड़ा और बताएँ ताकि मैं सही उत्पाद ढूँढ सकूँ।",
+        "budget_only": "{budget} के भीतर आप क्या ढूँढ रहे हैं — औज़ार, प्लंबिंग, बिजली का सामान, सुरक्षा उपकरण, या कुछ खास?",
+        "knowledge": "सामान्य जानकारी (किसी एक उत्पाद के बारे में नहीं):",
+        "compat": "दो चीज़ें आपस में फिट होंगी या नहीं, यह बताने के लिए दोनों के नाम या आकार चाहिए (जैसे पाइप का आकार और फिटिंग)। उत्पाद पृष्ठों पर विनिर्देश दिए हैं।",
+        "quantity": "मात्रा काम के आकार पर निर्भर करती है। नाप और काम बताएँ, मैं अनुमान लगा दूँगा।",
+        "estimate_paint": "{length} × {width} फ़ुट के कमरे ({height} फ़ुट की दीवारें) का अनुमान: लगभग {area} वर्ग फ़ुट दीवार, दो कोट के लिए लगभग {litres} लीटर इमल्शन और {primer} लीटर प्राइमर। असली कवरेज पेंट और सतह पर निर्भर करती है।",
+        "estimate_label": "यह केवल अनुमान है, कोटेशन नहीं।",
+        "notice_unavailable": "AI अभी उपलब्ध नहीं है। आप उत्पाद सामान्य रूप से खोज सकते हैं।",
+        "greeting": "नमस्ते! बताइए आप क्या ठीक कर रहे हैं, बना रहे हैं या ढूँढ रहे हैं — मैं हमारे कैटलॉग से सही उत्पाद ढूँढ दूँगा।",
+        "reason_term": "“{term}” से मेल खाता है",
+        "reason_budget": "आपके बजट के भीतर",
+        "add_all": "सुझाए गए सामान कार्ट में डालें",
+    },
+}
+
+SUGGESTED_PROMPTS = {
+    "en": [
+        "Find a drill for concrete",
+        "Help me repair a leaking tap",
+        "Build a painting kit",
+        "Find hardware under ₹1000",
+    ],
+    "hinglish": [
+        "Concrete ke liye drill dhoondho",
+        "Tapakta nal theek karne mein madad karo",
+        "Painting ka kit banao",
+        "₹1000 ke andar hardware dikhao",
+    ],
+    "hi": ["कंक्रीट के लिए ड्रिल ढूँढें", "टपकता नल ठीक करने में मदद करें", "पुताई का किट बनाएँ", "₹1000 के भीतर सामान दिखाएँ"],
+}
+
+
+def text(language: str, key: str, **values) -> str:
+    block = TEXT.get(language) or TEXT["en"]
+    return (block.get(key) or TEXT["en"][key]).format(**values)

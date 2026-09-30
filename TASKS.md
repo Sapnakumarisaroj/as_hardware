@@ -228,7 +228,16 @@ needs the Django admin for daily operations (it stays at `/django-admin/` for ra
 - [~] Browser testing was not performed (same localhost limitation as earlier phases); the dashboard was exercised through 102 jsdom tests and the API through the live checks. The responsive card layout of tables is CSS-only and was not viewed on a real phone
 - [~] Main bundle 488 kB (4 kB up: the staff link in the header and the login redirect); the unexplained jump since Phase 8 remains
 
+## Phase 12 — AI hardware assistant ✅ (2026-09-30)
+Scope: ROADMAP Phase 12. `/ai-assistant` for customers; services in `backend/apps/ai/services/` (intent, catalog retrieval,
+recommendation, conversation, assistant), `backend/integrations/llm/` (none / Ollama / OpenAI-compatible / Anthropic),
+`AIMessage.payload` (migration `0002`), conversations API + `/api/ai/assistant/`, React page with product cards and add to cart.
+- Verified: basic mode (tests) and live Ollama `qwen2.5:3b` (real answers, grounded products, budget, Hinglish); cross-user access gives 404; anonymous gives 401.
+- Local model setup and fallback: docs/FREE_TOOLS.md ("AI assistant").
+- Not built (later phases): semantic search (13), voice (15), image search, project builder UI, cross-session memory.
+
 ## Known limitations carried forward
+- AI assistant: understanding is rule-first with a small model (`qwen2.5:3b`) on top, so unusual phrasings can get a follow-up question or a broader search; answers on CPU take several seconds (first one loads the model); retrieval is keyword search ("tap" also matches "tape"-style near words are filtered only for known topics); only English, Hindi and Hinglish; production runs in basic mode until an AI provider is chosen
 - Riders are assigned by staff; there is no automatic assignment, no job offers to several riders, and a rider who does not react to a job is not timed out (staff reassign)
 - After a failed delivery the rider is free at once; the store does not confirm that the goods came back before sending them out again or cancelling
 - An order that was partly delivered (one shipment of several) can't be cancelled; the remaining shipment is sent out again, or handled by staff outside the system
