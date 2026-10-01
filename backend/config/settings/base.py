@@ -198,6 +198,7 @@ REST_FRAMEWORK = {
         "user": env("THROTTLE_USER", default="240/min"),
         "auth": env("THROTTLE_AUTH", default="10/min"),
         "ai": env("THROTTLE_AI", default="30/min"),
+        "image_search": env("THROTTLE_IMAGE_SEARCH", default="10/min"),
     },
 }
 
@@ -313,6 +314,15 @@ CATALOG_SEARCH_BACKEND = env(
 SEMANTIC_EMBEDDER = env("SEMANTIC_EMBEDDER", default="hashing")
 SEMANTIC_MODEL = env("SEMANTIC_MODEL", default="paraphrase-multilingual-MiniLM-L12-v2")
 SEMANTIC_MODEL_LOCAL_ONLY = env.bool("SEMANTIC_MODEL_LOCAL_ONLY", default=False)  # never download at runtime
+# Photo search (Phase 14): none | clip (local open-source CLIP, needs requirements/semantic.txt) | ollama |
+# openai_compatible | anthropic. Off by default like the LLM; photos are checked, analysed and thrown away.
+VISION_PROVIDER = env("VISION_PROVIDER", default="none")
+VISION_MODEL = env("VISION_MODEL", default="")  # clip: clip-ViT-B-32 · ollama: qwen2.5vl:3b · anthropic: haiku
+VISION_MODEL_LOCAL_ONLY = env.bool("VISION_MODEL_LOCAL_ONLY", default=False)  # clip: never download at runtime
+VISION_TIMEOUT_SECONDS = env.float("VISION_TIMEOUT_SECONDS", default=60)
+IMAGE_SEARCH_MAX_BYTES = env.int("IMAGE_SEARCH_MAX_BYTES", default=8 * 1024 * 1024)
+IMAGE_SEARCH_MAX_PRODUCTS = env.int("IMAGE_SEARCH_MAX_PRODUCTS", default=8)
+IMAGE_SEARCH_CACHE_SECONDS = env.int("IMAGE_SEARCH_CACHE_SECONDS", default=24 * 3600)  # same photo → same analysis
 
 # --- Logging --------------------------------------------------------------------
 LOG_LEVEL = env("LOG_LEVEL", default="INFO")

@@ -3,7 +3,11 @@
 AI-powered hardware marketplace with fast delivery from nearby stores: a Django REST API and a React SPA. Delivery
 times are calculated per order (store, distance, preparation, riders, workload), never a fixed promise.
 
-> Status: **Phase 13 complete** (adds **semantic search**: describe what you need — "machine for drilling concrete",
+> Status: **Phase 14 complete** (adds **search by photo** at `/image-search`, also from the camera button in the
+> search bar: take or upload a photo of a tool or part and get what it most likely is, how sure we are, and the real
+> catalogue products that match, with Add to Cart. When it isn't sure it says so and shows possible matches; photos are
+> never stored. Off by default; for development set `VISION_PROVIDER=clip`, see [docs/FREE_TOOLS.md](docs/FREE_TOOLS.md)).
+> **Phase 13** added **semantic search**: describe what you need — "machine for drilling concrete",
 > "Mujhe diwar me hole karne ka saman chahiye", "hamer" — and the normal search finds real products by meaning, related
 > words, Hindi/Hinglish and typos, with a short reason when the match isn't obvious; keyword search stays as the fallback.
 > Administrators manage the index under **Search** in the dashboard. The optional local AI model is described in
@@ -65,6 +69,7 @@ npm run dev
 
 - App: http://localhost:5173
 - Rider app (delivery partners): http://localhost:5173/rider
+- Search by photo: http://localhost:5173/image-search (needs `VISION_PROVIDER=clip` or `ollama` in `backend/.env`)
 - Business dashboard (administrators, store managers): http://localhost:5173/admin
 - API health: http://127.0.0.1:8000/api/health/
 - API docs: http://127.0.0.1:8000/api/docs/ (Swagger) · `/api/redoc/` · `/api/schema/`

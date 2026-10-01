@@ -579,5 +579,36 @@ GENERAL_HARDWARE_QUESTION), `products[]` (catalog product cards with live price,
 Adding to the cart uses the normal cart API (`POST /api/cart/items/`); the assistant has no endpoint that touches prices,
 inventory or orders.
 
+## Photo search (Phase 14)
+Find a product from a photo. Anyone may search (limited by the `image_search` throttle, `THROTTLE_IMAGE_SEARCH`,
+default 10/min per user or IP); signed-in customers also get a history, which only they can see or delete (another
+customer's id gives 404). The photo is validated, cleaned (EXIF/GPS removed) and analysed, then **discarded**. The vision
+model only names the item; products always come from the catalogue search over published products, and every card is
+built from live database rows (price, stock, delivery) when it is shown.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/api/ai/image-search/` | public, not throttled | `{enabled, available, provider, model, calibrated, max_bytes, max_megabytes, accepted_types}`. Never exposes keys or URLs |
+| POST | `/api/ai/image-search/` | public, throttled | multipart `image` (JPEG/PNG/WebP, ≤ `IMAGE_SEARCH_MAX_BYTES`, default 8 MB). → 200 result (below). Errors: 400 `image_required`, `image_empty`, `image_invalid` (not a readable picture: renamed PDF, truncated file…), `image_unsupported` (GIF, BMP, HEIC…), `image_too_small` (< 32 px), `image_too_many_pixels` (> 40 MP); 413 `image_too_large` (also refused from `Content-Length` before the upload is parsed); 429 throttled |
+| GET | `/api/ai/image-searches/` | customer | Own photo searches, newest first: `{id, title, status, label, percent, product_count, created_at}` |
+| GET, DELETE | `/api/ai/image-searches/{id}/` | owner | The result as answered (products rebuilt from the live catalogue) / delete it |
+| POST | `/api/ai/image-searches/clear/` | customer | Delete all own photo searches (204) |
+
+Result: `id` (saved search, `null` for visitors), `status` and `status_text`:
+
+| `status` | Meaning | Products |
+|---|---|---|
+| `identified` | The item is named with enough confidence (CLIP probability ≥ 50 %, or a vision model's own estimate, capped at 80 %) | Products named after the item (`reason` "Matches “claw hammer”"), products only tagged/categorised with it ("Related to …"), up to 2 per likely alternative |
+| `uncertain` | Not sure; up to three possibilities | "Possible match: pipe wrench (29%)" for each possibility |
+| `not_hardware` | A person, pet, screenshot, … (or the vision model says it isn't hardware) | none |
+| `no_match` | Identified, but the shop doesn't sell it | none; `search_query` for a word search |
+| `unavailable` | Photo search off, model missing/loading/failing | none; the page offers a word search |
+
+Also: `explanation` (customer wording), `identification {label, confidence, percent, level: high|medium|low, calibrated,
+description}`, `alternatives[{label, confidence, percent, search}]`, `search_query`, `notice` (shown for vision-model
+answers: "can be wrong"), `ai {mode, provider, model, calibrated}`, `image {format, width, height, bytes, fingerprint}`,
+`products[]` (catalogue cards like the assistant's: `variant_id`, `reason`, `match_label`, `match_confidence`).
+Adding to the cart is the normal `POST /api/cart/items/` with the card's `variant_id`.
+
 ## Planned 🔜
-- **AI** more endpoints in Phases 14–19 (voice, vision, projects). **Notifications/support channels** (Phase 20).
+- **AI** more endpoints in Phases 15–19 (voice, projects, calculators, compatibility, smart cart). **Notifications/support channels** (Phase 20).

@@ -1,7 +1,7 @@
 import { useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 
-import { ClockIcon, CloseIcon, SearchIcon } from '@/components/icons'
+import { CameraIcon, ClockIcon, CloseIcon, SearchIcon } from '@/components/icons'
 import { useAuth } from '@/features/auth/context'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { formatPrice } from '@/lib/format'
@@ -182,6 +182,14 @@ export function SearchBar({ initialQuery = '', autoFocus = false }: { initialQue
             <CloseIcon className="size-4" />
           </button>
         )}
+        <Link
+          to="/image-search"
+          aria-label="Search by photo"
+          title="Search by photo"
+          className="p-2 text-ink-600 hover:text-amber-600 focus-visible:text-amber-600"
+        >
+          <CameraIcon className="size-5" />
+        </Link>
         <button type="submit" className="rounded-r-md bg-amber-500 px-3 py-2.5 text-ink-950 hover:bg-amber-600" aria-label="Search">
           <SearchIcon className="size-4" />
         </button>

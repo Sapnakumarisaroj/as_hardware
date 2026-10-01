@@ -255,6 +255,14 @@ and the change of `proof_image` to private storage; no data is changed (no proof
 | `ai_project` | user FK, conversation FK, project_type (painting/bathroom_repair/…), title, inputs JSON, safety_notes, status |
 | `ai_projectitem` | project FK, variant FK (nullable), label, quantity DECIMAL, unit, is_optional, is_estimate, rationale, sort_order |
 
+**Photo search (Phase 14)** needs no new table or migration. A signed-in customer's photo search is an
+`ai_aiconversation` with `kind = image` (`title` "Photo: claw hammer", `metadata` `{status, image: {format, width, height,
+bytes, fingerprint}}`) and one assistant `ai_aimessage` (`content` = the explanation, `product_refs` =
+`[{product_id, variant_id, reason, label, confidence}]`, `payload` = status, identification, alternatives, notice, ai).
+**The photo itself is never stored** (not in the database, not on disk); the fingerprint is the first 16 hex digits of
+the SHA-256 of the cleaned pixels. Anonymous searches are not saved. The analysis of a photo is cached in Django's cache
+(`ai:image:<provider>:<model>:<sha256>`, `IMAGE_SEARCH_CACHE_SECONDS`), and CLIP's label vectors under `vision:kinds:<hash>`.
+
 ## core ✅
 `core_job` (Phase 8): the background job queue, with name, payload JSON, status (queued/running/done/failed),
 dedupe_key, run_after, attempts/max_attempts, last_error, locked_at, finished_at, and an index on (status, run_after).

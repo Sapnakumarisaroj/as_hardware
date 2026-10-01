@@ -178,6 +178,25 @@ cd backend
 Switching embedders is safe at any time: vectors of the old one are ignored until `rebuild_search_index` replaces them,
 and search works meanwhile (keyword + related words). `SEMANTIC_EMBEDDER=none` switches the embedding part off entirely.
 
+## Photo search (Phase 14)
+| Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Photo checks and cleaning | Pillow (already a dependency) | ✅ HPND | ✅ | No | Verify, EXIF removal, rotation, scaling. No new package |
+| Default provider | `none` | ✅ project code | ✅ | No | Photo search answers "unavailable" and offers the word search. Production default (shared hosting) |
+| Local, recommended for development | [CLIP](https://github.com/openai/CLIP) via sentence-transformers: **`clip-ViT-L-14`** (default `VISION_MODEL` for `clip`) | ✅ MIT (model) / Apache-2.0 (library) | ✅ after one download (~1.7 GB, Hugging Face cache) | No | `VISION_PROVIDER=clip`. Same packages as semantic search (`requirements/semantic.txt`). ~2 GB RAM, ~1.5 s per photo on a laptop CPU. Gives real probabilities and can only answer with known item kinds. `clip-ViT-B-32` (~600 MB, ~0.2 s) is lighter but recognised 9–10 of 13 test photos vs 12 of 13 (it took a claw hammer for a shovel) |
+| Local, optional | Ollama + **`qwen2.5vl:3b`** (~3.2 GB) or `llava`, `moondream` | ✅ MIT runtime; Qwen2.5-VL 3B under the Qwen licence | ✅ | No | `VISION_PROVIDER=ollama`, `VISION_MODEL=qwen2.5vl:3b`. Describes things CLIP has no kind for; needs a GPU in practice (about 2 minutes per photo on a laptop CPU; 5 of 6 test photos right) and its confidence is its own estimate (capped, labelled) |
+| Hosted, optional | Any OpenAI-compatible vision endpoint, or Anthropic | depends on the service | ❌ | Yes | Never enabled automatically; keys only in the server's `.env` |
+
+Setup (development machine, CLIP):
+```powershell
+cd backend
+.\.venv\Scripts\pip install -r requirements\semantic.txt     # if not done for semantic search
+# backend/.env:  VISION_PROVIDER=clip
+.\.venv\Scripts\python manage.py runserver                     # first start downloads clip-ViT-L-14 once
+# afterwards: VISION_MODEL_LOCAL_ONLY=true (never download at runtime)
+```
+Photos are never stored. Throttle: `THROTTLE_IMAGE_SEARCH` (default 10/min). Limits: `IMAGE_SEARCH_MAX_BYTES` (8 MB).
+
 ## Deliberately NOT used
 Redis, Celery, RabbitMQ, Elasticsearch/OpenSearch, pgvector-only features, paid vector databases, AWS/Azure/GCP services,
 Sentry SaaS, and any paid AI API. They are replaced by DB-backed queues + cron, DB cache, portable SQL search, and in-Python vector math.

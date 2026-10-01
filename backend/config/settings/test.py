@@ -48,3 +48,5 @@ if DB_VENDOR == "sqlite":
 # Semantic search is off in tests unless a test switches it on (override_settings).
 SEMANTIC_EMBEDDER = "none"
 CATALOG_SEARCH_BACKEND = "apps.catalog.search.KeywordSearchBackend"
+# Photo search tests use a fake provider; no model is ever loaded or called.
+VISION_PROVIDER = "none"

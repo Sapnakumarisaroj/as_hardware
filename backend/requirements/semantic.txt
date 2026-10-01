@@ -1,5 +1,5 @@
-# Optional (Phase 13): a local sentence-transformers model for meaning-based search.
-# Only needed when SEMANTIC_EMBEDDER=sentence_transformers. Large (PyTorch is several hundred MB) and needs
+# Optional (Phase 13): a local sentence-transformers model for meaning-based search, and (Phase 14) the local
+# CLIP model for photo search. Only needed when SEMANTIC_EMBEDDER=sentence_transformers or VISION_PROVIDER=clip. Large (PyTorch is several hundred MB) and needs
 # about 1 GB of RAM, so it is for a VPS or your own machine, not shared hosting. Without it the default
 # `hashing` embedder + synonym tables still give typo-tolerant, English/Hindi/Hinglish search.
 # First run downloads the model (~470 MB for paraphrase-multilingual-MiniLM-L12-v2) into the

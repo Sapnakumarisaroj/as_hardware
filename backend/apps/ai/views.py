@@ -23,6 +23,29 @@ from .services.retrieval import CatalogRetrievalService
 from .services.schemas import LANGUAGES
 
 
+def product_cards(refs: list[dict], context: dict) -> list[dict]:
+    """Product cards for stored references, from live catalogue rows (prices and stock are never stale)."""
+    if not refs:
+        return []
+    rows = context.setdefault("_rows", {})
+    wanted = [r["product_id"] for r in refs if r["product_id"] not in rows]
+    if wanted:
+        rows.update(CatalogRetrievalService().products_by_id(wanted))
+    out = []
+    for ref in refs:
+        product = rows.get(ref["product_id"])
+        if product is None:
+            continue  # no longer on sale: the card disappears, the text stays
+        data = ProductListSerializer(product, context=context).data
+        data["variant_id"] = ref.get("variant_id") or data.get("default_variant_id")
+        data["reason"] = ref.get("reason", "")
+        if "confidence" in ref:  # photo search: which identification led to this product
+            data["match_label"] = ref.get("label", "")
+            data["match_confidence"] = ref["confidence"]
+        out.append(data)
+    return out
+
+
 class AIMessageSerializer(serializers.ModelSerializer):
     """A message as shown. Product cards are rebuilt from live catalogue rows each time."""
 
@@ -58,23 +81,7 @@ class AIMessageSerializer(serializers.ModelSerializer):
         return (obj.payload or {}).get(key) or default
 
     def get_products(self, obj) -> list[dict]:
-        refs = obj.product_refs or []
-        if not refs:
-            return []
-        rows = self.context.setdefault("_rows", {})
-        wanted = [r["product_id"] for r in refs if r["product_id"] not in rows]
-        if wanted:
-            rows.update(CatalogRetrievalService().products_by_id(wanted))
-        out = []
-        for ref in refs:
-            product = rows.get(ref["product_id"])
-            if product is None:
-                continue  # no longer on sale: the card disappears, the text stays
-            data = ProductListSerializer(product, context=self.context).data
-            data["variant_id"] = ref.get("variant_id") or data.get("default_variant_id")
-            data["reason"] = ref.get("reason", "")
-            out.append(data)
-        return out
+        return product_cards(obj.product_refs or [], self.context)
 
     def get_questions(self, obj) -> list[str]:
         return self._payload(obj, "questions", [])

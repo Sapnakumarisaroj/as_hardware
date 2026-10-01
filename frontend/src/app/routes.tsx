@@ -50,6 +50,10 @@ export const routes: RouteObject[] = [
           },
           { path: 'wishlist', lazy: async () => ({ Component: (await import('@/pages/WishlistPage')).WishlistPage }) },
           { path: 'ai-assistant', lazy: async () => ({ Component: (await import('@/pages/AssistantPage')).AssistantPage }) },
+          {
+            path: 'image-search',
+            lazy: async () => ({ Component: (await import('@/pages/ImageSearchPage')).ImageSearchPage }),
+          },
           { path: 'login', lazy: async () => ({ Component: (await auth()).LoginPage }) },
           { path: 'register', lazy: async () => ({ Component: (await auth()).RegisterPage }) },
           { path: 'account', lazy: async () => ({ Component: (await account()).AccountPage }) },

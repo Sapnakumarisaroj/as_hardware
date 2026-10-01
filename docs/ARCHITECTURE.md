@@ -384,6 +384,12 @@ integrations/llm/
    ├── OllamaProvider        local dev (free): e.g. llama3.1/qwen2.5 for chat, llava/qwen2.5-vl for vision
    ├── OpenAICompatibleProvider  any OpenAI-compatible endpoint (self-hosted or paid; owner opts in)
    └── AnthropicProvider     optional; owner opts in
+integrations/vision/  (Phase 14; photo → item name only, see "Photo search")
+  VisionProvider.identify(image, kinds) → VisionResult(guesses, calibrated, is_hardware)
+   ├── NoVisionProvider      default
+   ├── ClipVisionProvider    local CLIP, calibrated probabilities over known kinds
+   ├── OllamaVisionProvider  local vision-language model (qwen2.5vl, llava, moondream…)
+   └── OpenAICompatibleVisionProvider / AnthropicVisionProvider   optional, owner opts in
 ```
 - **Production:** shared hosting cannot run an LLM (RAM/CPU/process limits). Production defaults to `LLM_PROVIDER=none`,
   so every AI feature still works in a deterministic "basic" mode (keyword search, calculators, spec-rule compatibility,
@@ -440,6 +446,42 @@ POST /api/ai/conversations/{id}/messages/  →  HardwareAssistantService.ask
 - **Add to cart** goes through the ordinary cart API from the browser; the assistant cannot write prices, stock or orders.
 - **Frontend:** `/ai-assistant` (`pages/AssistantPage.tsx`, `features/ai/`): welcome, suggested prompts, product cards,
   Add to Cart / Add recommended items, loading, error with retry, history, clear/delete; full-height with a sticky input on phones.
+
+### Photo search (Phase 14)
+```
+POST /api/ai/image-search/ (multipart image)            apps/ai/image_views.py → ImageSearchService.search
+  Content-Length check   refuse > IMAGE_SEARCH_MAX_BYTES before Django parses the upload (413)
+  clean_image            services/image_input.py: size, Pillow open + verify, format JPEG/PNG/WebP (by content, not
+                         name), ≤ 40 MP, ≥ 32 px; EXIF rotation applied, alpha flattened, re-drawn as plain RGB pixels
+                         (EXIF/GPS/ICC/text gone), scaled to ≤ 1024 px; SHA-256 of the pixels
+  VisionProvider         integrations/vision/ (cache: same photo + same model → no second model call)
+    none                 default: outcome "unavailable", the page offers the word search
+    clip                 local CLIP (sentence-transformers, default clip-ViT-L-14): zero-shot over ~80 hardware kinds +
+                         9 "not hardware" kinds + specific catalogue subcategories (services/vision_kinds.py); softmax
+                         with CLIP's logit scale → real probabilities; label vectors cached (memory + Django cache)
+    ollama               local vision-language model (e.g. qwen2.5vl:3b) answering JSON {item, alternatives,
+                         search_terms, confidence, is_hardware}; confidence is the model's own → capped at 0.8
+    openai_compatible / anthropic   optional hosted models, same prompt; keys only on the server
+  interpret              not_hardware (calibrated "not hardware" mass ≥ 0.4 and above the best tool, or the model says so)
+                         · identified (≥ 0.5) · uncertain (up to 3 possibilities ≥ 0.05) · no_match · unavailable
+  catalogue              each label's search words → the shop's search backend over published products; kept only when
+                         the item's words are whole words in the product (name → "Matches", tags/category → "Related to");
+                         a product that is a more specific different item ("Drill *Bit* Set" for "drill") is skipped
+  history                signed in: AIConversation(kind=image) + one AIMessage (outcome, refs); never the photo
+```
+- **Never invents:** the provider sees no prices or stock and can only name things; products come from `selectors.product_queryset()`
+  and cards are rebuilt from live rows every time (also when a saved search is reopened).
+- **Honest confidence:** percentages are shown as real probabilities only for CLIP; a vision-language model's number is labelled
+  "AI estimate", capped, and comes with a "can be wrong" notice. Below 50 % the page says "We're not sure" and calls the
+  products "possible matches".
+- **Resources:** CLIP ViT-L/14 needs ~1.7 GB disk and ~2 GB RAM, ~1.5 s per photo on a laptop CPU (ViT-B/32: ~600 MB, ~0.2 s,
+  noticeably weaker); the model and label vectors are prepared by a background warm-up thread started in `config/wsgi.py`.
+  Neither fits shared hosting, so production defaults to `none`.
+- **Frontend:** `/image-search` (`pages/ImageSearchPage.tsx`, `features/imageSearch/`), reached from the camera button in the
+  search bar: "Take a photo" (`capture="environment"` opens the rear camera on phones), "Choose a photo", drag and drop;
+  browser-side type/size checks (HEIC explained) and downscaling to ≤ 1600 px JPEG before upload; result card with
+  confidence meter, explanation, alternatives as word-search links, product cards with Add to Cart; word search on every
+  dead end; signed-in history (reopen, delete, clear).
 
 ## 6. Integrations (provider pattern)
 

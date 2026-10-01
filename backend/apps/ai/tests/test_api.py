@@ -137,7 +137,8 @@ def test_the_assistant_has_no_way_to_change_prices_stock_or_orders(auth_client, 
 
     patterns = [str(p.pattern) for p in get_resolver().url_patterns]
     ai_routes = [p for p in _all_routes() if p.startswith("api/ai/")]
-    assert ai_routes and all(any(part in p for part in ("ai/assistant", "ai/conversations")) for p in ai_routes)
+    allowed = ("ai/assistant", "ai/conversations", "ai/image-search/", "ai/image-searches")  # Phase 14: photo search
+    assert ai_routes and all(any(part in p for part in allowed) for p in ai_routes)
     assert patterns  # sanity
 
 
