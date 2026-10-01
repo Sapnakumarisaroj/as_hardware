@@ -87,6 +87,16 @@ export function ProductBrowser({ fixed = {}, heading, categoryLinks = false, emp
         </aside>
 
         <div aria-busy={products.isFetching}>
+          {products.data?.search?.matched === 'related' && (
+            <p className="mb-3 rounded-md bg-amber-100 px-3 py-2 text-sm text-ink-900" role="status">
+              We didn’t find those exact words in “{products.data.search.query}”, so we searched for what you probably
+              mean
+              {products.data.search.related_terms?.length
+                ? `: ${products.data.search.related_terms.slice(0, 4).join(', ')}`
+                : ''}
+              .
+            </p>
+          )}
           {products.data?.search?.matched === 'some_terms' && (
             <p className="mb-3 rounded-md bg-amber-100 px-3 py-2 text-sm text-ink-900">
               No products match every word in “{products.data.search.query}”. Showing the closest matches instead.

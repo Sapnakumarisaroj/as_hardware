@@ -85,6 +85,51 @@ describe('search', () => {
     expect(await screen.findByText(/No products match every word in “drill unicorn”/)).toBeInTheDocument()
   })
 
+  it('explains meaning-based results: what we understood and why each product is shown', async () => {
+    const related = productSummary({ match_type: 'related', match_reason: 'Suits “drilling”: it is a drill' })
+    const exact = productSummary({
+      id: 9,
+      name: 'Drill Bit Set',
+      slug: 'drill-bit-set',
+      match_type: 'keyword',
+      match_reason: 'Matches your search',
+    })
+    mockApi({
+      get: routes({
+        '/products/': {
+          ...productPage([related, exact]),
+          search: {
+            query: 'machine for drilling',
+            matched: 'related',
+            mode: 'hybrid',
+            related_terms: ['drill', 'drill bit'],
+          },
+        },
+      }),
+    })
+    renderRoute('/search?q=machine%20for%20drilling')
+    expect(await screen.findByText(/we searched for what you probably mean/)).toHaveTextContent(
+      'We didn’t find those exact words in “machine for drilling”, so we searched for what you probably mean: drill, drill bit.',
+    )
+    expect(screen.getAllByTestId('match-reason')).toHaveLength(1) // obvious keyword matches need no explanation
+    expect(screen.getByTestId('match-reason')).toHaveTextContent('Suits “drilling”: it is a drill')
+  })
+
+  it('type-ahead shows why a suggested product matches', async () => {
+    mockApi({
+      get: routes({
+        '/search/suggest/': {
+          ...suggestions,
+          products: [productSummary({ match_reason: 'Suits “hole”: it is a drill' })],
+        },
+      }),
+    })
+    const { user } = renderRoute('/')
+    await user.type(searchBox(), 'hole in wall')
+    const list = await screen.findByRole('listbox', { name: 'Search suggestions' })
+    expect(await within(list).findByRole('option', { name: /Impact Drill 650W.*Suits “hole”/ })).toBeInTheDocument()
+  })
+
   it('signed-in shoppers see and can clear recent searches; searches are recorded', async () => {
     signIn()
     const api = mockApi({

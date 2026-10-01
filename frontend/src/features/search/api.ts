@@ -11,6 +11,7 @@ import { api } from '@/lib/api/client'
  */
 export interface Suggestions {
   query: string
+  /** Each product may carry `match_reason` (why it matches when its name does not say so). */
   products: ProductSummary[]
   categories: { name: string; slug: string; parent_name: string | null }[]
   brands: { name: string; slug: string }[]

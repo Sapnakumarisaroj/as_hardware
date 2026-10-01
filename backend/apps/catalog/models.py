@@ -329,3 +329,24 @@ class ProductSpecification(TimeStampedModel):
             except (ArithmeticError, ValueError):
                 self.numeric_value = None
         super().save(*args, **kwargs)
+
+
+class ProductEmbedding(models.Model):
+    """The search vector of one product (Phase 13). Derived data: safe to delete and rebuild.
+
+    `embedder` names the vector space (`hashing-v1-512`, `st:<model>`), `text_hash` fingerprints the
+    product text that was embedded, so a product is only embedded again when its words change.
+    """
+
+    product = models.OneToOneField(Product, on_delete=models.CASCADE, related_name="embedding")
+    embedder = models.CharField(max_length=160)
+    dimensions = models.PositiveSmallIntegerField()
+    vector = models.BinaryField(help_text="little-endian float32 values")
+    text_hash = models.CharField(max_length=64)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["embedder"])]
+
+    def __str__(self) -> str:
+        return f"embedding of product {self.product_id} ({self.embedder})"

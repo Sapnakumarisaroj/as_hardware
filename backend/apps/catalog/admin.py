@@ -88,6 +88,7 @@ class ProductAdmin(admin.ModelAdmin):
     readonly_fields = ("rating_avg", "rating_count", "created_at", "updated_at")
     list_select_related = ("brand", "category", "subcategory")
     inlines = [VariantInline, SpecificationInline, ImageInline]
+    actions = ["update_search_index"]
     fieldsets = (
         (None, {"fields": ("name", "slug", "sku", "brand", "category", "subcategory", "unit")}),
         ("Content", {"fields": ("short_description", "description", "tags")}),
@@ -98,6 +99,17 @@ class ProductAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return Product.objects.all()
+
+    @admin.action(description="Update semantic search index for the selected products")
+    def update_search_index(self, request, queryset):
+        from .semantic import index
+
+        try:
+            result = index.sync_products(list(queryset), force=True)
+        except RuntimeError as exc:
+            self.message_user(request, f"{exc} Keyword search keeps working.", level="error")
+            return
+        self.message_user(request, f"Search index updated for {result.embedded} product(s).")
 
 
 @admin.register(ProductVariant)

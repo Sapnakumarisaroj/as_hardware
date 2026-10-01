@@ -393,16 +393,43 @@ integrations/llm/
 - **Grounding, enforced in code:** the LLM reaches products only via tools; product cards are built from DB rows; cited IDs
   are re-validated; quantities come from Python formulas and are labelled as estimates; unknown specs give
   `insufficient_information`; the analytics assistant cannot run free-form SQL; low-confidence vision results show "possible matches".
-- **Search:** a `SearchBackend` interface chosen by `DB_VENDOR`:
-  - PostgreSQL: full-text `SearchVector` + `pg_trgm` trigram similarity (typo tolerance).
-  - MySQL/SQLite: token `icontains` over name/brand/SKU/tags/specs, plus a typo-tolerant pass that corrects each query term against a cached vocabulary table using `difflib`.
-  - Semantic (Phase 13): embeddings stored as JSON vectors with in-Python cosine similarity, fine for catalogs up to roughly 10–20k products and needing no pgvector. Enabled only when an embedding provider is configured.
+- **Search:** a pluggable backend (`CATALOG_SEARCH_BACKEND`) with one `search(queryset, query) → SearchResult` contract;
+  the same ORM code runs on SQLite, PostgreSQL and MySQL (no `pg_trgm`, no vendor full-text). See "Semantic search" below.
+
+### Semantic search (Phase 13)
+```
+GET /api/products/?q=…, /api/search/suggest/, CatalogRetrievalService (assistant)
+  └─ HybridSearchBackend.search                      apps/catalog/semantic/backend.py
+       keyword    KeywordSearchBackend (Phase 4) on the customer's words
+       related    expand.py: synonym table + assistant vocabulary (en / Devanagari / Hinglish) + typo correction
+                  against catalogue words → KeywordSearchBackend.any_terms(catalogue words)
+       semantic   index.similarities(query + related words) → cosine against ProductEmbedding vectors
+       final      keyword + 0.6 × related + 40 × semantic share  → Case/When `relevance` on the filtered queryset
+```
+- **Real products only.** Every candidate id is re-filtered through the listing queryset (published, active, not deleted,
+  plus the customer's filters); the result is an ordinary annotated queryset, so `ordering`, filters, facets and pagination
+  are untouched. Explanations are words ("For “hole”: drill"), never scores.
+- **Embedders** (`semantic/embedders.py`, `SEMANTIC_EMBEDDER`): `hashing` (default: character 3–5-grams hashed into 512
+  dims; no dependency, works on shared hosting, tolerant of typos and word forms, knows no synonyms), `sentence_transformers`
+  (local open-source model, default `paraphrase-multilingual-MiniLM-L12-v2`, 384 dims, English + Hindi meaning; loaded once
+  per process in a background warm-up thread started by `config/wsgi.py`; a search during loading uses keywords), `none`.
+- **Storage and maths:** `ProductEmbedding` holds float32 bytes per product (portable `BinaryField`, ~1.5 KB at 384 dims),
+  the embedder key and a SHA-256 of the embedded text (name, categories, tags, short description). The current embedder's
+  vectors are loaded into one matrix (numpy when installed, plain Python otherwise), cached until a row changes; a query is
+  one matrix–vector product. 20k products × 384 dims ≈ 30 MB and a few ms per query, so FAISS or pgvector are not needed
+  at this size and would tie the code to one database. Swap `index.similarities` if the catalogue grows past that.
+- **Freshness:** signals on product/variant/specification queue `catalog.sync_embedding` (deduplicated `core.Job`, inline
+  or cron like other jobs); brand/category renames queue an incremental rebuild; unchanged text is never re-embedded.
+- **Fallback, in order:** any exception in the extra parts → plain keyword result; embedder off/missing/loading or no index →
+  keyword + related words; nothing related and nothing removed → the keyword result unchanged.
+- **Tools:** `manage.py rebuild_search_index [--force|--status]`, `manage.py benchmark_search [--set main|held_out]`,
+  admin API `/api/admin/search/…`, the dashboard page `/admin/search`, and a Django admin action on products.
 
 ### The hardware assistant (Phase 12)
 ```
 POST /api/ai/conversations/{id}/messages/  →  HardwareAssistantService.ask
   IntentService            intent, language (en/hi/hinglish), search words, budget, room size; rules first, model optional
-  CatalogRetrievalService  the Phase 4 keyword search (the only place that reads products; Phase 13 replaces it here)
+  CatalogRetrievalService  the configured search backend (hybrid since Phase 13; the only place that reads products)
   RecommendationService    message, per-product reasons, budget fit, general knowledge, safety notes, quantity estimates
   AIConversationService    AIConversation / AIMessage records (payload keeps the structured parts)
 ```
@@ -475,8 +502,10 @@ src/
   saving, SKU, stock, delivery badge, variant attributes (shown in the spec table) and variant-specific images switch with
   it. Product cards with more than one variant link to "Choose options" instead of guessing a variant.
 - **Search service.** The UI only calls `/products/?q=` and `/search/suggest/`. The backend search engine is pluggable
-  (`CATALOG_SEARCH_BACKEND`). Phase 13 can switch to semantic/hybrid search without frontend changes. "Ask AI" in the
-  header is a clearly labelled "coming soon" entry point, not a fake assistant.
+  (`CATALOG_SEARCH_BACKEND`); Phase 13 switched the default to hybrid search with no change to these calls. The UI only
+  adds what the optional fields allow: a "we searched for what you probably mean" notice (`matched = related`) and a
+  short reason under products found by related words or meaning (also in the type-ahead). "Ask AI" in the header is a
+  clearly labelled "coming soon" entry point, not a fake assistant.
 - **Delivery honesty.** Product pages say "Fast delivery available from a nearby store" only when the variant is stocked at
   a store with a fast-delivery zone, and always add that availability/time is confirmed after address selection. No fixed
   "60 minutes" promise until the Phase 9 ETA engine exists.

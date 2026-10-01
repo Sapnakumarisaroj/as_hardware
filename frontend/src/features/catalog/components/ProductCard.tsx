@@ -38,6 +38,11 @@ export function ProductCard({ product }: { product: ProductSummary }) {
             {product.name}
           </Link>
         </h3>
+        {product.match_reason && product.match_type !== 'keyword' && (
+          <p className="text-xs italic text-ink-600" data-testid="match-reason">
+            {product.match_reason}
+          </p>
+        )}
         <Rating average={product.rating_avg} count={product.rating_count} compact />
         <PriceBlock price={product.price} mrp={product.mrp} discountPercent={product.discount_percent} />
         {hasOptions && <p className="text-xs text-ink-600">{product.variant_count} options available</p>}

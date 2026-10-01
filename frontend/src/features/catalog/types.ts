@@ -33,6 +33,9 @@ export interface ProductSummary {
   image_alt: string
   /** Live automatic offer for this product; the discount itself is applied in the cart. */
   offer: ProductOffer | null
+  /** Search results only: why this product is here when the words alone do not explain it. */
+  match_reason?: string
+  match_type?: 'keyword' | 'related' | 'semantic'
 }
 
 export interface ProductOffer {
@@ -99,7 +102,13 @@ export interface Paginated<T> {
 }
 
 export interface ProductPage extends Paginated<ProductSummary> {
-  search?: { query: string; matched: 'all_terms' | 'some_terms' }
+  search?: {
+    query: string
+    matched: 'all_terms' | 'some_terms' | 'related'
+    /** `hybrid` when related words / meaning were used; absent for plain keyword search. */
+    mode?: 'hybrid'
+    related_terms?: string[]
+  }
 }
 
 export interface SubCategory {

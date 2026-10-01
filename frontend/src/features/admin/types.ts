@@ -20,6 +20,7 @@ export type Section =
   | 'refunds'
   | 'support'
   | 'analytics'
+  | 'search'
 
 export interface StoreRef {
   id: number
@@ -668,4 +669,51 @@ export interface SupportDetail extends SupportRow {
     body: string
     created_at: string
   }[]
+}
+
+// --- Search index (Phase 13) ---------------------------------------------------------------------
+
+export interface SearchIndexStatus {
+  embedder: {
+    kind: 'none' | 'hashing' | 'sentence_transformers'
+    key: string
+    available: boolean
+    dimensions: number
+    model?: string
+    loaded?: boolean
+  }
+  search_backend: string
+  products: number
+  indexed: number
+  missing: number
+  stale: number
+  other_embedder: number
+  last_updated: string | null
+  ready: boolean
+}
+
+export interface SearchRebuildResult {
+  result: { embedded: number; unchanged: number; removed: number; failed: string[] }
+  status: SearchIndexStatus
+}
+
+export interface SearchExplainRow {
+  product_id: number
+  name: string
+  keyword: number
+  related: number
+  semantic: number
+  cosine: number | null
+  final: number
+  reason?: { type: 'keyword' | 'related' | 'semantic'; text: string }
+}
+
+export interface SearchExplanation {
+  mode: 'keyword' | 'hybrid'
+  embedder?: string
+  terms: string[]
+  related_terms: string[]
+  sources?: Record<string, string>
+  matched: string
+  results: SearchExplainRow[]
 }

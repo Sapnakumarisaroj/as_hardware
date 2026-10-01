@@ -107,6 +107,10 @@ export const routes: RouteObject[] = [
           { path: 'refunds', lazy: async () => ({ Component: (await returns()).AdminRefundsPage }) },
           { path: 'support', lazy: async () => ({ Component: (await support()).AdminSupportPage }) },
           { path: 'support/:id', lazy: async () => ({ Component: (await support()).AdminConversationPage }) },
+          {
+            path: 'search',
+            lazy: async () => ({ Component: (await import('@/pages/admin/SearchPage')).AdminSearchPage }),
+          },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

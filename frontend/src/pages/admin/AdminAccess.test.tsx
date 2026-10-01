@@ -83,6 +83,7 @@ describe('dashboard: navigation', () => {
       ['Brands', '/admin/brands'],
       ['Offers', '/admin/offers'],
       ['Coupons', '/admin/coupons'],
+      ['Search', '/admin/search'],
       ['Inventory', '/admin/inventory'],
       ['Delivery', '/admin/delivery'],
       ['Stores', '/admin/stores'],
@@ -107,6 +108,7 @@ describe('dashboard: navigation', () => {
     ['/admin/customers/7', 'Customer accounts'],
     ['/admin/offers', 'Offers'],
     ['/admin/coupons', 'Coupons'],
+    ['/admin/search', 'The search index'],
     ['/admin/products/new', 'Products'],
     ['/admin/stores/new', 'Stores and warehouses'],
   ])('a store manager who types %s is told it is for administrators, and no data is requested', async (path, what) => {

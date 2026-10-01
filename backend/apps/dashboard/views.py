@@ -14,7 +14,7 @@ from .scope import date_range, store_ids_for
 # role again, so hiding a menu entry is a convenience, not the protection.
 ADMIN_SECTIONS = [
     "dashboard", "orders", "products", "categories", "brands", "inventory", "stores", "warehouses",
-    "delivery", "offers", "coupons", "customers", "returns", "refunds", "support", "analytics",
+    "delivery", "offers", "coupons", "customers", "returns", "refunds", "support", "analytics", "search",
 ]  # fmt: skip
 MANAGER_SECTIONS = [
     "dashboard", "orders", "inventory", "stores", "delivery", "returns", "refunds", "support", "analytics",

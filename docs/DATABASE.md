@@ -63,6 +63,12 @@ User ─1:1─ CustomerProfile          Category (self-FK: parent → subcategor
 | `catalog_productimage` | product FK, variant FK (nullable), image (jpg/png/webp ≤ 5 MB, random filename), alt_text, sort_order, is_primary | |
 | `catalog_productspecification` | product FK, name, key (slug of name), value, unit, numeric_value DECIMAL (auto-parsed), sort_order | unique (product, key); index (key, numeric_value), (key, value) |
 | `catalog_recentsearch` (Phase 4) | user FK, query, normalized (lower-case), searched_at | unique (user, normalized); max 10 rows per user (older ones pruned on write); cascade-deleted with the user |
+| `catalog_productembedding` (Phase 13, migration `0003`) | product (one-to-one, cascade), embedder (vector space, e.g. `hashing-v1-512`, `st:paraphrase-multilingual-MiniLM-L12-v2`), dimensions, vector (BLOB/`bytea`/`longblob`: little-endian float32), text_hash (SHA-256 of embedder + embedded text), updated_at | index (embedder). **Derived data**: safe to delete and rebuild (`manage.py rebuild_search_index`); not needed in backups |
+
+**Semantic search (Phase 13)** adds only `catalog_productembedding`. Vectors are bytes rather than JSON (4 bytes per
+number instead of ~20) and are compared in Python, so no `pgvector` or other extension is required on any vendor. A row is
+written again only when the product's text fingerprint or the embedder changes; rows of another embedder are ignored by
+search and replaced on the next rebuild; rows of soft-deleted products are removed by a full sync.
 
 **Filters and search (Phase 4)** read these tables without new columns. Listing price/MRP/discount, total and
 fast-delivery stock, units sold and variant count are annotated with portable correlated subqueries (one SQL query per
@@ -268,7 +274,7 @@ Analytics buckets days/weeks/months in Python from `created_at`/`processed_at`/`
 functions), which keeps the PostgreSQL/MySQL/SQLite portability rules above.
 
 ## Planned tables 🔜
-`accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 13–19) · `ai_productembedding` (JSON vectors, Phase 13) · `django_cache` (prod DB cache, created by `createcachetable`).
+`accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 14–19) · `django_cache` (prod DB cache, created by `createcachetable`).
 
 ## Transactions
 - `orders.services.place_order` runs in one atomic block. It locks the customer's cart row (so concurrent "Place order"

@@ -103,6 +103,7 @@ All configuration comes from environment variables. See `.env.example` for the f
 | `WHATSAPP_PROVIDER`, `SMS_PROVIDER` | `mock` | `mock` until you connect real accounts |
 | `LLM_PROVIDER` | `none` or `ollama` | `none` unless you choose and approve a provider |
 | `BACKGROUND_JOBS_MODE` | `inline` | `cron` if cron is available |
+| `SEMANTIC_EMBEDDER` | `hashing` | `hashing` on shared hosting; `sentence_transformers` only on a VPS with ~1 GB spare RAM (`requirements/semantic.txt`, `SEMANTIC_MODEL_LOCAL_ONLY=true`). After deploying run `manage.py migrate` then `manage.py rebuild_search_index` once |
 | `VITE_API_BASE_URL` | `http://localhost:8000/api` | `https://api.yourdomain.com/api` (**build-time**; set before `npm run build`) |
 | `ROUTING_PROVIDER` | `haversine` (offline) | `haversine`, or `osrm` with `OSRM_BASE_URL` (§2a) |
 | `GEOCODING_PROVIDER` | `none` (offline) | `none`, or `nominatim` with `NOMINATIM_USER_AGENT` (§2a) |

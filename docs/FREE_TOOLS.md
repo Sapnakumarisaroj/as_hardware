@@ -37,7 +37,7 @@ and `frontend/package-lock.json`.
 ## Catalog & search (Phase 4): no new dependencies
 | Feature | Tool | Free/Open Source | Local | API Key | Notes |
 |---|---|---|---|---|---|
-| Product search | In-repo `KeywordSearchBackend` (Django ORM) | ✅ project code | ✅ | No | Portable across SQLite/PostgreSQL/MySQL; replaceable by a semantic backend (Phase 13) via `CATALOG_SEARCH_BACKEND` |
+| Product search | In-repo `KeywordSearchBackend` (Django ORM) | ✅ project code | ✅ | No | Portable across SQLite/PostgreSQL/MySQL; since Phase 13 the fallback underneath `HybridSearchBackend` (see "Semantic search") |
 | Filters / facets | Django ORM aggregates | ✅ | ✅ | No | |
 | Product images | Django storage + local `MEDIA_ROOT` | ✅ | ✅ | No | S3/Cloudinary possible later via `STORAGES`; not used now |
 | Demo images | Pillow (already a dependency for `ImageField`) | ✅ HPND | ✅ | No | Drawn locally by `seed_demo_data`; dev only |
@@ -153,10 +153,30 @@ existing React app and reads the project's own database through the Django API.
   (`OLLAMA_BASE_URL` defaults to `http://localhost:11434`; `LLM_TIMEOUT_SECONDS` defaults to 45).
 - **Minimum:** about 4 GB free RAM and a few GB of disk; a GPU is optional (CPU answers take several seconds).
 - **Fallback:** with `LLM_PROVIDER=none` (the default, and the production default), or when the model is down or slow, the
-  assistant answers in *basic mode* (rule-based understanding + keyword catalog search, still from real products). If a
+  assistant answers in *basic mode* (rule-based understanding + the catalogue search, hybrid since Phase 13, still from real products). If a
   configured model fails the customer sees "AI is temporarily unavailable. You can search products normally."
 - **Optional providers, never enabled automatically:** `openai_compatible` (any compatible endpoint: `OPENAI_COMPATIBLE_BASE_URL`,
   `OPENAI_COMPATIBLE_API_KEY`) and `anthropic` (`ANTHROPIC_API_KEY`). Keys stay on the server; the browser never sees them.
+
+## Semantic search (Phase 13)
+| Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Hybrid ranking, synonyms, Hindi/Hinglish, typo correction | In-repo `apps/catalog/semantic/` (Python `difflib`, `hashlib`, `zlib`, `array`) | ✅ project code | ✅ | No | **Default.** No new dependency; works on shared hosting and every database |
+| Default embedder | In-repo `hashing` embedder (character n-grams → 512 numbers) | ✅ project code | ✅ | No | No download, no model. Typo- and word-form tolerant; knows no synonyms (the tables cover those) |
+| Optional embedder | [sentence-transformers](https://github.com/UKPLab/sentence-transformers) 6.1 + PyTorch 2.14 + numpy (`requirements/semantic.txt`) | ✅ Apache-2.0 / BSD | ✅ | No | `SEMANTIC_EMBEDDER=sentence_transformers`. Needs ~1 GB RAM and ~1–2 GB disk (CPU-only PyTorch is smaller); a VPS or your own machine, **not shared hosting** |
+| Model | [`paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2) (default `SEMANTIC_MODEL`) | ✅ Apache-2.0 | ✅ after one download (~470 MB, Hugging Face cache) | No | 384 dimensions, 50+ languages incl. Hindi. Set `SEMANTIC_MODEL_LOCAL_ONLY=true` after the first download so the server never downloads at runtime. Loads in 10–20 s at server start (warm-up thread; keyword search meanwhile) |
+| Vector search | In-repo cosine over one cached matrix (numpy when installed, plain Python otherwise) | ✅ project code | ✅ | No | Fine to roughly 10–20k products. FAISS / pgvector **not used**: unnecessary at this size and pgvector would tie search to PostgreSQL |
+
+Setup with the model (development machine):
+```powershell
+cd backend
+.\.venv\Scripts\pip install -r requirements\semantic.txt
+# backend/.env:  SEMANTIC_EMBEDDER=sentence_transformers
+.\.venv\Scripts\python manage.py rebuild_search_index      # first run downloads the model, then embeds every product
+.\.venv\Scripts\python manage.py benchmark_search          # keyword vs hybrid on labelled queries (demo catalogue)
+```
+Switching embedders is safe at any time: vectors of the old one are ignored until `rebuild_search_index` replaces them,
+and search works meanwhile (keyword + related words). `SEMANTIC_EMBEDDER=none` switches the embedding part off entirely.
 
 ## Deliberately NOT used
 Redis, Celery, RabbitMQ, Elasticsearch/OpenSearch, pgvector-only features, paid vector databases, AWS/Azure/GCP services,

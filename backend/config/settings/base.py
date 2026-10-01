@@ -305,7 +305,14 @@ AI_ASSISTANT_MAX_PRODUCTS = env.int("AI_ASSISTANT_MAX_PRODUCTS", default=6)
 BACKGROUND_JOBS_MODE = env("BACKGROUND_JOBS_MODE", default="inline")  # inline | cron (DB queue)
 # Product search backend (dotted path). The portable keyword backend works on every database;
 # Phase 13 adds a semantic/hybrid backend with the same interface.
-CATALOG_SEARCH_BACKEND = env("CATALOG_SEARCH_BACKEND", default="apps.catalog.search.KeywordSearchBackend")
+CATALOG_SEARCH_BACKEND = env(
+    "CATALOG_SEARCH_BACKEND", default="apps.catalog.semantic.backend.HybridSearchBackend"
+)  # hybrid falls back to the plain KeywordSearchBackend whenever the semantic parts can't run
+# Semantic search (Phase 13): none | hashing | sentence_transformers. `hashing` needs nothing extra;
+# `sentence_transformers` needs requirements/semantic.txt and a one-time model download.
+SEMANTIC_EMBEDDER = env("SEMANTIC_EMBEDDER", default="hashing")
+SEMANTIC_MODEL = env("SEMANTIC_MODEL", default="paraphrase-multilingual-MiniLM-L12-v2")
+SEMANTIC_MODEL_LOCAL_ONLY = env.bool("SEMANTIC_MODEL_LOCAL_ONLY", default=False)  # never download at runtime
 
 # --- Logging --------------------------------------------------------------------
 LOG_LEVEL = env("LOG_LEVEL", default="INFO")

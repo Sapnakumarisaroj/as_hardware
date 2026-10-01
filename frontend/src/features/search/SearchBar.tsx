@@ -59,7 +59,7 @@ export function SearchBar({ initialQuery = '', autoFocus = false }: { initialQue
           key: `p-${p.id}`,
           kind: 'product',
           label: p.name,
-          detail: p.price ? formatPrice(p.price) : undefined,
+          detail: [p.price ? formatPrice(p.price) : '', p.match_reason ?? ''].filter(Boolean).join(' · ') || undefined,
           image: p.image,
           href: `/p/${p.slug}`,
         })),

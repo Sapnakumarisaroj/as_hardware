@@ -12,7 +12,7 @@ and the frontend do not change when it is switched on.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 from django.conf import settings
@@ -43,7 +43,10 @@ PHRASE_IN_NAME_BONUS = 20
 class SearchResult:
     queryset: QuerySet[Product]  # annotated with integer `relevance`
     terms: tuple[str, ...]
-    matched: str  # "all_terms" | "some_terms" | "none"
+    matched: str  # "all_terms" | "some_terms" | "related" (synonyms / meaning, Phase 13) | "none"
+    mode: str = "keyword"  # "keyword" | "hybrid"
+    related_terms: tuple[str, ...] = ()  # catalogue words the query was understood as (hybrid only)
+    reasons: dict = field(default_factory=dict)  # product id -> {"type": keyword|related|semantic, "text": str}
 
 
 def normalize_query(raw: str | None) -> str:
@@ -100,6 +103,19 @@ class KeywordSearchBackend:
             "description": _any_form(forms, lambda f: Q(short_description__icontains=f) | Q(description__icontains=f)),
         }
 
+    def any_terms(self, qs: QuerySet[Product], phrases: list[str]) -> QuerySet[Product]:
+        """Products containing ANY of the phrases (each kept whole, e.g. "ptfe tape"), scored by where."""
+        qs = qs.annotate(_search_tags=Cast("tags", TextField()))
+        any_match = Q()
+        score = Value(0, output_field=IntegerField())
+        for phrase in phrases:
+            for field_name, condition in self._term_conditions(phrase.lower()).items():
+                any_match |= condition
+                score = score + Case(
+                    When(condition, then=Value(WEIGHTS[field_name])), default=Value(0), output_field=IntegerField()
+                )
+        return qs.annotate(relevance=score).filter(any_match)
+
     def search(self, qs: QuerySet[Product], query: str) -> SearchResult:
         terms = tokenize(query)
         if not terms:
@@ -111,10 +127,10 @@ class KeywordSearchBackend:
         score = Value(0, output_field=IntegerField())
         for conditions in per_term:
             any_field = Q()
-            for field, condition in conditions.items():
+            for place, condition in conditions.items():
                 any_field |= condition
                 score = score + Case(
-                    When(condition, then=Value(WEIGHTS[field])), default=Value(0), output_field=IntegerField()
+                    When(condition, then=Value(WEIGHTS[place])), default=Value(0), output_field=IntegerField()
                 )
             matches_term.append(any_field)
         phrase = query.lower()

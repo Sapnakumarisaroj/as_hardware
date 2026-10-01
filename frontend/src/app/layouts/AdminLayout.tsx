@@ -28,6 +28,7 @@ const MENU: { title: string; items: [Section, string, string][] }[] = [
       ['brands', 'Brands', '/admin/brands'],
       ['offers', 'Offers', '/admin/offers'],
       ['coupons', 'Coupons', '/admin/coupons'],
+      ['search', 'Search', '/admin/search'],
     ],
   },
   {

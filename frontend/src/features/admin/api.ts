@@ -34,6 +34,9 @@ import type {
   Rider,
   Role,
   RuleInput,
+  SearchExplanation,
+  SearchIndexStatus,
+  SearchRebuildResult,
   StaffRefund,
   StaffShipment,
   StockMovement,
@@ -439,4 +442,40 @@ export function useUpdateConversation(id: number) {
       (await api.patch<SupportDetail>(`/admin/support/${id}/`, changes)).data,
     ['support'],
   )
+}
+
+// --- Search index (Phase 13, administrators) -----------------------------------------------------
+
+export function useSearchIndex() {
+  const enabled = useIsStaff()
+  return useQuery({
+    queryKey: ['admin', 'search', 'index'],
+    queryFn: async () => (await api.get<SearchIndexStatus>('/admin/search/index/')).data,
+    enabled,
+  })
+}
+
+export function useRebuildSearchIndex() {
+  return useChange(
+    async (force: boolean) => (await api.post<SearchRebuildResult>('/admin/search/index/rebuild/', { force })).data,
+    ['search'],
+  )
+}
+
+export function useRefreshProductEmbedding() {
+  return useChange(
+    async (productId: number) =>
+      (await api.post<{ status: SearchIndexStatus }>(`/admin/search/index/products/${productId}/`)).data,
+    ['search'],
+  )
+}
+
+/** Every score behind the ranking of `q` (keyword, related words, meaning). Only runs for a query. */
+export function useSearchExplain(q: string) {
+  const enabled = useIsStaff() && q.trim() !== ''
+  return useQuery({
+    queryKey: ['admin', 'search', 'explain', q],
+    queryFn: async () => (await api.get<SearchExplanation>('/admin/search/explain/', { params: { q } })).data,
+    enabled,
+  })
 }

@@ -37,7 +37,7 @@ Legend: ✅ implemented & tested · 🔜 planned (phase)
 | POST/PUT/PATCH/DELETE | `/api/categories/…` | admin | Delete is soft, refused if it has subcategories/products (409) |
 | GET | `/api/brands/`, `/api/brands/{slug}/` | public | |
 | POST/PUT/PATCH/DELETE | `/api/brands/…` | admin | Soft delete |
-| GET | `/api/products/` | public | Paginated listing. Query parameters below. Adds `search {query, matched}` when `q` is used |
+| GET | `/api/products/` | public | Paginated listing. Query parameters below. Adds `search {query, matched}` when `q` is used (hybrid search adds `mode`, `related_terms` and per-product `match_reason`/`match_type`; see *Search*) |
 | GET | `/api/products/facets/` | public | Filter options + counts for the **same** parameters as the listing (see *Facets*) |
 | GET | `/api/products/{slug}/` | public | Listing fields + `description`, `tags`, `gst_rate`, `hsn_code`, `max_order_quantity`, `is_returnable`, `variants[]`, `specifications[]`, `images[]` |
 | POST | `/api/products/` | admin | Product + `variants[]` + `specifications[]` in one request (transactional) |
@@ -45,7 +45,7 @@ Legend: ✅ implemented & tested · 🔜 planned (phase)
 | DELETE | `/api/products/{slug}/` | admin | Soft delete (past orders keep snapshots) |
 | GET | `/api/products/{slug}/reviews/` | public | Approved reviews only, paginated |
 | POST | `/api/products/{slug}/reviews/` | customer | `{rating 1–5, title?, body?}`. Requires a delivered purchase; one review per product |
-| GET | `/api/search/suggest/?q=` | public | Type-ahead: up to 6 `products` (listing shape), 4 `categories` `{name, slug, parent_name}`, 4 `brands`. Fewer than 2 characters → empty lists |
+| GET | `/api/search/suggest/?q=` | public | Type-ahead: up to 6 `products` (listing shape; `match_reason` when found by meaning/related words), 4 `categories` `{name, slug, parent_name}`, 4 `brands`. Fewer than 2 characters → empty lists |
 | GET | `/api/search/recent/` | customer | Own recent searches `[{query, searched_at}]`, newest first (max 10 kept) |
 | POST | `/api/search/recent/` | customer | `{query}` → 201 (de-duplicated case-insensitively; under 2 chars → 204, not stored) |
 | DELETE | `/api/search/recent/` | customer | Clear own history (204) |
@@ -107,12 +107,26 @@ Each variant: `id, sku, name, attributes{…}, mrp, price, discount_percent, dis
 - `specifications`: only keys shared by at least 40 % of the results (with at least 2 distinct values) are offered, max 6 keys × 15 values. A drill listing therefore offers power/chuck size and a wire listing offers area/length. Selected keys always stay visible.
 
 ### Search
-The listing's `q` goes through a pluggable backend (`CATALOG_SEARCH_BACKEND`, default `apps.catalog.search.KeywordSearchBackend`, portable across SQLite/PostgreSQL/MySQL):
+The listing's `q` goes through a pluggable backend (`CATALOG_SEARCH_BACKEND`). Since Phase 13 the default is
+`apps.catalog.semantic.backend.HybridSearchBackend`; it starts from the keyword search below and falls back to exactly
+that result whenever its extra parts are switched off, unavailable or fail. Both are portable across SQLite/PostgreSQL/MySQL.
+
+**Keyword** (`apps.catalog.search.KeywordSearchBackend`, Phase 4):
 - Words are lower-cased; sizes like `1.5` or `3/4` stay intact; stop words (`the`, `for`, `with`…) are dropped; simple plurals match (`drills` → `drill`).
 - A word may match product name/SKU, brand, category/subcategory, tags, variant name/SKU, specification name/value, or description.
 - Every word must match. If nothing matches all words, products matching any word are returned with `search.matched = "some_terms"` (the UI says so).
 - Relevance weights: name 10, brand 6, category 5, tags/variant 4, spec 3, description 1, plus 20 when the whole phrase is in the name.
-- Phase 13 adds a semantic/hybrid backend with the same `search()` contract, so this API and the frontend don't change.
+
+**Hybrid** (Phase 13) adds, for products that exist and are visible: *related words* (what an everyday description,
+Hindi/Hinglish phrase or typo means in catalogue words: "machine for drilling concrete" → drill, masonry drill bit;
+"diwar me hole" → drill, wall plug; "hamer" → hammer) and *meaning* (cosine similarity of the query to each product's
+stored vector, `SEMANTIC_EMBEDDER`). Scores are added, so exact names still rank first. When only some words matched,
+accidental substrings are dropped ("ac" in "Hacksaw"). Filters, `ordering` and pagination apply exactly as before;
+prices and stock always come from the database. Additive response fields (absent with plain keyword search):
+- `search.mode = "hybrid"`, `search.related_terms[]` (the catalogue words used), `search.matched = "related"` when none of the customer's own words matched.
+- per product `match_type` (`keyword` | `related` | `semantic`) and `match_reason` ("For “hole”: drill", "Showing “hammer” for “hamer”", "Similar to what you described"). The UI shows the reason only for `related`/`semantic`.
+
+A query with no matching meaning returns an empty page, never invented products.
 
 ## Addresses ✅ (own only)
 | Method | Path | Notes |
@@ -535,6 +549,10 @@ paginated (`page`, `page_size` ≤ 100) and searched on the server; the browser 
 | GET, GET | `/api/admin/support/`, `…/{id}/` | staff | Conversations; managers see those about orders of their stores. `?status=` (a status or `active`), `?q=` (subject, customer name/email/phone, order number), `?mine=true`, `?store=`. Rows: `customer{id, name, email, phone}`, `order_number, store_name, assigned_to(_name), message_count, last_message, waiting_for_reply`; detail adds `messages[{sender_type, sender_name, body, created_at}]` |
 | POST | `/api/admin/support/{id}/reply/` | staff | `{body}` → 201. Posts an agent message, sets `waiting_customer`, assigns the conversation to the sender if nobody has it |
 | PATCH | `/api/admin/support/{id}/` | staff | `{status?, assign_to_me?}` |
+| GET | `/api/admin/search/index/` | **admin only** | Phase 13. `{embedder{kind, key, available, dimensions, model?, loaded?}, search_backend, products, indexed, missing, stale, other_embedder, last_updated, ready}` |
+| POST | `/api/admin/search/index/rebuild/` | **admin only** | `{force?: false}`. Embeds products whose text changed (all with `force`), removes rows of deleted products. → `{result{embedded, unchanged, removed, failed[]}, status}`; audit-logged. 503 `semantic_unavailable` when no embedder is available (keyword search keeps working). Runs inside the request: for a large catalogue with a local model use `manage.py rebuild_search_index` |
+| POST | `/api/admin/search/index/products/{id}/` | **admin only** | Re-embed one product → `{status}`; 404 unknown product; 503 `semantic_unavailable` |
+| GET | `/api/admin/search/explain/?q=` | **admin only** | The ranking behind a query: `{mode, embedder, terms, related_terms, sources, matched, results[{product_id, name, keyword, related, semantic, cosine, final, reason}]}`; 400 without `q` |
 
 Also extended for the dashboard: `GET /api/inventory/` takes `?q=` (SKU, product, variant, store) and `?stock=out\|low\|ok`
 and rows carry `store_name`; `GET /api/returns/` takes `?q=` and `?store=` and `?status=open` (requested + approved);
@@ -562,4 +580,4 @@ Adding to the cart uses the normal cart API (`POST /api/cart/items/`); the assis
 inventory or orders.
 
 ## Planned 🔜
-- **AI** more endpoints in Phases 13–19 (semantic search, voice, vision, projects). **Notifications/support channels** (Phase 20).
+- **AI** more endpoints in Phases 14–19 (voice, vision, projects). **Notifications/support channels** (Phase 20).

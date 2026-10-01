@@ -44,3 +44,7 @@ if DB_VENDOR == "sqlite":
     import tempfile
 
     DATABASES["default"]["TEST"] = {"NAME": os.path.join(tempfile.gettempdir(), f"boltrun_test_{os.getpid()}.sqlite3")}
+
+# Semantic search is off in tests unless a test switches it on (override_settings).
+SEMANTIC_EMBEDDER = "none"
+CATALOG_SEARCH_BACKEND = "apps.catalog.search.KeywordSearchBackend"

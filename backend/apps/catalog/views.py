@@ -149,11 +149,17 @@ class ProductViewSet(viewsets.ModelViewSet):
         result = selectors.apply_search(qs, params)
         qs = selectors.order_products(result.queryset, params.get("ordering"), searching=bool(result.terms))
         page = self.paginate_queryset(qs)
-        response = self.get_paginated_response(
-            ProductListSerializer(page, many=True, context={"request": request}).data
-        )
+        data = ProductListSerializer(page, many=True, context={"request": request}).data
+        if result.reasons:
+            for item in data:
+                if reason := result.reasons.get(item["id"]):
+                    item["match_reason"] = reason["text"]
+                    item["match_type"] = reason["type"]
+        response = self.get_paginated_response(data)
         if result.terms:
             response.data["search"] = {"query": params.get("q", "").strip(), "matched": result.matched}
+            if result.mode == "hybrid":  # additive: plain keyword results keep the Phase 4 shape
+                response.data["search"].update(mode=result.mode, related_terms=list(result.related_terms))
         return response
 
     @action(detail=False, methods=["get"])
@@ -233,9 +239,13 @@ class SearchSuggestView(APIView):
             .order_by("parent_id", "sort_order", "name")[:SUGGEST_OTHERS]
         )
         brands = Brand.objects.filter(is_active=True, name__icontains=query)[:SUGGEST_OTHERS]
+        product_data = ProductListSerializer(products, many=True, context={"request": request}).data
+        for item in product_data:
+            if (reason := result.reasons.get(item["id"])) and reason["type"] != "keyword":
+                item["match_reason"] = reason["text"]
         payload = {
             "query": query,
-            "products": ProductListSerializer(products, many=True, context={"request": request}).data,
+            "products": product_data,
             "categories": [
                 {"name": c.name, "slug": c.slug, "parent_name": c.parent.name if c.parent_id else None}
                 for c in categories

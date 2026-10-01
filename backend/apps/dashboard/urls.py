@@ -5,6 +5,7 @@ from .catalog import AdminBrandViewSet, AdminCategoryViewSet, AdminProductViewSe
 from .offers import AdminCouponViewSet, AdminOfferViewSet
 from .orders import AdminOrderViewSet
 from .people import AdminCustomerViewSet, AdminJobViewSet, AdminRiderViewSet, AdminSupportViewSet
+from .search_index import SearchExplainView, SearchIndexProductView, SearchIndexRebuildView, SearchIndexView
 from .stores import AdminPinCodeViewSet, AdminStoreViewSet, AdminZoneViewSet
 from .views import AnalyticsView, SessionView, SummaryView
 
@@ -28,5 +29,9 @@ urlpatterns = [
     path("admin/session/", SessionView.as_view(), name="admin-session"),
     path("admin/summary/", SummaryView.as_view(), name="admin-summary"),
     path("admin/analytics/", AnalyticsView.as_view(), name="admin-analytics"),
+    path("admin/search/index/", SearchIndexView.as_view(), name="admin-search-index"),
+    path("admin/search/index/rebuild/", SearchIndexRebuildView.as_view(), name="admin-search-rebuild"),
+    path("admin/search/index/products/<int:pk>/", SearchIndexProductView.as_view(), name="admin-search-product"),
+    path("admin/search/explain/", SearchExplainView.as_view(), name="admin-search-explain"),
     *router.urls,
 ]
