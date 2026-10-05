@@ -46,7 +46,7 @@ Legend: `[x]` done and verified · `[ ]` open · `[~]` partially done / blocked 
 - [~] Frontend npm checks not re-run in Phase 2 (commands declined; frontend files unchanged since the Phase 1 commit, verified with git)
 
 ## Blocked on owner input
-- [ ] Hosting details (DEPLOYMENT.md §0 checklist): needed for Phase 24 only
+- [ ] Hosting details (DEPLOYMENT.md §0 checklist): needed for Phase 27 (deployment) only
 - [ ] Confirm brand name ("BoltRun" placeholder)
 - [ ] Choose local DB for dev parity: SQLite (current), Docker PostgreSQL, or local MySQL matching the host
 
@@ -284,6 +284,40 @@ Scope: ROADMAP Phase 14. Photo → likely hardware item → real catalogue produ
 - [~] Not built: multiple items in one photo (the strongest one is named), barcode/label reading (OCR), matching against product *photos* (the demo catalogue's pictures are text cards), size/brand recognition, search history for visitors
 - [~] Browser testing not performed (same localhost limitation); camera capture relies on the phone's file picker (`capture`), not a live in-page camera stream
 
+## Commerce parity requirements — planning (2026-10-05)
+New core requirement (fast delivery, bulk pricing, options, offers, free-delivery rules, COD rules, cashback,
+storefront sections, AI integration). Checked against the roadmap and the code; placed into phases. Details and the
+gap table: `docs/COMMERCE_PARITY.md`. No code changed in this step.
+- [x] Gap analysis of Phases 1–14 (pricing, categories, options, merchandising, offers, free delivery, COD, loyalty, fast-delivery indicators, card/page/homepage, search, assistant, admin)
+- [x] ROADMAP: new Phases 15 (commerce core), 16 (storefront parity UI), 17 (loyalty + cashback foundation); former 15–24 renumbered to 18–27 with commerce additions noted; owner decisions 5 (credit rules) and 6 (COD limits) added
+- [x] Owner confirmed the numbering (next phase = 15 Commerce core) and decided credit rules (≤ 20 % of an order, 90-day expiry, proportional restore on refunded returns) and COD (₹10,000 maximum, admin-configurable, no exclusions initially)
+
+### Phase 15 — Commerce core (planned)
+- [ ] `VariantPriceTier` + validation (ascending quantity, non-increasing price, ≤ MRP); tier lookup in `orders.pricing.line_from_variant`
+- [ ] Tier info on `OrderItem` snapshot (additive migration); 409 `totals_changed` when a tier changes mid-checkout; return refunds of tiered lines tested
+- [ ] API fields: `price_tiers`, `bulk_available`, applied tier, next tier (product, cart, checkout preview, assistant cards)
+- [ ] Product option types per category (order, labels, allowed values) on top of `ProductVariant.attributes`; variant-attribute filters in listing/facets
+- [ ] Category tree: allow department › category › subcategory (backward compatible); seed taxonomy as demo data
+- [ ] Merchandising: new-launch window, bestseller rank, `Collection` (curated product lists with dates) for homepage rails
+- [ ] Offer engine: quantity-based, first-order, campaign/festival label, offer usage + per-customer limits, free-delivery offer type (same engine, no second pricing path)
+- [ ] `FreeDeliveryRule` (threshold, zones, products/categories, start/end) used by the Phase 9 fee rule; "Free delivery unlocked" / "Add ₹X more"
+- [ ] COD eligibility: maximum order value ₹10,000 (admin-configurable), per store/zone switch, optional excluded products/categories (none initially), reason at checkout and in the order API
+- [ ] Dashboard screens: tiers (in product form), option types, collections, free-delivery rules, COD rules; permission matrix tests
+- [ ] Demo data: tiers on cement/wire/pipe demo variants, option sets, collections, one free-delivery rule
+
+### Phase 16 — Storefront parity UI (planned)
+- [ ] Homepage sections in the agreed order, each hidden without data; recently viewed (new); AI entry points
+- [ ] Product card: indicators (bulk, offer, free delivery, fast delivery for the selected PIN), options count, Add + stepper, wishlist; compact on phones
+- [ ] Product page: bulk table + server-priced quantity preview, offer conditions, GST note, payment options incl. COD eligibility, return policy, accessories (`ProductRelation`), Buy Now
+- [ ] Category landing pages with subcategory tiles and counts; filters for options, pack size, grade, size, specs, availability, delivery speed
+- [ ] Search: spec/use words become filters or boosts ("cement for plastering", "53 grade", "50 kg")
+
+### Phase 17 — Loyalty + cashback foundation (planned)
+- [ ] `LoyaltyLedger` entries (source, amount, status, expiry, reference); balance computed from entries
+- [ ] Cashback rules and offers; credited after delivery/return window, reversed on cancel/return
+- [ ] Promotional credits, referral reward hooks; customer wallet page; dashboard rules
+- [ ] Checkout redemption: at most 20 % of an order, 90-day expiry, oldest first, proportional restore with original expiry on refunded returns; limits configurable
+
 ## Known limitations carried forward
 - Photo search: off by default and needs a VPS-class machine for CLIP (~2 GB RAM, ~1.7 GB model) or Ollama (several GB); the item list is generic hardware plus the shop's subcategories, so an unusual item gets the closest kind or "not sure"; ~1.5 s per photo on a laptop CPU with ViT-L/14; HEIC photos must be converted (the page explains); the CLIP status shows "starting up" for 20–60 s after a server start
 - Semantic search: the synonym/Hinglish tables are hand-written for hardware words (new product kinds may need entries in `semantic/expand.py`); the `hashing` default knows spelling, not meaning, so unseen descriptions rely on the tables unless the MiniLM model is installed; the model needs ~1 GB RAM and PyTorch (VPS, not shared hosting) and adds 10–20 s of warm-up at server start (keyword search meanwhile); the full rebuild from the dashboard runs inside the request (use the management command for a large catalogue with the model); with the model the main-set hit@1 is lower than tables-only (67% vs 74%) while hit@3 and unseen wording are better; benchmark labels fit the demo catalogue only
@@ -312,9 +346,9 @@ Scope: ROADMAP Phase 14. Photo → likely hardware item → real catalogue produ
 - Cron is needed in production for refund polling, reconciliation and expiry (inline mode covers refund submission only)
 - Returns: no pickup scheduling (the delivery partner flow is Phase 10), no photo upload with the request, no exchanges or replacements, and no per-product return window (one global `RETURN_WINDOW_DAYS`). Staff handle returns in the dashboard (Phase 11), which asks for a reason when rejecting
 - COD refunds are paid back by staff and recorded with a reference; there is no cash-drawer reconciliation or delivery-partner cash handover yet (Phase 10)
-- Concurrency is proven with real threads on SQLite (serialised writes). PostgreSQL/MySQL rely on the same `select_for_update` locks but the suite has not yet run against those servers (Phase 23)
+- Concurrency is proven with real threads on SQLite (serialised writes). PostgreSQL/MySQL rely on the same `select_for_update` locks but the suite has not yet run against those servers (Phase 26)
 - Unpaid online orders keep their stock reserved for up to `PAYMENT_EXPIRY_MINUTES` (+ the cron interval) before expiry releases it
-- Notifications are in-app records + email only; there is no in-app notification list screen yet (Phase 20)
+- Notifications are in-app records + email only; there is no in-app notification list screen yet (Phase 23)
 - Cart "save for later" uses the wishlist (per product, not per variant)
 - Plain keyword search (the fallback, and `CATALOG_SEARCH_BACKEND=apps.catalog.search.KeywordSearchBackend`) is still substring based ("tap" also matches "tape"); the hybrid default filters those accidents
 - Specification filters need consistent spec names/values in the admin; variant-level attributes (e.g. wire length) are shown on the product page but are not yet filterable
@@ -322,10 +356,10 @@ Scope: ROADMAP Phase 14. Photo → likely hardware item → real catalogue produ
 - Delivery partners are verified by administrators in the dashboard (Delivery → Delivery partners); giving a person the delivery-partner role (Customers) creates the rider record, which needs a phone number on the account. Vehicle details are entered by an administrator there or in Django admin
 - Email verification is not implemented yet (`email_verified` is reset on email change)
 - A local dev server stopped with `Stop-Process -Force` makes Git Bash report exit 127 (the venv `python.exe` launcher loses its child); stop it with Ctrl+C in normal use
-- Refund failures are audit-logged and visible in the staff API/admin, but nobody is emailed about them yet (Phase 20 notifications)
+- Refund failures are audit-logged and visible in the staff API/admin, but nobody is emailed about them yet (Phase 23 notifications)
 
 ## Later phases
-See docs/ROADMAP.md (Phases 3–24).
+See docs/ROADMAP.md (Phases 3–27; renumbered 2026-10-05, see COMMERCE_PARITY.md).
 
 ## Environment notes
 - Repo is inside OneDrive: consider excluding `backend/.venv` and `frontend/node_modules` from sync.

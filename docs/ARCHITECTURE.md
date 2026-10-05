@@ -59,10 +59,10 @@ as_hardware/
 │   │   ├── delivery/        ✅ zones, PIN codes, fulfilment + ETA engine (Phase 9); riders, assignments, rider workflow,
 │   │   │                       delivery code, proof of delivery, cash on delivery (Phase 10) (+ rider and staff API)
 │   │   ├── reviews/         ✅ Review (verified buyers only, moderation) (+ API)
-│   │   ├── notifications/   ✅ Notification (sending in Phase 20)
-│   │   ├── support/         ✅ SupportConversation, SupportMessage (channels in Phase 20)
+│   │   ├── notifications/   ✅ Notification (sending in Phase 23)
+│   │   ├── support/         ✅ SupportConversation, SupportMessage (channels in Phase 23)
 │   │   ├── ai/              ✅ AIConversation, AIMessage, Project, ProjectItem (AI logic Phases 12–19)
-│   │   └── analytics/       🔜 whitelisted reporting queries + business assistant (Phase 21)
+│   │   └── analytics/       🔜 whitelisted reporting queries + business assistant (Phase 24)
 │   ├── integrations/        payments/ ✅ (PaymentProvider, MockPaymentProvider, RazorpayPaymentProvider); maps/ ✅ (Phase 9);
 │   │                        llm/, messaging/ 🔜
 │   ├── private_media/       proof-of-delivery photos: NOT web-served, not in git (PRIVATE_MEDIA_ROOT)
@@ -160,7 +160,7 @@ Cart ──► POST /checkout/preview/ (orders/checkout.py: build_checkout — r
   confirmed after ordering. Phase 9 replaces `find_fulfilment_store`/`quote_delivery` with the distance/ETA engine
   without changing the API shape.
 - **Notifications** (`notifications/services.notify`): in-app rows plus email through Django's email backend (console in
-  dev), sent only after commit so rolled-back orders never notify. SMS/WhatsApp providers are Phase 20.
+  dev), sent only after commit so rolled-back orders never notify. SMS/WhatsApp providers are Phase 23.
 
 ### Offers and coupons (Phase 6)
 One pricing path, `orders.pricing.price_lines(lines, coupon=None)`, is used by the cart, checkout preview, coupon
@@ -441,7 +441,7 @@ POST /api/ai/conversations/{id}/messages/  →  HardwareAssistantService.ask
 ```
 - **Grounding:** the model may help understand and phrase; product ids, prices, stock and delivery come from the database and
   are re-read when a conversation is shown. Products only come from retrieval (a model cannot add one), and a model-written message containing a number that is not in the retrieved products is discarded for the rule-based message.
-- **Input:** `HardwareAssistantService.answer(text)` is independent of HTTP and storage, so Phase 15 speech-to-text can call it.
+- **Input:** `HardwareAssistantService.answer(text)` is independent of HTTP and storage, so Phase 18 speech-to-text can call it.
 - **Safety:** electrical, gas and structural questions get a "use a qualified professional" note, not step-by-step instructions.
 - **Add to cart** goes through the ordinary cart API from the browser; the assistant cannot write prices, stock or orders.
 - **Frontend:** `/ai-assistant` (`pages/AssistantPage.tsx`, `features/ai/`): welcome, suggested prompts, product cards,

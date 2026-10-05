@@ -611,4 +611,4 @@ answers: "can be wrong"), `ai {mode, provider, model, calibrated}`, `image {form
 Adding to the cart is the normal `POST /api/cart/items/` with the card's `variant_id`.
 
 ## Planned 🔜
-- **AI** more endpoints in Phases 15–19 (voice, projects, calculators, compatibility, smart cart). **Notifications/support channels** (Phase 20).
+- **AI** more endpoints in Phases 18–22 (voice, projects, calculators, compatibility, smart cart). **Notifications/support channels** (Phase 23).

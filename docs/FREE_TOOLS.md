@@ -94,7 +94,7 @@ No SMS gateway, no paid maps, no file-storage service and no new package (backen
 
 | Feature | Tool | Free/Open Source | Local | API Key | Notes |
 |---|---|---|---|---|---|
-| Delivery code (OTP) | Python `hmac`, `hashlib`, `secrets` | ✅ PSF | ✅ | No | Shown on the customer's order page instead of being sent by SMS, so no SMS provider is needed. SMS/WhatsApp delivery of the code can be added in Phase 20 |
+| Delivery code (OTP) | Python `hmac`, `hashlib`, `secrets` | ✅ PSF | ✅ | No | Shown on the customer's order page instead of being sent by SMS, so no SMS provider is needed. SMS/WhatsApp delivery of the code can be added in Phase 23 |
 | Proof-of-delivery photos | Pillow (already a dependency) + Django `FileSystemStorage` on the hosting disk | ✅ HPND / BSD | ✅ | No | Re-encoded without metadata; stored under `PRIVATE_MEDIA_ROOT`, outside the web root. Uses hosting disk space (about 150–400 kB per photo) |
 | Rider navigation | `geo:` links (open the phone's own maps app) and openstreetmap.org links | ✅ open standard / ODbL | n/a | No | Plain links opened by the rider; nothing is embedded and no quota applies to the project |
 | Rider position | W3C Geolocation API in the browser | ✅ built into browsers | ✅ | No | Optional; needs HTTPS and the rider's permission |
@@ -139,7 +139,7 @@ existing React app and reads the project's own database through the Django API.
 | Payments (dev) | `MockPaymentProvider` (in-repo, `integrations/payments/mock.py`) | ✅ project code | ✅ | No | Moves no money; HMAC-signed intents and webhooks, instant refunds; **blocked in production** |
 | Payments (prod, optional) | Razorpay (via `integrations/payments/razorpay.py`) | ❌ Commercial gateway: no subscription; a per-transaction fee only on live payments. Test mode (`rzp_test_…` keys) is free | ❌ | Yes | Implemented in Phase 8 with Python's standard library (`urllib`, `hmac`), **no SDK or new dependency**. Optional; COD works without it. Not activated: needs the owner's Razorpay account and keys |
 | Razorpay Checkout script | `checkout.razorpay.com/v1/checkout.js` | ❌ Razorpay's hosted script (free to load) | ❌ | Public key id only | Loaded only on the payment page when an attempt is a Razorpay one; card/UPI entry happens inside Razorpay's window, never on our pages |
-| WhatsApp (dev) | `MockWhatsAppProvider` (Phase 20) | ✅ project code | ✅ | No | Records messages; never claims real delivery |
+| WhatsApp (dev) | `MockWhatsAppProvider` (Phase 23) | ✅ project code | ✅ | No | Records messages; never claims real delivery |
 | WhatsApp (prod, optional) | WhatsApp Business Cloud API (Meta) | ❌ Meta pricing per conversation/template | ❌ | Yes | Needs owner approval + Meta business account |
 | Maps, distance, ETA | Haversine + PIN table (default); Leaflet + OpenStreetMap tiles; optional Nominatim and OSRM | ✅ | ✅ (default) | No | Built in Phase 9: see "Fulfilment, delivery zones & ETA" above for the usage limits |
 | AI (dev, Phase 12) | Ollama + **`qwen2.5:3b`** (about 1.9 GB download; Qwen 2.5 3B is small enough for a laptop CPU) | ✅ MIT runtime; model licence per Qwen | ✅ | No | See "AI assistant" below. Needs roughly 4 GB free RAM; not usable on shared hosting |
