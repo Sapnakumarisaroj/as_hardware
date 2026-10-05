@@ -22,8 +22,9 @@ from apps.delivery.locations import resolve_location
 from apps.inventory.models import Inventory, StockMovement
 from apps.inventory.services import InsufficientStock, apply_movement, total_available
 from apps.notifications.services import notify
-from apps.offers.models import Coupon, CouponRedemption
+from apps.offers.models import Coupon, CouponRedemption, Offer, OfferRedemption
 from apps.offers.services import get_valid_coupon
+from apps.payments.cod_rules import cod_eligibility
 from apps.payments.models import Payment, Refund
 from apps.payments.refunds import create_refund
 from integrations.payments import get_payment_provider
@@ -123,6 +124,7 @@ def place_order(
         CartItem.objects.select_for_update()
         .filter(cart__user=user)
         .select_related("variant__product__brand")
+        .prefetch_related("variant__price_tiers")
         .order_by("id")
     )
     if not items:
@@ -142,15 +144,21 @@ def place_order(
     # reservations below re-check it under row locks).
     plan = _plan(address, {item.variant_id: item.quantity for item in items})
 
+    # Bulk tiers, offers, coupon and delivery fee: the one pricing engine (orders.pricing).
     lines = [line_from_variant(item.variant, item.quantity) for item in items]
     coupon = get_valid_coupon(coupon_code, user, lock=True) if coupon_code.strip() else None
-    pricing = price_lines(lines, coupon=coupon, fee_rule=plan.fee_rule)  # automatic offers, then the coupon
+    pricing = price_lines(lines, coupon=coupon, fee_rule=plan.fee_rule, user=user)  # offers, then the coupon
     totals, offers = pricing.totals, pricing.offers
     if expected_total is not None and q(expected_total) != totals.grand_total:
         raise TotalsChanged(
             "Prices or your order total changed since you last checked. Please review the new total.",
             details={"expected": str(q(expected_total)), "grand_total": str(totals.grand_total)},
         )
+    if payment_method == PaymentMethod.COD:
+        cod = cod_eligibility(grand_total=totals.grand_total, plan=plan)
+        if not cod.available:
+            raise OrderError(cod.message, code="cod_unavailable", details={"reason": cod.reason_code})
+    _claim_offers(offers, user, totals)
 
     latest = plan.latest
     order = Order.objects.create(
@@ -177,10 +185,13 @@ def place_order(
                 "badge": a.offer.badge,
                 "discount": str(a.discount),
                 "skus": [i.variant.sku for i in items if i.variant_id in a.variant_ids],
+                "benefit": a.offer.benefit,
+                "campaign": a.offer.campaign,
             }
-            for a in offers.applied
+            for a in offers.all_applied
         ],
         delivery_fee=totals.delivery_fee,
+        free_delivery_reason=totals.free_delivery_reason[:160],
         tax_total=totals.tax_total,
         grand_total=totals.grand_total,
         coupon=coupon,
@@ -206,6 +217,8 @@ def place_order(
                 unit=item.variant.product.unit,
                 unit_mrp=line.unit_mrp,
                 unit_price=line.unit_price,
+                base_unit_price=item.variant.price,
+                price_tier_min_quantity=line.tier_min_quantity,
                 gst_rate=line.gst_rate,
                 hsn_code=item.variant.product.hsn_code,
                 quantity=line.quantity,
@@ -236,6 +249,11 @@ def place_order(
     if coupon:
         CouponRedemption.objects.create(coupon=coupon, user=user, order=order, discount_amount=totals.coupon_discount)
         type(coupon).objects.filter(pk=coupon.pk).update(used_count=F("used_count") + 1)
+    for applied in offers.all_applied:
+        OfferRedemption.objects.create(
+            offer_id=applied.offer.id, user=user, order=order, discount_amount=applied.discount
+        )
+        Offer.objects.filter(pk=applied.offer.id).update(used_count=F("used_count") + 1)
 
     _record_status(order, "", OrderStatus.PENDING, user, "Order placed")
     payment = create_payment_for_order(order)
@@ -262,6 +280,27 @@ def place_order(
 
     CartItem.objects.filter(pk__in=[item.pk for item in items]).delete()
     return order, payment
+
+
+def _claim_offers(offers, user, totals) -> None:
+    """Lock offers with usage limits and check they still have uses left for this customer. An offer
+    that ran out between pricing and now would change the total: nothing is written and the
+    customer reviews the new total (409 `totals_changed`)."""
+    limited = [a.offer.id for a in offers.all_applied]
+    if not limited:
+        return
+    for offer in Offer.objects.select_for_update().filter(pk__in=limited).order_by("pk"):
+        exhausted = offer.usage_limit is not None and offer.used_count >= offer.usage_limit
+        used_by_customer = (
+            OfferRedemption.objects.filter(offer=offer, user=user).count()
+            if offer.per_customer_limit is not None
+            else 0
+        )
+        if exhausted or (offer.per_customer_limit is not None and used_by_customer >= offer.per_customer_limit):
+            raise TotalsChanged(
+                f"The offer \u201c{offer.name}\u201d has just run out. Please review the new total.",
+                details={"offer": offer.name, "grand_total": str(totals.grand_total)},
+            )
 
 
 def _create_shipment(order: Order, sequence: int, planned) -> OrderShipment:
@@ -401,11 +440,16 @@ def apply_locked_transition(order: Order, to_status: str, *, actor, note: str = 
 
 
 def _release_coupon(order: Order) -> None:
-    """A cancelled order gives the coupon use back (global and per-customer counts)."""
+    """A cancelled order gives the coupon use back (global and per-customer counts), and the uses
+    of automatic offers with usage limits (Phase 15)."""
     redemptions = CouponRedemption.objects.filter(order=order)
     for redemption in redemptions.select_related("coupon"):
         Coupon.objects.filter(pk=redemption.coupon_id, used_count__gt=0).update(used_count=F("used_count") - 1)
     redemptions.delete()
+    offer_uses = OfferRedemption.objects.filter(order=order)
+    for offer_id in offer_uses.values_list("offer_id", flat=True):
+        Offer.objects.filter(pk=offer_id, used_count__gt=0).update(used_count=F("used_count") - 1)
+    offer_uses.delete()
 
 
 def _move_unshipped_stock(order: Order, movement_type: str, actor, reason: str) -> None:

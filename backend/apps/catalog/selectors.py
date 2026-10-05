@@ -26,7 +26,7 @@ from django.db.models.functions import Cast, Coalesce
 from apps.inventory.models import Inventory
 from apps.stores.models import Store
 
-from .models import Category, Product, ProductSpecification, ProductVariant
+from .models import Category, Product, ProductSpecification, ProductVariant, VariantOption, VariantPriceTier
 from .search import SearchResult, get_search_backend, normalize_query
 
 LOW_STOCK_DISPLAY_THRESHOLD = 5
@@ -44,6 +44,8 @@ _SOLD_STATUSES = (
     "out_for_delivery",
     "delivered",
 )
+SOLD_STATUSES = _SOLD_STATUSES
+OPTION_PARAM_PREFIX = "opt_"
 
 
 def _fulfillment_inventory():
@@ -89,6 +91,12 @@ def annotate_listing(qs: QuerySet[Product]) -> QuerySet[Product]:
         .values("total")[:1]
     )
     variant_count = active_variants.values("product").annotate(n=Count("id")).values("n")[:1]
+    # Phase 15 bulk pricing: the lowest tier price over active variants (None = no bulk price).
+    tiers = VariantPriceTier.objects.filter(variant__product=OuterRef("pk"), variant__is_active=True).values(
+        "variant__product"
+    )
+    bulk_price = tiers.annotate(best=Min("unit_price")).values("best")[:1]
+    bulk_from = tiers.annotate(first=Min("min_quantity")).values("first")[:1]
     qs = qs.annotate(
         price=Subquery(cheapest.values("price")[:1]),
         mrp=Subquery(cheapest.values("mrp")[:1]),
@@ -97,6 +105,8 @@ def annotate_listing(qs: QuerySet[Product]) -> QuerySet[Product]:
         stock_total=_product_stock(_fulfillment_inventory()),
         fast_stock=_product_stock(_fast_delivery_inventory()),
         sold_count=Coalesce(Subquery(sold, output_field=IntegerField()), Value(0)),
+        bulk_min_price=Subquery(bulk_price),
+        bulk_min_quantity=Subquery(bulk_from, output_field=IntegerField()),
     )
     # Ranking/filtering only; the API computes the displayed discount with Decimal in Python.
     # Float on purpose: SQLite stores whole-number decimals as INTEGER, so decimal arithmetic
@@ -120,6 +130,22 @@ def _csv(value: str | None) -> list[str]:
     return [part.strip() for part in (value or "").split(",") if part.strip()][:20]
 
 
+def option_filters(params) -> dict[str, list[str]]:
+    """`opt_<option-type-slug>=value-slug,…` → {type: [values]} (Phase 15 structured options)."""
+    out = {}
+    for name in params:
+        if name.startswith(OPTION_PARAM_PREFIX) and (values := _csv(params.get(name))):
+            out[name[len(OPTION_PARAM_PREFIX) :][:70]] = values
+    return out
+
+
+def category_scope(category: Category) -> set[int]:
+    """The category and everything below it (up to three levels)."""
+    from .tree import descendant_ids
+
+    return descendant_ids(category.pk)
+
+
 def spec_filters(params) -> dict[str, list[str]]:
     """`spec_<key>=v1,v2` → {key: [v1, v2]} (values OR-ed within a key, AND-ed across keys)."""
     out = {}
@@ -137,7 +163,8 @@ def filter_products(
         category = Category.objects.filter(slug=slug, is_active=True).first()
         if category is None:
             return qs.none()
-        qs = qs.filter(Q(category=category) | Q(subcategory=category))
+        scope = category_scope(category)
+        qs = qs.filter(Q(category_id__in=scope) | Q(subcategory_id__in=scope))
     if "category" not in skip and (slug := params.get("subcategory")):
         qs = qs.filter(subcategory__slug=slug)
     if "brand" not in skip and (brands := _csv(params.get("brand"))):
@@ -160,6 +187,8 @@ def filter_products(
         qs = qs.filter(is_featured=True)
     if params.get("bestseller") in TRUE_VALUES:
         qs = qs.filter(sold_count__gt=0)
+    if params.get("bulk_pricing") in TRUE_VALUES:
+        qs = qs.filter(bulk_min_price__isnull=False)
     if excluded := _csv(params.get("exclude")):
         qs = qs.exclude(slug__in=excluded)
     if "spec" not in skip:
@@ -168,6 +197,12 @@ def filter_products(
             for value in values:
                 value_q |= Q(value__iexact=value)
             qs = qs.filter(pk__in=ProductSpecification.objects.filter(value_q, key=key).values("product_id"))
+    if "option" not in skip:
+        for type_slug, values in option_filters(params).items():
+            matching = VariantOption.objects.filter(
+                option_type__slug=type_slug, value__slug__in=values, variant__is_active=True
+            ).values("variant__product_id")
+            qs = qs.filter(pk__in=matching)
     if search:
         qs = apply_search(qs, params).queryset
     return qs
@@ -223,17 +258,9 @@ def product_facets(base: QuerySet[Product], params) -> dict:
         return filter_products(base, params, skip=(dimension,)).values("pk")
 
     category = Category.objects.filter(slug=params.get("category") or "", is_active=True).first()
-    if category is not None and category.parent_id is None:
-        category_rows = (
-            Product.objects.filter(pk__in=ids_without("category"), category=category, subcategory__isnull=False)
-            .values("subcategory__slug", "subcategory__name")
-            .annotate(count=Count("id"))
-            .order_by("subcategory__name")
-        )
-        categories = [
-            {"slug": r["subcategory__slug"], "name": r["subcategory__name"], "count": r["count"]} for r in category_rows
-        ]
-    elif category is None:
+    if category is not None:
+        categories = _child_category_counts(category, ids_without("category"))
+    else:
         category_rows = (
             Product.objects.filter(pk__in=ids_without("category"))
             .values("category__slug", "category__name")
@@ -243,8 +270,6 @@ def product_facets(base: QuerySet[Product], params) -> dict:
         categories = [
             {"slug": r["category__slug"], "name": r["category__name"], "count": r["count"]} for r in category_rows
         ]
-    else:
-        categories = []
 
     brand_rows = (
         Product.objects.filter(pk__in=ids_without("brand"), brand__isnull=False)
@@ -277,7 +302,69 @@ def product_facets(base: QuerySet[Product], params) -> dict:
             "fast_delivery": availability_base.filter(fast_stock__gt=0).count(),
         },
         "specifications": _spec_facets(ids_without("spec"), total_for_coverage=total, selected=spec_filters(params)),
+        "options": _option_facets(ids_without("option"), selected=option_filters(params)),
     }
+
+
+def _child_category_counts(category: Category, product_ids) -> list[dict]:
+    """The selected category's direct children with how many of the results sit under each."""
+    from .tree import descendant_ids, parent_map
+
+    parents = parent_map()
+    children = list(Category.objects.filter(parent=category, is_active=True).order_by("sort_order", "name"))
+    if not children:
+        return []
+    rows = list(Product.objects.filter(pk__in=product_ids).values_list("category_id", "subcategory_id"))
+    out = []
+    for child in children:
+        scope = descendant_ids(child.pk, parents)
+        count = sum(1 for cat, sub in rows if cat in scope or sub in scope)
+        if count:
+            out.append({"slug": child.slug, "name": child.name, "count": count})
+    return out
+
+
+def _option_facets(product_ids, *, selected: dict[str, list[str]]) -> list[dict]:
+    """Structured option values (Grade, Bag size, …) with product counts, for Phase 16 filters."""
+    rows = (
+        VariantOption.objects.filter(variant__product_id__in=product_ids, variant__is_active=True)
+        .values(
+            "option_type__slug",
+            "option_type__name",
+            "option_type__sort_order",
+            "value__slug",
+            "value__value",
+            "value__sort_order",
+        )
+        .annotate(count=Count("variant__product_id", distinct=True))
+    )
+    by_type: dict[str, dict] = {}
+    for row in rows:
+        entry = by_type.setdefault(
+            row["option_type__slug"],
+            {
+                "slug": row["option_type__slug"],
+                "name": row["option_type__name"],
+                "order": row["option_type__sort_order"],
+                "values": [],
+            },
+        )
+        entry["values"].append(
+            {
+                "slug": row["value__slug"],
+                "value": row["value__value"],
+                "count": row["count"],
+                "order": row["value__sort_order"],
+            }
+        )
+    facets = []
+    for entry in sorted(by_type.values(), key=lambda e: (e["order"], e["name"])):
+        if len(entry["values"]) < 2 and entry["slug"] not in selected:
+            continue
+        entry["values"].sort(key=lambda v: (v["order"], v["value"]))
+        values = [{"slug": v["slug"], "value": v["value"], "count": v["count"]} for v in entry["values"]]
+        facets.append({"slug": entry["slug"], "name": entry["name"], "values": values})
+    return facets
 
 
 def _spec_facets(product_ids, *, total_for_coverage: int, selected: dict[str, list[str]]) -> list[dict]:

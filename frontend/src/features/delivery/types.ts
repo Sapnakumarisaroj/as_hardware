@@ -37,6 +37,10 @@ export interface DeliveryQuote {
   /** Why not deliverable: out_of_zone, location_unknown, insufficient_stock, cart_empty. */
   reason_code: string
   shipments: QuoteShipment[]
+  /** Why delivery is free (a rule, an offer or the order value); empty when it is not. */
+  free_delivery_reason?: string
+  /** Items that count towards free delivery, e.g. "Cement" (empty = everything). */
+  free_delivery_hint?: string
 }
 
 /** GET /delivery/check/ */

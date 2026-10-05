@@ -8,6 +8,8 @@ import { QuantityStepper } from '@/components/QuantityStepper'
 import { AddToCartButton } from '@/features/cart/AddToCartButton'
 import { useProduct, useProductReviews } from '@/features/catalog/api'
 import { PriceBlock, Rating, StockLabel } from '@/features/catalog/components/badges'
+import { BulkPriceTable, QuantityPriceQuote } from '@/features/catalog/components/BulkPricing'
+import { OptionPicker } from '@/features/catalog/components/OptionPicker'
 import { ProductRail } from '@/features/catalog/components/ProductCollections'
 import { ProductGallery } from '@/features/catalog/components/ProductGallery'
 import { VariantSelector } from '@/features/catalog/components/VariantSelector'
@@ -211,8 +213,13 @@ export function ProductDetailPage() {
         <div className="container-page py-3">
           <Breadcrumbs
             items={[
-              { label: data.category.name, to: `/c/${data.category.slug}` },
-              ...(data.subcategory ? [{ label: data.subcategory.name, to: `/c/${data.subcategory.slug}` }] : []),
+              // Department › category › subcategory, from the server (up to three levels).
+              ...(data.breadcrumb?.length
+                ? data.breadcrumb.map((c) => ({ label: c.name, to: `/c/${c.slug}` }))
+                : [
+                    { label: data.category.name, to: `/c/${data.category.slug}` },
+                    ...(data.subcategory ? [{ label: data.subcategory.name, to: `/c/${data.subcategory.slug}` }] : []),
+                  ]),
               { label: data.name },
             ]}
           />
@@ -251,7 +258,17 @@ export function ProductDetailPage() {
 
           {data.offer && !outOfStock && <ProductOfferCallout offer={data.offer} />}
 
-          <VariantSelector variants={data.variants} selectedId={variant.id} onSelect={selectVariant} />
+          {data.options?.length ? (
+            <OptionPicker options={data.options} variants={data.variants} selected={variant} onSelect={selectVariant} />
+          ) : (
+            <VariantSelector variants={data.variants} selectedId={variant.id} onSelect={selectVariant} />
+          )}
+
+          {(variant.price_tiers?.length ?? 0) > 1 && !outOfStock && (
+            <section aria-label="Bulk pricing" className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
+              <BulkPriceTable tiers={variant.price_tiers ?? []} quantity={safeQuantity} />
+            </section>
+          )}
 
           <div className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
             <p aria-live="polite">
@@ -266,6 +283,10 @@ export function ProductDetailPage() {
               <DeliveryInfo variant={variant} quantity={safeQuantity} />
             </div>
           </div>
+
+          {!outOfStock && ((variant.price_tiers?.length ?? 0) > 1 || data.offer) && (
+            <QuantityPriceQuote slug={data.slug} variantId={variant.id} quantity={safeQuantity} />
+          )}
 
           <div className="flex flex-wrap items-center gap-3">
             <QuantityStepper value={safeQuantity} max={maxQuantity} onChange={setQuantity} disabled={outOfStock} />

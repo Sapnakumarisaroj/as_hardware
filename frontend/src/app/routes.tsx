@@ -23,6 +23,7 @@ const offers = () => import('@/pages/admin/OfferPages')
 const customers = () => import('@/pages/admin/CustomerPages')
 const returns = () => import('@/pages/admin/ReturnRefundPages')
 const support = () => import('@/pages/admin/SupportPages')
+const commerce = () => import('@/pages/admin/CommercePages')
 
 /**
  * Route table. Readable slug URLs: /c/<category-slug>, /p/<product-slug>.
@@ -105,6 +106,10 @@ export const routes: RouteObject[] = [
           },
           { path: 'offers', lazy: async () => ({ Component: (await offers()).AdminOffersPage }) },
           { path: 'coupons', lazy: async () => ({ Component: (await offers()).AdminCouponsPage }) },
+          { path: 'options', lazy: async () => ({ Component: (await commerce()).AdminOptionTypesPage }) },
+          { path: 'collections', lazy: async () => ({ Component: (await commerce()).AdminCollectionsPage }) },
+          { path: 'free-delivery', lazy: async () => ({ Component: (await commerce()).AdminFreeDeliveryPage }) },
+          { path: 'payment-settings', lazy: async () => ({ Component: (await commerce()).AdminPaymentSettingsPage }) },
           { path: 'customers', lazy: async () => ({ Component: (await customers()).AdminCustomersPage }) },
           { path: 'customers/:id', lazy: async () => ({ Component: (await customers()).AdminCustomerPage }) },
           { path: 'returns', lazy: async () => ({ Component: (await returns()).AdminReturnsPage }) },

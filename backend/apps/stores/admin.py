@@ -12,6 +12,7 @@ class DeliveryZoneInline(admin.StackedInline):
         ("radius_km", "postal_codes"),
         ("delivery_fee_override", "free_delivery_min_order"),
         ("fast_delivery_enabled", "fast_delivery_max_minutes"),
+        ("cod_enabled",),
     )
     extra = 0
 
@@ -29,8 +30,9 @@ class StoreAdmin(admin.ModelAdmin):
         "has_location",
         "is_active",
         "accepts_orders",
+        "cod_enabled",
     )
-    list_filter = ("kind", "is_active", "accepts_orders", "city")
+    list_filter = ("kind", "is_active", "accepts_orders", "cod_enabled", "city")
     list_editable = ("accepts_orders", "avg_prep_minutes", "own_riders")
     search_fields = ("name", "code", "city", "postal_code")
     exclude = ("is_deleted", "deleted_at")

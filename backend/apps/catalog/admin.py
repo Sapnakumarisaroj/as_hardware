@@ -2,6 +2,11 @@ from django.contrib import admin
 
 from .models import (
     Brand,
+    Category,
+    Collection,
+    CollectionItem,
+    OptionType,
+    OptionValue,
     Product,
     ProductImage,
     ProductSpecification,
@@ -9,6 +14,8 @@ from .models import (
     RecentSearch,
     SubCategory,
     TopCategory,
+    VariantOption,
+    VariantPriceTier,
 )
 
 
@@ -44,8 +51,9 @@ class SubCategoryAdmin(admin.ModelAdmin):
     exclude = ("is_deleted", "deleted_at")
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        # Phase 15: any category can be a parent; the model refuses a fourth level or a loop.
         if db_field.name == "parent":
-            kwargs["queryset"] = TopCategory.objects.all()
+            kwargs["queryset"] = Category.objects.all()
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
@@ -93,7 +101,7 @@ class ProductAdmin(admin.ModelAdmin):
         (None, {"fields": ("name", "slug", "sku", "brand", "category", "subcategory", "unit")}),
         ("Content", {"fields": ("short_description", "description", "tags")}),
         ("Tax & limits", {"fields": ("gst_rate", "hsn_code", "max_order_quantity", "is_returnable")}),
-        ("Visibility", {"fields": ("is_active", "is_published", "is_featured")}),
+        ("Visibility", {"fields": ("is_active", "is_published", "is_featured", "launch_date")}),
         ("Ratings", {"fields": ("rating_avg", "rating_count", "created_at", "updated_at")}),
     )
 
@@ -112,6 +120,32 @@ class ProductAdmin(admin.ModelAdmin):
         self.message_user(request, f"Search index updated for {result.embedded} product(s).")
 
 
+class _ReadOnlyInline(admin.TabularInline):
+    extra = 0
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+class PriceTierInline(_ReadOnlyInline):
+    """Shown for reference. Bulk prices are edited in the dashboard product form, which checks the
+    tier rules (no overlaps, cheaper with quantity, at most the MRP)."""
+
+    model = VariantPriceTier
+    fields = ("min_quantity", "unit_price")
+    readonly_fields = fields
+
+
+class VariantOptionInline(_ReadOnlyInline):
+    model = VariantOption
+    fields = ("option_type", "value")
+    readonly_fields = fields
+
+
 @admin.register(ProductVariant)
 class ProductVariantAdmin(admin.ModelAdmin):
     """Mainly edited inline on Product; registered for search/autocomplete (e.g. inventory)."""
@@ -120,6 +154,7 @@ class ProductVariantAdmin(admin.ModelAdmin):
     list_filter = ("is_active",)
     search_fields = ("sku", "name", "product__name")
     list_select_related = ("product",)
+    inlines = [PriceTierInline, VariantOptionInline]
 
 
 @admin.register(RecentSearch)
@@ -136,3 +171,38 @@ class RecentSearchAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+class OptionValueInline(admin.TabularInline):
+    model = OptionValue
+    fields = ("value", "slug", "sort_order")
+    prepopulated_fields = {"slug": ("value",)}
+    extra = 0
+
+
+@admin.register(OptionType)
+class OptionTypeAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "unit", "sort_order", "is_active")
+    list_editable = ("sort_order", "is_active")
+    search_fields = ("name",)
+    prepopulated_fields = {"slug": ("name",)}
+    filter_horizontal = ("categories",)
+    inlines = [OptionValueInline]
+
+
+class CollectionItemInline(admin.TabularInline):
+    model = CollectionItem
+    fields = ("product", "sort_order")
+    autocomplete_fields = ("product",)
+    extra = 0
+
+
+@admin.register(Collection)
+class CollectionAdmin(admin.ModelAdmin):
+    list_display = ("name", "rule", "is_active", "starts_at", "ends_at", "sort_order")
+    list_editable = ("is_active", "sort_order")
+    list_filter = ("rule", "is_active")
+    search_fields = ("name", "description")
+    prepopulated_fields = {"slug": ("name",)}
+    filter_horizontal = ("categories",)
+    inlines = [CollectionItemInline]

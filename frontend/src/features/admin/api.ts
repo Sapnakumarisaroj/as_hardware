@@ -22,14 +22,22 @@ import type {
   AdminSession,
   Analytics,
   CodRow,
+  CollectionInput,
+  CollectionPreview,
+  CollectionRow,
   Coupon,
   CustomerDetail,
   CustomerRow,
   EligiblePartner,
+  FreeDeliveryRuleInput,
+  FreeDeliveryRuleRow,
   InventoryRow,
   JobRow,
   ManualMovement,
   Offer,
+  OptionTypeInput,
+  OptionTypeRow,
+  PaymentSettings,
   ProductInput,
   Rider,
   Role,
@@ -478,4 +486,40 @@ export function useSearchExplain(q: string) {
     queryFn: async () => (await api.get<SearchExplanation>('/admin/search/explain/', { params: { q } })).data,
     enabled,
   })
+}
+
+// --- Phase 15: options, curated lists, free-delivery rules, payment settings ---------------------------
+
+export const useOptionTypes = (filters: Filters = {}) => useAll<OptionTypeRow>('option-types', '/admin/option-types/', filters)
+export const useOptionTypeCrud = () =>
+  useCrud<OptionTypeInput, OptionTypeRow>('/admin/option-types/', ['option-types', 'products'])
+
+export const useCollections = (filters: Filters = {}) => useAll<CollectionRow>('collections', '/admin/collections/', filters)
+export const useCollectionCrud = () => useCrud<CollectionInput, CollectionRow>('/admin/collections/', ['collections'])
+export const useCollectionPreview = (id: number | null) =>
+  useOne<CollectionPreview>('collections', `/admin/collections/${id}/preview/`, id ?? undefined, id !== null)
+
+export const useFreeDeliveryRules = (filters: Filters = {}) =>
+  useAll<FreeDeliveryRuleRow>('free-delivery', '/admin/free-delivery-rules/', filters)
+export const useFreeDeliveryRuleCrud = () =>
+  useCrud<FreeDeliveryRuleInput, FreeDeliveryRuleRow>('/admin/free-delivery-rules/', ['free-delivery'])
+
+/** Zones of every store, for choosing where a free-delivery rule applies. */
+export const useAllZones = () => useAll<Zone>('zones', '/admin/zones/')
+
+export function usePaymentSettings() {
+  const staff = useIsStaff()
+  return useQuery({
+    queryKey: ['admin', 'payment-settings'],
+    queryFn: async () => (await api.get<PaymentSettings>('/admin/payment-settings/')).data,
+    enabled: staff,
+  })
+}
+
+export function useSavePaymentSettings() {
+  return useChange(
+    async (data: Partial<Pick<PaymentSettings, 'cod_enabled' | 'cod_max_order_value'>>) =>
+      (await api.patch<PaymentSettings>('/admin/payment-settings/', data)).data,
+    ['payment-settings'],
+  )
 }

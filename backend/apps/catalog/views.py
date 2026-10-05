@@ -1,4 +1,6 @@
-from django.db.models import Count, Prefetch, Q
+from collections import defaultdict
+
+from django.db.models import Prefetch
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -10,11 +12,14 @@ from apps.core.audit import record_audit
 from apps.core.permissions import IsAdminOrReadOnly, is_admin
 
 from . import selectors, services
-from .models import Brand, Category, ProductVariant, RecentSearch
+from .collections import collection_products, live_collections
+from .models import Brand, Category, OptionType, Product, ProductVariant, RecentSearch, VariantOption
 from .search import get_search_backend, normalize_query
 from .serializers import (
     BrandSerializer,
     CategorySerializer,
+    CollectionSerializer,
+    OptionTypeSerializer,
     ProductDetailSerializer,
     ProductFacetsSerializer,
     ProductListSerializer,
@@ -24,8 +29,22 @@ from .serializers import (
 )
 
 
+def category_product_counts() -> dict[int, int]:
+    """Visible products under each category (its own and everything below it)."""
+    from .tree import ancestor_ids, parent_map
+
+    parents = parent_map()
+    counts: dict[int, int] = defaultdict(int)
+    rows = Product.objects.filter(is_active=True, is_published=True).values_list("category_id", "subcategory_id")
+    for category_id, subcategory_id in rows:
+        for node in set(ancestor_ids(subcategory_id or category_id, parents)) | set(ancestor_ids(category_id, parents)):
+            counts[node] += 1
+    return counts
+
+
 class CategoryViewSet(viewsets.ModelViewSet):
-    """Top-level categories with nested subcategories. Writes: admin only."""
+    """Top-level categories (departments) with their categories and subcategories (up to three
+    levels, Phase 15). Writes: admin only."""
 
     serializer_class = CategorySerializer
     permission_classes = [IsAdminOrReadOnly]
@@ -33,20 +52,45 @@ class CategoryViewSet(viewsets.ModelViewSet):
     pagination_class = None
 
     def get_queryset(self):
-        children = Category.objects.filter(is_active=True).annotate(
-            product_count=Count("subcategory_products", filter=_visible("subcategory_products"), distinct=True)
-        )
+        children = Category.objects.filter(is_active=True)
         qs = Category.objects.select_related("parent").prefetch_related(Prefetch("children", queryset=children))
-        if self.action in ("list", "retrieve"):
-            qs = qs.annotate(
-                product_count=Count("products", filter=_visible("products"), distinct=True)
-                + Count("subcategory_products", filter=_visible("subcategory_products"), distinct=True)
-            )
         if self.action == "list":
             qs = qs.filter(parent__isnull=True)
         if not is_admin(self.request.user):
             qs = qs.filter(is_active=True)
         return qs
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.action in ("list", "retrieve"):
+            grandchildren = defaultdict(list)
+            for child in Category.objects.filter(is_active=True, parent__parent__isnull=False).order_by(
+                "sort_order", "name"
+            ):
+                grandchildren[child.parent_id].append(child)
+            context.update(grandchildren=grandchildren, category_counts=self._counts())
+        return context
+
+    def _counts(self) -> dict[int, int]:
+        if not hasattr(self, "_category_counts"):
+            self._category_counts = category_product_counts()
+        return self._category_counts
+
+    def _with_counts(self, categories):
+        counts = self._counts()
+        for category in categories:
+            category.product_count = counts.get(category.pk, 0)
+            for child in category.children.all():
+                child.product_count = counts.get(child.pk, 0)
+        return categories
+
+    def list(self, request, *args, **kwargs):
+        categories = self._with_counts(list(self.get_queryset()))
+        return Response(self.get_serializer(categories, many=True).data)
+
+    def retrieve(self, request, *args, **kwargs):
+        category = self._with_counts([self.get_object()])[0]
+        return Response(self.get_serializer(category).data)
 
     def perform_create(self, serializer):
         obj = serializer.save()
@@ -84,11 +128,6 @@ class BrandViewSet(viewsets.ModelViewSet):
         record_audit(action="brand.delete", actor=self.request.user, target=instance, request=self.request)
 
 
-def _visible(relation: str) -> Q:
-    """Products a customer can see, counted through `relation`."""
-    return Q(**{f"{relation}__is_active": True, f"{relation}__is_published": True, f"{relation}__is_deleted": False})
-
-
 _PRODUCT_FILTERS = [
     OpenApiParameter("q", str, description="Search words (name, brand, category, tags, SKU, specifications)"),
     OpenApiParameter("category", str, description="Category or subcategory slug"),
@@ -103,6 +142,8 @@ _PRODUCT_FILTERS = [
     OpenApiParameter("fast_delivery", bool, description="Stocked at a store with fast delivery"),
     OpenApiParameter("featured", bool),
     OpenApiParameter("bestseller", bool, description="Products with at least one sale"),
+    OpenApiParameter("bulk_pricing", bool, description="Products with bulk (quantity) prices"),
+    OpenApiParameter("opt_<option>", str, description="Option filter, e.g. opt_grade=53-grade (comma = OR)"),
     OpenApiParameter("exclude", str, description="Comma-separated product slugs to leave out"),
     OpenApiParameter("spec_<key>", str, description="Specification filter, e.g. spec_power=650 (comma = OR)"),
     OpenApiParameter("ordering", str, enum=list(selectors.ORDERINGS)),
@@ -136,9 +177,14 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = self._base_queryset()
-        if self.action == "retrieve":
+        if self.action in ("retrieve", "quote"):
             qs = qs.prefetch_related(
                 Prefetch("variants", queryset=ProductVariant.objects.order_by("sort_order", "id")),
+                "variants__price_tiers",
+                Prefetch(
+                    "variants__option_values",
+                    queryset=VariantOption.objects.select_related("option_type", "value"),
+                ),
                 "specifications",
             )
         return qs
@@ -202,6 +248,24 @@ class ProductViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         instance.delete()  # soft delete: past orders keep their snapshots
         record_audit(action="product.delete", actor=self.request.user, target=instance, request=self.request)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("variant", int, description="Variant id (or choose by options: opt_<type>=<value>)"),
+            OpenApiParameter("quantity", int, description="Units, default 1"),
+            OpenApiParameter("opt_<option>", str, description="Option value slug, e.g. opt_grade=53-grade"),
+        ],
+        responses={200: None},
+    )
+    @action(detail=True, methods=["get"], permission_classes=[AllowAny])
+    def quote(self, request, slug=None):
+        """What `quantity` units would cost, from the shop's pricing engine (bulk tier, live offers,
+        free-delivery progress). The cart and checkout price again when ordering; this is a preview."""
+        from .quote import quote_product
+
+        product = self.get_object()
+        user = request.user if request.user.is_authenticated else None
+        return Response(quote_product(product, request.query_params, user=user))
 
 
 def _detail_data(product, request) -> dict:
@@ -277,3 +341,47 @@ class RecentSearchView(APIView):
     def delete(self, request):
         RecentSearch.objects.filter(user=request.user).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# --- Phase 15: options and curated lists ---------------------------------------------------------
+
+
+class OptionTypeListView(APIView):
+    """Option types and their values (Grade, Bag size, …), for filters and the assistant (public)."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(responses=OptionTypeSerializer(many=True))
+    def get(self, request):
+        types = OptionType.objects.filter(is_active=True).prefetch_related("values").order_by("sort_order", "name")
+        return Response(OptionTypeSerializer(types, many=True).data)
+
+
+class CollectionListView(APIView):
+    """Live curated lists that have products right now, each with its product cards (public).
+    Empty or out-of-date lists are left out, so the shop front never shows an empty section."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(responses=CollectionSerializer(many=True))
+    def get(self, request):
+        collections = list(live_collections())
+        products = {c.pk: collection_products(c) for c in collections}
+        visible = [c for c in collections if products[c.pk]]
+        context = {"request": request, "collection_products": products}
+        return Response(CollectionSerializer(visible, many=True, context=context).data)
+
+
+class CollectionDetailView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(responses=CollectionSerializer)
+    def get(self, request, slug):
+        from apps.core.exceptions import NotFoundError
+
+        collection = live_collections().filter(slug=slug).first()
+        products = collection_products(collection) if collection else []
+        if not products:
+            raise NotFoundError("This list isn't available right now.")
+        context = {"request": request, "collection_products": {collection.pk: products}}
+        return Response(CollectionSerializer(collection, context=context).data)

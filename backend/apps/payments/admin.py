@@ -4,7 +4,7 @@ from apps.core.exceptions import ServiceError
 from integrations.payments import GatewayError
 
 from . import refunds
-from .models import Payment, Refund, WebhookEvent
+from .models import Payment, PaymentSettings, Refund, WebhookEvent
 
 
 class ReadOnlyAdmin(admin.ModelAdmin):
@@ -64,3 +64,17 @@ class WebhookEventAdmin(ReadOnlyAdmin):
     list_display = ("event_id", "provider", "event_type", "status", "deliveries", "created_at", "processed_at")
     list_filter = ("provider", "status", "event_type")
     search_fields = ("event_id", "note")
+
+
+@admin.register(PaymentSettings)
+class PaymentSettingsAdmin(admin.ModelAdmin):
+    """One row: cash on delivery on/off and the largest order payable in cash."""
+
+    list_display = ("__str__", "cod_enabled", "cod_max_order_value", "updated_at")
+    readonly_fields = ("updated_at", "updated_by")
+
+    def has_add_permission(self, request):
+        return not PaymentSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False

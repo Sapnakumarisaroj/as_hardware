@@ -29,6 +29,10 @@ class OfferSerializer(serializers.Serializer):
     applies_to_everything = serializers.BooleanField()
     categories = _TargetSerializer(many=True)
     products = _TargetSerializer(many=True)
+    benefit = serializers.CharField(help_text="discount | free_delivery")
+    min_quantity = serializers.IntegerField()
+    campaign = serializers.CharField(allow_blank=True)
+    conditions = serializers.ListField(child=serializers.CharField(), help_text="Conditions in words")
 
 
 class LiveOffersView(APIView):
@@ -58,6 +62,10 @@ class LiveOffersView(APIView):
                 "products": [
                     {"name": products[p].name, "slug": products[p].slug} for p in r.product_ids if p in products
                 ],
+                "benefit": r.benefit,
+                "min_quantity": r.min_quantity,
+                "campaign": r.campaign,
+                "conditions": r.conditions,
             }
             for r in rules
         ]
@@ -122,7 +130,7 @@ class AvailableCouponsView(APIView):
                 row["message"] = "Add items to your cart to use this coupon."
             else:
                 try:
-                    row["discount"] = price_lines(lines, coupon=coupon).totals.coupon_discount
+                    row["discount"] = price_lines(lines, coupon=coupon, user=request.user).totals.coupon_discount
                     row["applicable"] = True
                 except ServiceError as exc:
                     row["message"] = str(exc.detail)

@@ -66,6 +66,7 @@ class Store(SoftDeleteModel):
     )
     is_active = models.BooleanField(default=True)
     accepts_orders = models.BooleanField(default=True, help_text="Temporarily pause new orders without deactivating.")
+    cod_enabled = models.BooleanField(default=True, help_text="Allow cash on delivery for orders shipped from here.")
     # Store managers only see inventory/orders of stores they are assigned to.
     managers = models.ManyToManyField(
         settings.AUTH_USER_MODEL,

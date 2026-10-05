@@ -33,6 +33,8 @@ export interface ProductSummary {
   image_alt: string
   /** Live automatic offer for this product; the discount itself is applied in the cart. */
   offer: ProductOffer | null
+  /** Bulk (quantity) prices exist for this product: from how many units, and the lowest unit price. */
+  bulk_pricing?: BulkPricingSummary | null
   /** Search results only: why this product is here when the words alone do not explain it. */
   match_reason?: string
   match_type?: 'keyword' | 'related' | 'semantic'
@@ -43,6 +45,34 @@ export interface ProductOffer {
   name: string
   badge: string
   min_order_value: string
+  benefit?: 'discount' | 'free_delivery'
+  min_quantity?: number
+  /** Festival/campaign label, e.g. "Diwali". */
+  campaign?: string
+  /** Conditions in words ("Buy 10 or more of an item", "First order only"). */
+  conditions?: string[]
+}
+
+export interface BulkPricingSummary {
+  from_quantity: number | null
+  lowest_unit_price: string
+}
+
+/** One row of a variant's bulk price table (the first row is the normal price). */
+export interface PriceTier {
+  min_quantity: number
+  /** null for the last tier ("50+"). */
+  max_quantity: number | null
+  unit_price: string
+  saving_percent: string
+  is_base: boolean
+}
+
+export interface ProductOption {
+  slug: string
+  name: string
+  unit: string
+  values: { slug: string; value: string }[]
 }
 
 export interface ProductVariant {
@@ -63,6 +93,10 @@ export interface ProductVariant {
   available_quantity: number | null
   stock_status: StockStatus
   fast_delivery: boolean
+  /** Bulk prices (empty when the variant has none). Display only: the cart charges the price. */
+  price_tiers?: PriceTier[]
+  /** {option_type_slug: value_slug}, e.g. {grade: '53-grade', 'bag-size': '50-kg'}. */
+  options?: Record<string, string>
 }
 
 export interface ProductSpecification {
@@ -89,9 +123,50 @@ export interface ProductDetail extends ProductSummary {
   hsn_code: string
   max_order_quantity: number
   is_returnable: boolean
+  launch_date?: string | null
   variants: ProductVariant[]
   specifications: ProductSpecification[]
   images: ProductImage[]
+  /** Option types the variants differ by (Grade, Bag size…); empty for simple products. */
+  options?: ProductOption[]
+  /** From the department down to the product's most specific category. */
+  breadcrumb?: NamedRef[]
+}
+
+/** GET /products/{slug}/quote/: what a quantity costs, from the shop's pricing engine (preview). */
+export interface PriceQuote {
+  product_id: number
+  variant_id: number
+  sku: string
+  options: Record<string, string>
+  quantity: number
+  mrp: string
+  base_unit_price: string
+  unit_price: string
+  applied_tier: { min_quantity: number } | null
+  next_tier: { min_quantity: number; unit_price: string; units_more: number; reachable: boolean } | null
+  price_tiers: PriceTier[]
+  line_total: string
+  bulk_saving: string
+  offer_discount: string
+  offers: { name: string; badge: string }[]
+  total: string
+  savings_vs_mrp: string
+  stock_status: StockStatus
+  within_stock: boolean
+  max_order_quantity: number
+  note: string
+}
+
+export interface Collection {
+  id: number
+  name: string
+  slug: string
+  description: string
+  rule: 'manual' | 'best_sellers' | 'new_launches' | 'bulk_pricing'
+  starts_at: string | null
+  ends_at: string | null
+  products: ProductSummary[]
 }
 
 export interface Paginated<T> {
@@ -119,6 +194,8 @@ export interface SubCategory {
   image: string | null
   sort_order: number
   product_count: number | null
+  /** Third level (Phase 15), e.g. Cement › Grey Cement. Empty at the deepest level. */
+  children?: SubCategory[]
 }
 
 export interface Category extends SubCategory {
@@ -126,6 +203,9 @@ export interface Category extends SubCategory {
   parent_detail: NamedRef | null
   is_active: boolean
   children: SubCategory[]
+  /** 1 = department / top level, 2 = category, 3 = subcategory. */
+  level?: number
+  breadcrumb?: NamedRef[]
 }
 
 export interface Brand {
@@ -158,6 +238,8 @@ export interface ProductFacets {
   discounts: { min: number; count: number }[]
   availability: { in_stock: number; fast_delivery: number }
   specifications: SpecFacet[]
+  /** Structured options (Grade, Bag size…) with counts; filters use `opt_<slug>=value-slug`. */
+  options?: { slug: string; name: string; values: { slug: string; value: string; count: number }[] }[]
 }
 
 export interface Review {

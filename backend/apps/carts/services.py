@@ -106,6 +106,11 @@ class CartLineView:
     def price_changed(self) -> bool:
         return self.item.price_at_add != self.item.variant.price
 
+    @property
+    def unit_price(self):
+        """What one unit costs at this quantity (bulk tier applied), from the pricing engine."""
+        return self.priced.unit_price if self.priced else self.item.variant.price
+
 
 @dataclass
 class CartSummary:
@@ -130,7 +135,7 @@ def summarize_cart(user) -> CartSummary:
     cart = get_cart(user)
     items = (
         cart.items.select_related("variant__product__brand")
-        .prefetch_related("variant__product__images")
+        .prefetch_related("variant__product__images", "variant__price_tiers")
         .order_by("created_at", "id")
     )
     lines, issues = [], []
@@ -150,7 +155,8 @@ def summarize_cart(user) -> CartSummary:
             issues.append(f"Only {available} unit(s) of {view.item.variant} available.")
         lines.append(view)
     summary = CartSummary(cart=cart, lines=lines, totals=calculate_totals([]), issues=issues)
-    pricing = price_lines(summary.priced_lines)  # automatic offers included; coupons are chosen at checkout
+    # Automatic offers included (customer-specific ones for this customer); coupons are chosen at checkout.
+    pricing = price_lines(summary.priced_lines, user=user)
     summary.totals, summary.offers = pricing.totals, pricing.offers
     return summary
 

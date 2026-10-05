@@ -39,6 +39,7 @@ from .models import DeliveryZone
 class FeeRule:
     fee: Decimal
     free_min: Decimal
+    zone_id: int | None = field(default=None, compare=False)  # whose FreeDeliveryRules apply (orders.pricing)
 
     @classmethod
     def default(cls) -> "FeeRule":
@@ -52,6 +53,7 @@ class FeeRule:
         return cls(
             q(zone.delivery_fee_override) if zone.delivery_fee_override is not None else default.fee,
             q(zone.free_delivery_min_order) if zone.free_delivery_min_order is not None else default.free_min,
+            zone.pk,
         )
 
 

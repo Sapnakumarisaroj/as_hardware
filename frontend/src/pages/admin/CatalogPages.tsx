@@ -18,8 +18,10 @@ import {
   useRestoreProduct,
   useSaveProduct,
 } from '@/features/admin/api'
+import { flattenCategories } from '@/features/admin/categories'
 import { useSession } from '@/features/admin/session'
 import type { AdminBrand, AdminCategory, AdminProduct, AdminProductRow, ProductInput, VariantInput } from '@/features/admin/types'
+import { useOptionTypes } from '@/features/admin/api'
 import {
   Badge,
   CheckField,
@@ -274,6 +276,7 @@ function blank(): ProductInput {
     is_returnable: true,
     variants: [{ ...EMPTY_VARIANT, is_default: true }],
     specifications: [],
+    launch_date: null,
   }
 }
 
@@ -301,9 +304,36 @@ function fromProduct(product: AdminProduct): ProductInput {
       price: v.price,
       is_default: v.is_default,
       is_active: v.is_active,
+      price_tiers: (v.price_tiers ?? []).map((t) => ({ min_quantity: String(t.min_quantity), unit_price: t.unit_price })),
+      options: (v.options ?? []).map((o) => ({ option_type: o.option_type, value: o.value })),
     })),
     specifications: product.specifications.map((s) => ({ name: s.name, value: s.value })),
+    launch_date: product.launch_date ?? null,
   }
+}
+
+/** Bulk-price checks the browser can point out at once; the server checks them all again. */
+function tierProblems(variant: VariantInput, name: string): string[] {
+  const found: string[] = []
+  const rows = (variant.price_tiers ?? []).filter((t) => t.min_quantity !== '' || t.unit_price !== '')
+  const sorted = [...rows].sort((a, b) => Number(a.min_quantity) - Number(b.min_quantity))
+  let previous = Number(variant.price)
+  const seen = new Set<number>()
+  for (const tier of sorted) {
+    const quantity = Number(tier.min_quantity)
+    const price = Number(tier.unit_price)
+    if (!Number.isInteger(quantity) || quantity < 2) {
+      found.push(`${name}: bulk prices start from 2 units.`)
+      continue
+    }
+    if (seen.has(quantity)) found.push(`${name}: two bulk prices start at ${quantity} units.`)
+    seen.add(quantity)
+    if (!(price > 0)) found.push(`${name}: enter the ${quantity}+ price.`)
+    else if (price > Number(variant.mrp)) found.push(`${name}: the ${quantity}+ price is above the MRP.`)
+    else if (price >= previous) found.push(`${name}: the ${quantity}+ price must be lower than the price for fewer units.`)
+    previous = price
+  }
+  return found
 }
 
 /** Problems the browser can point out before asking the server (which checks everything again). */
@@ -320,6 +350,7 @@ function problems(form: ProductInput): string[] {
     if (!(Number(variant.price) > 0)) found.push(`${name}: enter the selling price.`)
     if (!(Number(variant.mrp) > 0)) found.push(`${name}: enter the MRP.`)
     if (Number(variant.price) > Number(variant.mrp)) found.push(`${name}: the selling price can’t be higher than the MRP.`)
+    found.push(...tierProblems(variant, name))
   })
   const skus = form.variants.map((v) => v.sku.trim().toUpperCase()).filter(Boolean)
   if (new Set(skus).size !== skus.length) found.push('Two variants have the same SKU.')
@@ -417,7 +448,23 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
   const [form, setForm] = useState<ProductInput>(() => (product ? fromProduct(product) : blank()))
   const [shown, setShown] = useState<string[]>([])
   const set = <K extends keyof ProductInput>(key: K, value: ProductInput[K]) => setForm((current) => ({ ...current, [key]: value }))
-  const subcategories = categories.data?.find((c) => c.id === form.category)?.children ?? []
+  const flat = flattenCategories(categories.data ?? [])
+  const subcategories = flat.find((entry) => entry.category.id === form.category)?.category.children ?? []
+  const optionTypes = useOptionTypes()
+  // Option types offered for this product: shop-wide ones, or ones whose categories include the
+  // product's category, subcategory or anything above them. The server checks this again.
+  const lineage = new Set<number>()
+  for (const id of [form.category, form.subcategory]) {
+    let entry = flat.find((e) => e.category.id === id)
+    while (entry) {
+      lineage.add(entry.category.id)
+      const parent = entry.category.parent
+      entry = parent ? flat.find((e) => e.category.id === parent) : undefined
+    }
+  }
+  const usableOptions = (optionTypes.data ?? []).filter(
+    (t) => t.is_active && (t.categories.length === 0 || t.categories.some((id) => lineage.has(id))),
+  )
 
   function setVariant(index: number, changes: Partial<VariantInput>) {
     setForm((current) => ({
@@ -438,7 +485,13 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
         ...form,
         name: form.name.trim(),
         sku: form.sku.trim(),
-        variants: form.variants.map((v) => ({ ...v, sku: v.sku.trim(), name: v.name.trim() })),
+        variants: form.variants.map((v) => ({
+          ...v,
+          sku: v.sku.trim(),
+          name: v.name.trim(),
+          price_tiers: (v.price_tiers ?? []).filter((t) => t.min_quantity !== '' || t.unit_price !== ''),
+          options: (v.options ?? []).filter((o) => o.value.trim() !== '').map((o) => ({ ...o, value: o.value.trim() })),
+        })),
         specifications: form.specifications.map((s) => ({ name: s.name.trim(), value: s.value.trim() })),
       },
       {
@@ -479,12 +532,14 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
             onChange={(e) => setForm((c) => ({ ...c, category: Number(e.target.value) || null, subcategory: null }))}
           >
             <option value="">Choose…</option>
-            {(categories.data ?? []).map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-                {category.is_active ? '' : ' (inactive)'}
-              </option>
-            ))}
+            {flat
+              .filter((entry) => entry.level < 3)
+              .map(({ category, path }) => (
+                <option key={category.id} value={category.id}>
+                  {path}
+                  {category.is_active ? '' : ' (inactive)'}
+                </option>
+              ))}
           </SelectField>
           <SelectField
             id="subcategory"
@@ -524,6 +579,14 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
             hint="Prices include GST."
           />
           <FormField id="hsn_code" label="HSN code" value={form.hsn_code} onChange={(e) => set('hsn_code', e.target.value)} maxLength={10} />
+          <FormField
+            id="launch_date"
+            label="Launch date"
+            type="date"
+            value={form.launch_date ?? ''}
+            onChange={(e) => set('launch_date', e.target.value || null)}
+            hint="Used by the automatic “New launches” list. Empty: the date it was added."
+          />
           <FormField
             id="short_description"
             label="Short description"
@@ -580,6 +643,80 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
                     onChange={(e) => setVariant(index, { price: e.target.value })}
                   />
                 </div>
+                {usableOptions.length > 0 && (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                    {usableOptions.map((type) => {
+                      const current = variant.options?.find((o) => o.option_type === type.id)?.value ?? ''
+                      return (
+                        <FormField
+                          key={type.id}
+                          id={`variant-${index}-option-${type.id}`}
+                          label={`${type.name}${type.unit ? ` (${type.unit})` : ''}`}
+                          value={current}
+                          list={`option-values-${type.id}`}
+                          placeholder={type.values[0]?.value ?? ''}
+                          onChange={(e) =>
+                            setVariant(index, {
+                              options: [
+                                ...(variant.options ?? []).filter((o) => o.option_type !== type.id),
+                                { option_type: type.id, value: e.target.value },
+                              ],
+                            })
+                          }
+                        />
+                      )
+                    })}
+                  </div>
+                )}
+                <fieldset className="mt-3">
+                  <legend className="text-sm font-medium">Bulk prices</legend>
+                  <p className="text-xs text-ink-600">
+                    From a quantity, a lower price per unit. Each must be lower than the price for fewer units and not above the MRP.
+                  </p>
+                  {(variant.price_tiers ?? []).map((tier, tierIndex) => (
+                    <div key={tierIndex} className="mt-2 flex flex-wrap items-end gap-2">
+                      <FormField
+                        id={`variant-${index}-tier-${tierIndex}-qty`}
+                        label="From units"
+                        type="number"
+                        min={2}
+                        className="w-28"
+                        value={tier.min_quantity}
+                        onChange={(e) =>
+                          setVariant(index, {
+                            price_tiers: (variant.price_tiers ?? []).map((t, i) => (i === tierIndex ? { ...t, min_quantity: e.target.value } : t)),
+                          })
+                        }
+                      />
+                      <FormField
+                        id={`variant-${index}-tier-${tierIndex}-price`}
+                        label="Price per unit (₹)"
+                        inputMode="decimal"
+                        className="w-36"
+                        value={tier.unit_price}
+                        onChange={(e) =>
+                          setVariant(index, {
+                            price_tiers: (variant.price_tiers ?? []).map((t, i) => (i === tierIndex ? { ...t, unit_price: e.target.value } : t)),
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="btn-secondary px-2.5 py-1.5"
+                        onClick={() => setVariant(index, { price_tiers: (variant.price_tiers ?? []).filter((_, i) => i !== tierIndex) })}
+                      >
+                        Remove{' '}<span className="sr-only">bulk price {tierIndex + 1} of variant {index + 1}</span>
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="mt-2 text-sm font-semibold text-amber-600 underline-offset-2 hover:underline"
+                    onClick={() => setVariant(index, { price_tiers: [...(variant.price_tiers ?? []), { min_quantity: '', unit_price: '' }] })}
+                  >
+                    Add bulk price{' '}<span className="sr-only">to variant {index + 1}</span>
+                  </button>
+                </fieldset>
                 <div className="mt-2 flex flex-wrap items-center gap-4">
                   <CheckField
                     id={`variant-${index}-default`}
@@ -610,7 +747,15 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
         </ul>
         <p className="mt-2 text-xs text-ink-600">
           A saved variant can be taken off sale but not removed, because orders refer to it. Stock is managed under Inventory.
+          Options come from Product options; a new value typed here is added to that option.
         </p>
+        {usableOptions.map((type) => (
+          <datalist key={type.id} id={`option-values-${type.id}`}>
+            {type.values.map((value) => (
+              <option key={value.id} value={value.value} />
+            ))}
+          </datalist>
+        ))}
       </Panel>
 
       <Panel
@@ -860,9 +1005,10 @@ export function AdminCategoriesPage() {
     setDraft({ name: '', parent, description: '', sort_order: '0', is_active: true })
   }
 
-  function row(category: AdminCategory, child = false) {
+  function row(category: AdminCategory, depth = 1) {
+    const child = depth > 1
     return (
-      <li key={category.id} className={`flex flex-wrap items-center gap-2 py-2.5 ${child ? 'pl-6' : ''}`}>
+      <li key={category.id} className={`flex flex-wrap items-center gap-2 py-2.5 ${depth === 2 ? 'pl-6' : depth === 3 ? 'pl-12' : ''}`}>
         <span className="min-w-0 flex-1">
           <span className={child ? 'text-sm' : 'font-semibold'}>{category.name}</span>
           <span className="ml-2 text-xs text-ink-600">
@@ -872,9 +1018,9 @@ export function AdminCategoriesPage() {
         {!category.is_active && <Badge>Inactive</Badge>}
         {canEdit && (
           <>
-            {!child && (
+            {depth < 3 && (
               <button type="button" className="btn-secondary px-2.5 py-1.5" onClick={() => create(category.id)}>
-                Add subcategory{' '}
+                {depth === 1 ? 'Add category' : 'Add subcategory'}{' '}
 <span className="sr-only">to {category.name}</span>
               </button>
             )}
@@ -921,11 +1067,11 @@ export function AdminCategoriesPage() {
     <>
       <PageHeader
         title="Categories"
-        description="Categories and their subcategories, in the order customers see them (lowest position first)."
+        description="Departments, categories and subcategories (up to three levels), in the order customers see them (lowest position first)."
         actions={
           canEdit && (
             <button type="button" className="btn-primary" onClick={() => create(null)}>
-              Add category
+              Add department
             </button>
           )
         }
@@ -945,7 +1091,14 @@ export function AdminCategoriesPage() {
               <li key={category.id}>
                 <ul className="divide-y divide-steel-100">
                   {row(category)}
-                  {category.children.map((child) => row(child, true))}
+                  {category.children.map((child) => (
+                    <li key={`branch-${child.id}`}>
+                      <ul className="divide-y divide-steel-100">
+                        {row(child, 2)}
+                        {(child.children ?? []).map((grandchild) => row(grandchild, 3))}
+                      </ul>
+                    </li>
+                  ))}
                 </ul>
               </li>
             ))}
@@ -955,7 +1108,7 @@ export function AdminCategoriesPage() {
 
       <FormDialog
         open={draft !== null}
-        title={draft?.id ? 'Edit category' : draft?.parent ? 'Add subcategory' : 'Add category'}
+        title={draft?.id ? 'Edit category' : draft?.parent ? 'Add category inside' : 'Add department'}
         busy={save.isPending}
         error={save.error}
         onClose={() => setDraft(null)}
@@ -989,14 +1142,14 @@ export function AdminCategoriesPage() {
               label="Inside"
               value={draft.parent ?? ''}
               onChange={(e) => setDraft({ ...draft, parent: Number(e.target.value) || null })}
-              hint="Leave empty for a main category."
+              hint="Leave empty for a department (top level). At most three levels."
             >
-              <option value="">— main category —</option>
-              {(categories.data ?? [])
-                .filter((category) => category.id !== draft.id)
-                .map((category) => (
+              <option value="">— department (top level) —</option>
+              {flattenCategories(categories.data ?? [])
+                .filter((entry) => entry.level < 3 && entry.category.id !== draft.id)
+                .map(({ category, path }) => (
                   <option key={category.id} value={category.id}>
-                    {category.name}
+                    {path}
                   </option>
                 ))}
             </SelectField>
@@ -1036,7 +1189,7 @@ export function AdminCategoriesPage() {
           })
         }}
       >
-        <p>A category can only be deleted when it has no products and no subcategories. Otherwise, deactivate it.</p>
+        <p>A category can only be deleted when it has no products and nothing inside it. Otherwise, deactivate it.</p>
       </ConfirmDialog>
     </>
   )

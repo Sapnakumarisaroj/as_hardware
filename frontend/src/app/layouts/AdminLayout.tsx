@@ -26,9 +26,18 @@ const MENU: { title: string; items: [Section, string, string][] }[] = [
       ['products', 'Products', '/admin/products'],
       ['categories', 'Categories', '/admin/categories'],
       ['brands', 'Brands', '/admin/brands'],
+      ['options', 'Product options', '/admin/options'],
+      ['collections', 'Curated lists', '/admin/collections'],
+      ['search', 'Search', '/admin/search'],
+    ],
+  },
+  {
+    title: 'Pricing',
+    items: [
       ['offers', 'Offers', '/admin/offers'],
       ['coupons', 'Coupons', '/admin/coupons'],
-      ['search', 'Search', '/admin/search'],
+      ['free-delivery', 'Free delivery', '/admin/free-delivery'],
+      ['payment-settings', 'Cash on delivery', '/admin/payment-settings'],
     ],
   },
   {

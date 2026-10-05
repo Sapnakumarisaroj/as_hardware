@@ -195,6 +195,8 @@ def test_order_records_offer_and_coupon_breakdown(auth_client, user, cat):
             "badge": "10% off",
             "discount": "118.00",
             "skus": [cat["drill"].sku],
+            "benefit": "discount",  # Phase 15 additions to the snapshot
+            "campaign": "",
         }
     ]
     assert data["items"][0]["offer_discount"] == "118.00"

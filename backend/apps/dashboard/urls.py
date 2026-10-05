@@ -2,6 +2,12 @@ from django.urls import path
 from rest_framework.routers import SimpleRouter
 
 from .catalog import AdminBrandViewSet, AdminCategoryViewSet, AdminProductViewSet, VariantSearchView
+from .commerce import (
+    AdminCollectionViewSet,
+    AdminFreeDeliveryRuleViewSet,
+    AdminOptionTypeViewSet,
+    PaymentSettingsView,
+)
 from .offers import AdminCouponViewSet, AdminOfferViewSet
 from .orders import AdminOrderViewSet
 from .people import AdminCustomerViewSet, AdminJobViewSet, AdminRiderViewSet, AdminSupportViewSet
@@ -24,6 +30,9 @@ router.register("admin/customers", AdminCustomerViewSet, basename="admin-custome
 router.register("admin/riders", AdminRiderViewSet, basename="admin-rider")
 router.register("admin/jobs", AdminJobViewSet, basename="admin-job")
 router.register("admin/support", AdminSupportViewSet, basename="admin-support")
+router.register("admin/option-types", AdminOptionTypeViewSet, basename="admin-option-type")
+router.register("admin/collections", AdminCollectionViewSet, basename="admin-collection")
+router.register("admin/free-delivery-rules", AdminFreeDeliveryRuleViewSet, basename="admin-free-delivery-rule")
 
 urlpatterns = [
     path("admin/session/", SessionView.as_view(), name="admin-session"),
@@ -33,5 +42,6 @@ urlpatterns = [
     path("admin/search/index/rebuild/", SearchIndexRebuildView.as_view(), name="admin-search-rebuild"),
     path("admin/search/index/products/<int:pk>/", SearchIndexProductView.as_view(), name="admin-search-product"),
     path("admin/search/explain/", SearchExplainView.as_view(), name="admin-search-explain"),
+    path("admin/payment-settings/", PaymentSettingsView.as_view(), name="admin-payment-settings"),
     *router.urls,
 ]

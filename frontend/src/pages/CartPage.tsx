@@ -9,7 +9,7 @@ import { useCart, useRemoveCartItem, useUpdateCartItem, type CartLine } from '@/
 import { useAddresses } from '@/features/addresses/api'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { useCartEstimate } from '@/features/delivery/api'
-import { DeliveryEstimate, PincodeForm } from '@/features/delivery/components'
+import { DeliveryEstimate, FreeDeliveryNote, PincodeForm } from '@/features/delivery/components'
 import { usePincode } from '@/features/delivery/location'
 import { CartOfferNotes } from '@/features/offers/components'
 import { PriceSummary } from '@/features/orders/components'
@@ -101,6 +101,17 @@ function Line({ line }: { line: CartLine }) {
             </>
           )}
         </p>
+        {line.bulk?.applied_min_quantity && (
+          <p className="mt-1 text-xs font-medium text-success-600">
+            Bulk price for {line.bulk.applied_min_quantity}+ applied (normal {formatPrice(line.base_unit_price)} each) — you
+            save {formatPrice(line.bulk.saving)}
+          </p>
+        )}
+        {line.bulk?.next_tier?.reachable && (
+          <p className="mt-1 text-xs text-ink-800">
+            Add {line.bulk.next_tier.units_more} more to pay {formatPrice(line.bulk.next_tier.unit_price)} each.
+          </p>
+        )}
         {line.price_changed && (
           <p className="mt-1 text-xs font-medium text-amber-600">
             Price changed since you added this (was {formatPrice(line.price_at_add)}).
@@ -262,6 +273,13 @@ export function CartPage() {
 
       <aside className="h-fit space-y-3 lg:sticky lg:top-32">
         <CartOfferNotes offers={offers} />
+        <FreeDeliveryNote
+          fee={totals.delivery_fee}
+          reason={totals.free_delivery_reason}
+          amountToFree={totals.amount_to_free_delivery}
+          hint={totals.free_delivery_hint}
+          threshold={totals.free_delivery_threshold}
+        />
         <CartDelivery cartVersion={items.map((line) => `${line.variant_id}x${line.quantity}`).join(',')} />
         <div className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
           <PriceSummary
@@ -271,6 +289,11 @@ export function CartPage() {
               totals.savings_vs_mrp !== '0.00' && (
                 <p className="mt-3 rounded-md bg-success-600/10 px-3 py-2 text-sm font-medium text-success-600">
                   You save {formatPrice(totals.savings_vs_mrp)} on this order
+                  {totals.bulk_savings && totals.bulk_savings !== '0.00' && (
+                    <span className="block text-xs font-normal">
+                      including {formatPrice(totals.bulk_savings)} from bulk prices
+                    </span>
+                  )}
                 </p>
               )
             }

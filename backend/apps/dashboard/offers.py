@@ -5,6 +5,8 @@ place, `orders.pricing.price_lines` with `offers.engine` and `offers.services` (
 dashboard never calculates a discount.
 """
 
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from django.db.models.deletion import ProtectedError
@@ -93,10 +95,61 @@ class _RuleSerializer(serializers.ModelSerializer):
         return attrs
 
 
+OFFER_FIELDS = [
+    "benefit",
+    "min_quantity",
+    "max_prior_orders",
+    "campaign",
+    "usage_limit",
+    "per_customer_limit",
+    "used_count",
+    "remaining_uses",
+    "conditions",
+]
+
+
 class OfferSerializer(_RuleSerializer):
+    remaining_uses = serializers.SerializerMethodField()
+    conditions = serializers.SerializerMethodField()
+
     class Meta:
         model = Offer
-        fields = ["id", "name", "description", "priority", *RULE_FIELDS, "created_at", "updated_at"]
+        fields = ["id", "name", "description", "priority", *RULE_FIELDS, *OFFER_FIELDS, "created_at", "updated_at"]
+        read_only_fields = ["used_count"]
+
+    def get_remaining_uses(self, obj) -> int | None:
+        return None if obj.usage_limit is None else max(obj.usage_limit - obj.used_count, 0)
+
+    def get_conditions(self, obj) -> list[str]:
+        from apps.offers.engine import _rule
+
+        return _rule(obj).conditions
+
+    def get_summary(self, obj) -> str:
+        text = super().get_summary(obj)
+        if obj.benefit == Offer.Benefit.FREE_DELIVERY:
+            text = "Free delivery" + text[text.index(" on ") :]
+        if obj.campaign:
+            text = f"{obj.campaign}: {text}"
+        return text
+
+    def validate(self, attrs):
+        benefit = attrs.get("benefit", getattr(self.instance, "benefit", Offer.Benefit.DISCOUNT))
+        if benefit == Offer.Benefit.FREE_DELIVERY:
+            # No amount for free delivery: keep the stored discount fields neutral.
+            attrs["discount_type"] = DiscountType.FIXED
+            attrs["value"] = Decimal("0.00")
+            attrs["max_discount_amount"] = None
+            return attrs
+        attrs = super().validate(attrs)
+        value = attrs.get("value", getattr(self.instance, "value", None))
+        if value is None or value <= 0:
+            raise serializers.ValidationError({"value": "Enter the discount (more than 0)."})
+        limit = attrs.get("usage_limit", getattr(self.instance, "usage_limit", None))
+        if self.instance is not None and limit is not None and limit < self.instance.used_count:
+            used = self.instance.used_count
+            raise serializers.ValidationError({"usage_limit": f"This offer was already used {used} times."})
+        return attrs
 
 
 class CouponSerializer(_RuleSerializer):

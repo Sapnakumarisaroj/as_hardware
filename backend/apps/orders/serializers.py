@@ -583,6 +583,12 @@ class DeliveryQuoteSerializer(serializers.Serializer):
         help_text="Why not deliverable: out_of_zone, location_unknown, insufficient_stock"
     )
     shipments = _QuoteShipmentSerializer(many=True)
+    free_delivery_reason = serializers.CharField(
+        allow_blank=True, help_text="Why delivery is free (empty when it is not)"
+    )
+    free_delivery_hint = serializers.CharField(
+        allow_blank=True, help_text='Which items count towards free delivery, e.g. "Cement" (empty = everything)'
+    )
 
 
 class CheckoutPreviewSerializer(serializers.Serializer):
@@ -622,13 +628,31 @@ class CheckoutPreviewSerializer(serializers.Serializer):
         ).data
 
     def get_payment_methods(self, obj) -> list[dict]:
+        """Payment choices with whether each can be used for this order (Phase 15 COD rules) and why not."""
         from integrations.payments import get_payment_provider
 
         provider = get_payment_provider()
         online_label = "Mock online payment (development — no real money)" if provider.is_test_mode else "Pay online"
+        cod = obj.cod
+        cod_limit = cod.max_order_value if cod else None
         return [
-            {"value": PaymentMethod.ONLINE, "label": online_label, "test_mode": provider.is_test_mode},
-            {"value": PaymentMethod.COD, "label": "Cash on delivery", "test_mode": False},
+            {
+                "value": PaymentMethod.ONLINE,
+                "label": online_label,
+                "test_mode": provider.is_test_mode,
+                "available": True,
+                "reason_code": "",
+                "message": "",
+            },
+            {
+                "value": PaymentMethod.COD,
+                "label": "Cash on delivery",
+                "test_mode": False,
+                "available": cod.available if cod else True,
+                "reason_code": cod.reason_code if cod else "",
+                "message": cod.message if cod else "",
+                "max_order_value": str(cod_limit) if cod_limit is not None else None,
+            },
         ]
 
 

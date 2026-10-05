@@ -225,6 +225,13 @@ describe('offers and coupons', () => {
       priority: 100,
       categories: [10],
       products: [],
+      // Phase 15 offer conditions, all off by default
+      benefit: 'discount',
+      min_quantity: 0,
+      max_prior_orders: null,
+      campaign: '',
+      usage_limit: null,
+      per_customer_limit: null,
     })
   })
 

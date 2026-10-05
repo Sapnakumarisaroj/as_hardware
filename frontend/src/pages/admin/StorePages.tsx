@@ -209,6 +209,7 @@ interface StoreForm {
   own_riders: string
   is_active: boolean
   accepts_orders: boolean
+  cod_enabled: boolean
 }
 
 const OPERATIONS: (keyof StoreForm)[] = ['phone', 'opening_hours', 'avg_prep_minutes', 'prep_minutes_per_item', 'own_riders', 'accepts_orders']
@@ -234,6 +235,7 @@ function toForm(store: StoreDetail | null, kind: StoreKind): StoreForm {
     own_riders: String(store?.own_riders ?? 0),
     is_active: store?.is_active ?? true,
     accepts_orders: store?.accepts_orders ?? true,
+    cod_enabled: store?.cod_enabled ?? true,
   }
 }
 
@@ -367,6 +369,16 @@ function StoreEditor({ store, mode }: { store: StoreDetail | null; mode: Mode })
               disabled={!all}
               onChange={(checked) => set('is_active', checked)}
             />
+            {form.kind !== 'warehouse' && (
+              <CheckField
+                id="cod_enabled"
+                label="Cash on delivery"
+                hint="Allow cash on delivery for orders shipped from here. The shop-wide limit still applies."
+                checked={form.cod_enabled}
+                disabled={!all}
+                onChange={(checked) => set('cod_enabled', checked)}
+              />
+            )}
           </div>
         </div>
       </Panel>
@@ -399,6 +411,7 @@ interface ZoneForm {
   fast_delivery_max_minutes: string
   delivery_fee_override: string
   free_delivery_min_order: string
+  cod_enabled: boolean
   is_active: boolean
 }
 
@@ -421,6 +434,7 @@ function Zones({ store }: { store: StoreDetail }) {
       fast_delivery_max_minutes: zone?.fast_delivery_max_minutes ? String(zone.fast_delivery_max_minutes) : '',
       delivery_fee_override: zone?.delivery_fee_override ?? '',
       free_delivery_min_order: zone?.free_delivery_min_order ?? '',
+      cod_enabled: zone?.cod_enabled ?? true,
       is_active: zone?.is_active ?? true,
     })
   }
@@ -495,6 +509,7 @@ function Zones({ store }: { store: StoreDetail }) {
                 fast_delivery_max_minutes: form.fast_delivery_max_minutes ? Number(form.fast_delivery_max_minutes) : null,
                 delivery_fee_override: form.delivery_fee_override || null,
                 free_delivery_min_order: form.free_delivery_min_order || null,
+                cod_enabled: form.cod_enabled,
                 is_active: form.is_active,
               },
             },
@@ -555,6 +570,12 @@ function Zones({ store }: { store: StoreDetail }) {
                 hint="Empty: shop setting."
               />
             </div>
+            <CheckField
+              id="zone-cod"
+              label="Cash on delivery in this zone"
+              checked={form.cod_enabled}
+              onChange={(v) => set('cod_enabled', v)}
+            />
             <CheckField id="zone-active" label="Active" checked={form.is_active} onChange={(v) => set('is_active', v)} />
           </>
         )}

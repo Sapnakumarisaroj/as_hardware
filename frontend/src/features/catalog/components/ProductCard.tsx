@@ -7,6 +7,7 @@ import { formatPercent } from '@/lib/format'
 
 import type { ProductSummary } from '../types'
 import { FastDeliveryBadge, PriceBlock, Rating, StockLabel } from './badges'
+import { BulkPriceIndicator } from './BulkPricing'
 import { ProductImage } from './ProductImage'
 
 export function ProductCard({ product }: { product: ProductSummary }) {
@@ -45,6 +46,7 @@ export function ProductCard({ product }: { product: ProductSummary }) {
         )}
         <Rating average={product.rating_avg} count={product.rating_count} compact />
         <PriceBlock price={product.price} mrp={product.mrp} discountPercent={product.discount_percent} />
+        {product.bulk_pricing && !outOfStock && <BulkPriceIndicator bulk={product.bulk_pricing} />}
         {hasOptions && <p className="text-xs text-ink-600">{product.variant_count} options available</p>}
         <div className="flex flex-wrap items-center gap-2">
           <StockLabel status={product.stock_status} />

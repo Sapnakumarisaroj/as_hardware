@@ -2,7 +2,17 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { api } from '@/lib/api/client'
 
-import type { Brand, Category, Paginated, ProductDetail, ProductFacets, ProductPage, Review } from './types'
+import type {
+  Brand,
+  Category,
+  Collection,
+  Paginated,
+  PriceQuote,
+  ProductDetail,
+  ProductFacets,
+  ProductPage,
+  Review,
+} from './types'
 
 /** Query parameters understood by GET /products/ and /products/facets/ (see docs/API.md). */
 export type ListingParams = Record<string, string>
@@ -15,6 +25,8 @@ export const catalogKeys = {
   facets: (params: ListingParams) => ['catalog', 'facets', params] as const,
   product: (slug: string) => ['catalog', 'product', slug] as const,
   reviews: (slug: string) => ['catalog', 'reviews', slug] as const,
+  quote: (slug: string, variantId: number, quantity: number) => ['catalog', 'quote', slug, variantId, quantity] as const,
+  collections: ['catalog', 'collections'] as const,
 }
 
 const TEN_MINUTES = 10 * 60_000
@@ -74,6 +86,31 @@ export function useProductReviews(slug: string) {
     queryFn: async () =>
       (await api.get<Paginated<Review>>(`/products/${encodeURIComponent(slug)}/reviews/`, { params: { page_size: 5 } }))
         .data,
+    staleTime: 5 * 60_000,
+  })
+}
+
+/** Server price for a variant and quantity (bulk tier + live offers). A preview: the cart prices again. */
+export function useProductQuote(slug: string, variantId: number, quantity: number, enabled = true) {
+  return useQuery({
+    queryKey: catalogKeys.quote(slug, variantId, quantity),
+    queryFn: async () =>
+      (
+        await api.get<PriceQuote>(`/products/${encodeURIComponent(slug)}/quote/`, {
+          params: { variant: variantId, quantity },
+        })
+      ).data,
+    enabled: enabled && quantity >= 1,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  })
+}
+
+/** Live curated lists with products (empty or out-of-date lists are never returned). */
+export function useCollections() {
+  return useQuery({
+    queryKey: catalogKeys.collections,
+    queryFn: async () => (await api.get<Collection[]>('/collections/')).data,
     staleTime: 5 * 60_000,
   })
 }

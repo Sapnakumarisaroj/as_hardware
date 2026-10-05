@@ -69,7 +69,7 @@ class CouponPreviewView(APIView):
         serializer.is_valid(raise_exception=True)
         summary = services.summarize_cart(request.user)
         coupon = get_valid_coupon(serializer.validated_data["code"], request.user)
-        totals = price_lines(summary.priced_lines, coupon=coupon).totals  # offers first, then the coupon
+        totals = price_lines(summary.priced_lines, coupon=coupon, user=request.user).totals  # offers, then coupon
         payload = {
             "code": coupon.code,
             "description": coupon.description,

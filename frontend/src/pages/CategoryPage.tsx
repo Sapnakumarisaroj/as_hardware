@@ -10,7 +10,17 @@ import { usePageMeta } from '@/lib/usePageMeta'
 
 import { NotFoundPage } from './NotFoundPage'
 
-/** /c/:slug — a top-level category or a subcategory, loaded from the API by slug. */
+/** A category anywhere in the (up to three-level) tree. */
+function findNode(nodes: SubCategory[], id: number): SubCategory | undefined {
+  for (const node of nodes) {
+    if (node.id === id) return node
+    const found = findNode(node.children ?? [], id)
+    if (found) return found
+  }
+  return undefined
+}
+
+/** /c/:slug — a department, category or subcategory, loaded from the API by slug. */
 export function CategoryPage() {
   const { slug = '' } = useParams()
   const category = useCategory(slug)
@@ -18,10 +28,14 @@ export function CategoryPage() {
 
   const data = category.data
   const parent = data?.parent_detail
-  // Subcategory pages show their siblings so shoppers can move sideways.
-  const siblings: SubCategory[] = parent
-    ? (tree.data?.find((c) => c.id === parent.id)?.children ?? [])
-    : (data?.children ?? [])
+  // A category with categories inside shows those; the deepest level shows its siblings so
+  // shoppers can move sideways.
+  const ownChildren = data?.children ?? []
+  const showingSiblings = ownChildren.length === 0 && Boolean(parent)
+  const siblings: SubCategory[] = showingSiblings
+    ? ((parent && findNode(tree.data ?? [], parent.id)?.children) ?? [])
+    : ownChildren
+  const trail = (data?.breadcrumb ?? []).slice(0, -1)
 
   usePageMeta(
     data ? (parent ? `${data.name} — ${parent.name}` : data.name) : null,
@@ -47,14 +61,18 @@ export function CategoryPage() {
         <div className="container-page py-4">
           <Breadcrumbs
             items={[
-              ...(parent ? [{ label: parent.name, to: `/c/${parent.slug}` }] : []),
+              ...(trail.length
+                ? trail.map((c) => ({ label: c.name, to: `/c/${c.slug}` }))
+                : parent
+                  ? [{ label: parent.name, to: `/c/${parent.slug}` }]
+                  : []),
               { label: category.data.name },
             ]}
           />
           {siblings.length > 0 && (
             <nav aria-label={`${parent?.name ?? category.data.name} subcategories`} className="mt-3">
               <ul className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4">
-                {parent && (
+                {showingSiblings && parent && (
                   <li>
                     <Link
                       to={`/c/${parent.slug}`}

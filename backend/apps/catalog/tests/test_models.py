@@ -20,12 +20,16 @@ def test_category_subcategory_relationship():
     assert str(drills) == "Tools › Drills"
 
 
-def test_category_depth_limited_to_two_levels():
+def test_category_depth_limited_to_three_levels():
+    # Phase 15: department › category › subcategory is allowed; a fourth level is not.
     top = create_category("Plumbing")
     sub = create_category("Pipes", parent=top)
     grandchild = Category(name="CPVC", slug="cpvc", parent=sub)
+    grandchild.clean()
+    grandchild.save()
+    great_grandchild = Category(name="CPVC 1 inch", slug="cpvc-1", parent=grandchild)
     with pytest.raises(ValidationError):
-        grandchild.clean()
+        great_grandchild.clean()
 
 
 def test_product_subcategory_must_belong_to_category():

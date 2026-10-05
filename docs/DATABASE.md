@@ -281,6 +281,23 @@ as before and in `core_auditlog` (actions `product.*`, `category.*`, `brand.*`, 
 Analytics buckets days/weeks/months in Python from `created_at`/`processed_at`/`delivered_at` (no database date
 functions), which keeps the PostgreSQL/MySQL/SQLite portability rules above.
 
+## Commerce core ✅ (Phase 15, additive migrations only)
+- **catalog**: `Category` may nest three levels (department › category › subcategory; enforced in `clean`/`tree.py`).
+  `Product.launch_date`. `VariantPriceTier` (variant, `min_quantity` ≥ 2 unique per variant, `unit_price`).
+  `OptionType` (name, slug, unit, sort_order, is_active, M2M categories) › `OptionValue` (value, slug, sort_order);
+  `VariantOption` (variant, option_type unique together, value), mirrored into `ProductVariant.attributes`.
+  `Collection` (name, slug, rule manual/best_sellers/new_launches/bulk_pricing, window_days, max_items, M2M categories,
+  starts_at/ends_at, is_active, sort_order) › `CollectionItem` (collection, product, sort_order).
+- **offers**: `Offer` gains `benefit`, `min_quantity`, `max_prior_orders`, `campaign`, `usage_limit`,
+  `per_customer_limit`, `used_count`; `value` may be 0 for free-delivery offers (check constraint `value ≥ 0`).
+  `OfferRedemption` (offer, user, order unique with offer, discount_amount), deleted when the order is cancelled.
+- **delivery**: `DeliveryZone.cod_enabled`; `FreeDeliveryRule` (name, threshold, M2M zones/products/categories,
+  starts_at/ends_at, is_active).
+- **payments**: `PaymentSettings` singleton (`cod_enabled`, `cod_max_order_value` default 10000.00, updated_by/at).
+- **stores**: `Store.cod_enabled`.
+- **orders**: `OrderItem.base_unit_price`, `price_tier_min_quantity` (null for older rows; `unit_price` stays the
+  amount charged); `Order.free_delivery_reason`.
+
 ## Planned tables 🔜
 `accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 14–19) · `django_cache` (prod DB cache, created by `createcachetable`).
 

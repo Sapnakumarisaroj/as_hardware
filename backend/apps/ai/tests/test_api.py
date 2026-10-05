@@ -153,3 +153,26 @@ def _all_routes():
                 yield prefix + str(p.pattern)
 
     return list(walk(get_resolver().url_patterns))
+
+
+def test_cards_carry_bulk_prices_and_offer_conditions_from_the_server(auth_client, shop):
+    """Phase 15: the assistant shows the shop's own commerce data (bulk prices, offers) and adding
+    to the cart prices the line with the bulk tier, through the same engine as the website."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.catalog.services import set_price_tiers
+    from apps.offers.models import Offer
+
+    set_price_tiers(shop["tap_variant"], [{"min_quantity": 5, "unit_price": "849"}])
+    offer = Offer.objects.create(
+        name="Taps 3+", value=Decimal("5"), min_quantity=3, starts_at=timezone.now() - timedelta(days=1)
+    )
+    offer.products.set([shop["tap"]])
+    data = auth_client.post("/api/ai/conversations/", {"message": "I need a tap"}, format="json").data
+    tap = next(c for c in data["messages"][1]["products"] if c["id"] == shop["tap"].id)
+    assert tap["bulk_pricing"] == {"from_quantity": 5, "lowest_unit_price": "849.00"}
+    assert tap["offer"]["conditions"] == ["Buy 3 or more of an item"]
+    cart = auth_client.post("/api/cart/items/", {"variant_id": tap["variant_id"], "quantity": 5}, format="json").json()
+    assert cart["items"][0]["unit_price"] == "849.00"

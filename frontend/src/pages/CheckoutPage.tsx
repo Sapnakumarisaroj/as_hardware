@@ -9,7 +9,7 @@ import { useAddresses } from '@/features/addresses/api'
 import { useAuth } from '@/features/auth/context'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { checkoutKeys, useCheckoutPreview, type CheckoutPreview } from '@/features/checkout/api'
-import { DeliveryEstimate } from '@/features/delivery/components'
+import { DeliveryEstimate, FreeDeliveryNote } from '@/features/delivery/components'
 import { useAvailableCoupons } from '@/features/offers/api'
 import { AvailableCouponList, CartOfferNotes } from '@/features/offers/components'
 import { newIdempotencyKey, usePlaceOrder } from '@/features/orders/api'
@@ -198,7 +198,10 @@ export function CheckoutPage() {
   }
   if (data.cart.issues.length) return <Navigate to="/cart" replace />
 
-  const paymentMethod: PaymentMethod = method ?? data.payment_methods[0]?.value ?? 'cod'
+  // A method the server says can't be used for this order (e.g. COD above the limit) is never sent.
+  const usable = data.payment_methods.filter((option) => option.available !== false)
+  const chosen = usable.find((option) => option.value === method)
+  const paymentMethod: PaymentMethod = chosen?.value ?? usable[0]?.value ?? data.payment_methods[0]?.value ?? 'cod'
   const issues = data.blocking_issues.filter((i) => i.code !== 'coupon_invalid')
   const canPlace = data.can_place_order && !preview.isFetching && !placeOrder.isPending
 
@@ -337,31 +340,39 @@ export function CheckoutPage() {
             <fieldset>
               <legend className="sr-only">Choose how to pay</legend>
               <div className="space-y-2">
-                {data.payment_methods.map((option) => (
-                  <label
-                    key={option.value}
-                    className="flex min-h-12 cursor-pointer items-center gap-3 rounded-md px-3 py-2 ring-1 ring-steel-200 has-checked:bg-amber-100 has-checked:ring-2 has-checked:ring-amber-500"
-                  >
-                    <input
-                      type="radio"
-                      name="payment-method"
-                      value={option.value}
-                      checked={paymentMethod === option.value}
-                      onChange={() => setMethod(option.value)}
-                      className="size-5 accent-amber-600"
-                    />
-                    <span className="text-sm">
-                      <span className="block font-semibold">{option.value === 'cod' ? 'Cash on delivery' : option.label}</span>
-                      <span className="block text-xs text-ink-600">
-                        {option.value === 'cod'
-                          ? 'Pay in cash or UPI when your order arrives.'
-                          : option.test_mode
-                            ? 'Development mode: you choose success, failure or cancellation on the next screen. No money moves.'
-                            : 'UPI, card or net banking.'}
+                {data.payment_methods.map((option) => {
+                  const unavailable = option.available === false
+                  return (
+                    <label
+                      key={option.value}
+                      className={`flex min-h-12 items-center gap-3 rounded-md px-3 py-2 ring-1 ring-steel-200 has-checked:bg-amber-100 has-checked:ring-2 has-checked:ring-amber-500 ${
+                        unavailable ? 'cursor-not-allowed bg-steel-100' : 'cursor-pointer'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="payment-method"
+                        value={option.value}
+                        checked={paymentMethod === option.value}
+                        disabled={unavailable}
+                        onChange={() => setMethod(option.value)}
+                        className="size-5 accent-amber-600"
+                      />
+                      <span className="text-sm">
+                        <span className="block font-semibold">{option.value === 'cod' ? 'Cash on delivery' : option.label}</span>
+                        <span className={`block text-xs ${unavailable ? 'font-medium text-danger-600' : 'text-ink-600'}`}>
+                          {unavailable
+                            ? option.message || 'Not available for this order.'
+                            : option.value === 'cod'
+                              ? 'Pay in cash or UPI when your order arrives.'
+                              : option.test_mode
+                                ? 'Development mode: you choose success, failure or cancellation on the next screen. No money moves.'
+                                : 'UPI, card or net banking.'}
+                        </span>
                       </span>
-                    </span>
-                  </label>
-                ))}
+                    </label>
+                  )
+                })}
               </div>
             </fieldset>
             <div className="mt-4">
@@ -388,6 +399,15 @@ export function CheckoutPage() {
               offers={data.offers.applied}
               heading="Order summary"
             />
+            <div className="mt-3">
+              <FreeDeliveryNote
+                fee={data.totals.delivery_fee}
+                reason={data.totals.free_delivery_reason}
+                amountToFree={data.totals.amount_to_free_delivery}
+                hint={data.totals.free_delivery_hint}
+                threshold={data.totals.free_delivery_threshold}
+              />
+            </div>
             {data.offers.missed.length > 0 && (
               <div className="mt-3">
                 <CartOfferNotes offers={{ applied: [], missed: data.offers.missed }} />

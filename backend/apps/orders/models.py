@@ -94,6 +94,9 @@ class Order(TimeStampedModel):
     # Snapshot of the automatic offers applied: [{"id", "name", "badge", "discount", "skus"}].
     applied_offers = models.JSONField(default=list, blank=True)
     delivery_fee = models.DecimalField(**MONEY_FIELD_KWARGS)
+    free_delivery_reason = models.CharField(
+        max_length=160, blank=True, help_text="Why delivery was free (rule or offer name), when it was."
+    )
     tax_total = models.DecimalField(**MONEY_FIELD_KWARGS, help_text="GST contained in the amount payable.")
     grand_total = models.DecimalField(**MONEY_FIELD_KWARGS)
     coupon = models.ForeignKey("offers.Coupon", null=True, blank=True, on_delete=models.SET_NULL, related_name="orders")
@@ -144,7 +147,10 @@ class OrderItem(models.Model):
     brand_name = models.CharField(max_length=120, blank=True)
     unit = models.CharField(max_length=10, blank=True)
     unit_mrp = models.DecimalField(**MONEY_FIELD_KWARGS)
-    unit_price = models.DecimalField(**MONEY_FIELD_KWARGS)
+    unit_price = models.DecimalField(**MONEY_FIELD_KWARGS, help_text="Price per unit charged (bulk tier applied).")
+    # Phase 15 bulk pricing: the variant's normal price and the tier that set `unit_price` (null = none).
+    base_unit_price = models.DecimalField(**MONEY_FIELD_KWARGS, null=True, blank=True)
+    price_tier_min_quantity = models.PositiveIntegerField(null=True, blank=True)
     gst_rate = models.DecimalField(max_digits=5, decimal_places=2)
     hsn_code = models.CharField(max_length=8, blank=True)
     quantity = models.PositiveIntegerField()

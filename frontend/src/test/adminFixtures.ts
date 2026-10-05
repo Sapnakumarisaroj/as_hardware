@@ -39,6 +39,7 @@ const WAREHOUSE = { id: 3, name: 'Central Warehouse', code: 'WH-01', kind: 'ware
 const ALL_SECTIONS: AdminSession['sections'] = [
   'dashboard', 'orders', 'products', 'categories', 'brands', 'inventory', 'stores', 'warehouses',
   'delivery', 'offers', 'coupons', 'customers', 'returns', 'refunds', 'support', 'analytics', 'search',
+  'options', 'collections', 'free-delivery', 'payment-settings',
 ] // prettier-ignore
 
 export const adminSession: AdminSession = {

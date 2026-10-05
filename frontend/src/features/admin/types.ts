@@ -21,6 +21,10 @@ export type Section =
   | 'support'
   | 'analytics'
   | 'search'
+  | 'options'
+  | 'collections'
+  | 'free-delivery'
+  | 'payment-settings'
 
 export interface StoreRef {
   id: number
@@ -294,6 +298,9 @@ export interface AdminVariant {
   sort_order: number
   stock_available: number
   stock_reserved: number
+  /** Bulk prices (Phase 15): from `min_quantity` units, `unit_price` each. */
+  price_tiers?: { min_quantity: number; unit_price: string }[]
+  options?: { option_type: number; option_name: string; value_id: number; value: string }[]
 }
 
 export interface AdminProductImage {
@@ -314,6 +321,9 @@ export interface AdminProduct extends AdminProductRow {
   variants: AdminVariant[]
   specifications: { id?: number; group?: string; name: string; value: string }[]
   images: AdminProductImage[]
+  launch_date?: string | null
+  /** Options that can be set on this product's variants (its category's or shop-wide ones). */
+  option_types?: { id: number; name: string; unit: string; values: { id: number; value: string }[] }[]
 }
 
 export interface VariantInput {
@@ -324,6 +334,9 @@ export interface VariantInput {
   price: string
   is_default: boolean
   is_active: boolean
+  /** Replace-all lists; the server checks every rule (no overlaps, cheaper with quantity, ≤ MRP). */
+  price_tiers?: { min_quantity: string; unit_price: string }[]
+  options?: { option_type: number; value: string }[]
 }
 
 export interface ProductInput {
@@ -343,6 +356,7 @@ export interface ProductInput {
   is_returnable: boolean
   variants: VariantInput[]
   specifications: { name: string; value: string }[]
+  launch_date?: string | null
 }
 
 export interface AdminCategory {
@@ -357,6 +371,8 @@ export interface AdminCategory {
   is_active: boolean
   product_count: number
   children: AdminCategory[]
+  /** 1 = department / main category, 2 = category, 3 = subcategory (the deepest). */
+  level?: number
 }
 
 export interface AdminBrand {
@@ -429,6 +445,8 @@ export interface StoreRow {
   postal_code: string
   is_active: boolean
   accepts_orders: boolean
+  /** Cash on delivery allowed for orders shipped from this store (administrators decide). */
+  cod_enabled?: boolean
   avg_prep_minutes: number
   own_riders: number
   has_location: boolean
@@ -452,6 +470,7 @@ export interface Zone {
   free_delivery_min_order: string | null
   effective_fee: string
   effective_free_from: string
+  cod_enabled?: boolean
   is_active: boolean
 }
 
@@ -573,6 +592,17 @@ export interface DiscountRule {
 export interface Offer extends DiscountRule {
   name: string
   priority: number
+  /** Phase 15 */
+  benefit?: 'discount' | 'free_delivery'
+  min_quantity?: number
+  /** 0 = first order only; 4 = the first five orders; null = everyone. */
+  max_prior_orders?: number | null
+  campaign?: string
+  usage_limit?: number | null
+  per_customer_limit?: number | null
+  used_count?: number
+  remaining_uses?: number | null
+  conditions?: string[]
 }
 
 export interface Coupon extends DiscountRule {
@@ -584,7 +614,9 @@ export interface Coupon extends DiscountRule {
   show_in_checkout: boolean
 }
 
-export type RuleInput = Partial<Omit<Offer & Coupon, 'id' | 'state' | 'summary' | 'product_details' | 'category_details'>>
+export type RuleInput = Partial<
+  Omit<Offer & Coupon, 'id' | 'state' | 'summary' | 'product_details' | 'category_details' | 'per_customer_limit'>
+> & { per_customer_limit?: number | null }
 
 // --- Customers -----------------------------------------------------------------------------------
 
@@ -716,4 +748,100 @@ export interface SearchExplanation {
   sources?: Record<string, string>
   matched: string
   results: SearchExplainRow[]
+}
+
+// --- Phase 15 commerce settings ----------------------------------------------------------------------
+
+export interface OptionTypeRow {
+  id: number
+  name: string
+  slug: string
+  unit: string
+  sort_order: number
+  is_active: boolean
+  categories: number[]
+  category_details: { id: number; name: string }[]
+  values: { id: number; value: string; slug: string; used_by: number }[]
+  variant_count: number
+}
+
+export interface OptionTypeInput {
+  name?: string
+  unit?: string
+  sort_order?: number
+  is_active?: boolean
+  categories?: number[]
+  value_list?: { id?: number; value: string }[]
+}
+
+export type CollectionRule = 'manual' | 'best_sellers' | 'new_launches' | 'bulk_pricing'
+
+export interface CollectionRow {
+  id: number
+  name: string
+  slug: string
+  description: string
+  rule: CollectionRule
+  window_days: number
+  max_items: number
+  categories: number[]
+  category_details: { id: number; name: string }[]
+  starts_at: string | null
+  ends_at: string | null
+  is_active: boolean
+  sort_order: number
+  items: { product_id: number; name: string; sku: string; live: boolean }[]
+  state: RuleState
+}
+
+export interface CollectionInput {
+  name?: string
+  description?: string
+  rule?: CollectionRule
+  window_days?: number
+  max_items?: number
+  categories?: number[]
+  starts_at?: string | null
+  ends_at?: string | null
+  is_active?: boolean
+  sort_order?: number
+  product_ids?: number[]
+}
+
+export interface CollectionPreview {
+  is_live: boolean
+  count: number
+  products: { id: number; name: string; sku: string; price: string }[]
+}
+
+export interface FreeDeliveryRuleRow {
+  id: number
+  name: string
+  description: string
+  threshold: string
+  zones: number[]
+  products: number[]
+  categories: number[]
+  zone_details: { id: number; name: string }[]
+  product_details: { id: number; name: string; sku: string }[]
+  category_details: { id: number; name: string }[]
+  starts_at: string
+  ends_at: string | null
+  is_active: boolean
+  state: RuleState
+  summary: string
+}
+
+export type FreeDeliveryRuleInput = Partial<
+  Pick<FreeDeliveryRuleRow, 'name' | 'description' | 'threshold' | 'zones' | 'products' | 'categories' | 'starts_at' | 'ends_at' | 'is_active'>
+>
+
+export interface PaymentSettings {
+  cod_enabled: boolean
+  /** Largest order total payable in cash; null = no limit. */
+  cod_max_order_value: string | null
+  updated_at: string
+  updated_by_name: string | null
+  stores_without_cod: { id: number; name: string }[]
+  zones_without_cod: { id: number; name: string; store_name: string }[]
 }

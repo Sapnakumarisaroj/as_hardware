@@ -56,6 +56,7 @@ class DeliveryZone(TimeStampedModel):
         blank=True,
         help_text="Order value (after discounts) for free delivery in this zone. Blank = global setting.",
     )
+    cod_enabled = models.BooleanField(default=True, help_text="Allow cash on delivery for addresses in this zone.")
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -68,6 +69,41 @@ class DeliveryZone(TimeStampedModel):
     @property
     def postal_code_set(self) -> set[str]:
         return {code for code in self.postal_codes.replace(",", " ").split() if code.isdigit()}
+
+
+class FreeDeliveryRule(TimeStampedModel):
+    """Free delivery when the qualifying part of an order reaches `threshold` (Phase 15).
+
+    Works next to the zone's own `free_delivery_min_order` (which stays the basic rule). A rule
+    applies only while live (`is_active`, start ≤ now < end) and, if `zones` are chosen, only for
+    orders delivered from one of those zones. With `products`/`categories` chosen, only those
+    lines count towards the threshold (a category covers everything below it); none = the whole
+    order. Amounts are after offers and coupon. Calculated in `orders.pricing` only.
+    """
+
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True)
+    threshold = models.DecimalField(**MONEY_FIELD_KWARGS, validators=[MinValueValidator(0)])
+    zones = models.ManyToManyField(DeliveryZone, blank=True, related_name="free_delivery_rules")
+    products = models.ManyToManyField("catalog.Product", blank=True, related_name="free_delivery_rules")
+    categories = models.ManyToManyField("catalog.Category", blank=True, related_name="free_delivery_rules")
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["threshold", "id"]
+        indexes = [models.Index(fields=["is_active", "starts_at", "ends_at"])]
+        constraints = [models.CheckConstraint(condition=Q(threshold__gte=0), name="free_delivery_threshold_gte_0")]
+
+    def __str__(self) -> str:
+        return self.name
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+            raise ValidationError({"ends_at": "End must be after start."})
 
 
 class PinCode(models.Model):

@@ -15,6 +15,13 @@ class TotalsSerializer(serializers.Serializer):
     savings_vs_mrp = serializers.DecimalField(max_digits=12, decimal_places=2)
     offer_discount = serializers.DecimalField(max_digits=12, decimal_places=2)
     coupon_discount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    # Phase 15
+    bulk_savings = serializers.DecimalField(max_digits=12, decimal_places=2)
+    free_delivery = serializers.BooleanField()
+    free_delivery_reason = serializers.CharField(allow_blank=True)
+    amount_to_free_delivery = serializers.DecimalField(max_digits=12, decimal_places=2)
+    free_delivery_threshold = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+    free_delivery_hint = serializers.CharField(allow_blank=True, help_text='Items that count, e.g. "Cement"')
 
 
 class AppliedOfferSerializer(serializers.Serializer):
@@ -24,6 +31,8 @@ class AppliedOfferSerializer(serializers.Serializer):
     badge = serializers.CharField(source="offer.badge")
     discount = serializers.DecimalField(max_digits=12, decimal_places=2)
     variant_ids = serializers.ListField(child=serializers.IntegerField())
+    benefit = serializers.CharField(source="offer.benefit")
+    campaign = serializers.CharField(source="offer.campaign")
 
 
 class MissedOfferSerializer(serializers.Serializer):
@@ -32,11 +41,15 @@ class MissedOfferSerializer(serializers.Serializer):
     badge = serializers.CharField(source="offer.badge")
     min_order_value = serializers.DecimalField(source="offer.min_order_value", max_digits=12, decimal_places=2)
     shortfall = serializers.DecimalField(max_digits=12, decimal_places=2)
+    units_short = serializers.IntegerField(help_text="Quantity offers: units still needed on an item")
+    min_quantity = serializers.IntegerField(source="offer.min_quantity")
+    benefit = serializers.CharField(source="offer.benefit")
 
 
 class CartOffersSerializer(serializers.Serializer):
     applied = AppliedOfferSerializer(many=True)
     missed = MissedOfferSerializer(many=True)
+    free_delivery = AppliedOfferSerializer(allow_null=True)
 
 
 class CartLineSerializer(serializers.Serializer):
@@ -48,7 +61,13 @@ class CartLineSerializer(serializers.Serializer):
     product_slug = serializers.CharField(source="item.variant.product.slug")
     variant_name = serializers.CharField(source="item.variant.name")
     quantity = serializers.IntegerField(source="item.quantity")
-    unit_price = serializers.DecimalField(source="item.variant.price", max_digits=12, decimal_places=2)
+    unit_price = serializers.DecimalField(
+        max_digits=12, decimal_places=2, help_text="Per unit at this quantity (bulk tier applied)."
+    )
+    base_unit_price = serializers.DecimalField(
+        source="item.variant.price", max_digits=12, decimal_places=2, help_text="Normal price for one unit."
+    )
+    bulk = serializers.SerializerMethodField()
     unit_mrp = serializers.DecimalField(source="item.variant.mrp", max_digits=12, decimal_places=2)
     price_at_add = serializers.DecimalField(source="item.price_at_add", max_digits=12, decimal_places=2)
     price_changed = serializers.BooleanField()
@@ -66,14 +85,35 @@ class CartLineSerializer(serializers.Serializer):
     def get_line_total(self, obj) -> str | None:
         return str(obj.priced.line_total) if obj.priced else None
 
+    def get_bulk(self, obj) -> dict | None:
+        """Bulk pricing for this line: the tier applied, what it saves and the next cheaper tier.
+        Null when the variant has no bulk prices."""
+        priced = obj.priced
+        if priced is None or (priced.tier_min_quantity is None and priced.next_tier is None):
+            return None
+        next_tier = None
+        if priced.next_tier:
+            min_quantity, price = priced.next_tier
+            next_tier = {
+                "min_quantity": min_quantity,
+                "unit_price": str(price),
+                "units_more": min_quantity - priced.quantity,
+                "reachable": min_quantity <= obj.item.variant.product.max_order_quantity,
+            }
+        return {
+            "applied_min_quantity": priced.tier_min_quantity,
+            "saving": str(priced.bulk_saving),
+            "next_tier": next_tier,
+        }
+
     def get_line_mrp_total(self, obj) -> str | None:
         return str(obj.priced.line_mrp_total) if obj.priced else None
 
     def get_discount_percent(self, obj) -> str | None:
-        variant = obj.item.variant
-        if not variant.mrp or variant.price >= variant.mrp:
+        variant, price = obj.item.variant, obj.unit_price
+        if not variant.mrp or price >= variant.mrp:
             return None
-        return str(((variant.mrp - variant.price) * 100 / variant.mrp).quantize(Decimal("0.01")))
+        return str(((variant.mrp - price) * 100 / variant.mrp).quantize(Decimal("0.01")))
 
     def get_image(self, obj) -> str | None:
         images = list(obj.item.variant.product.images.all())

@@ -1,3 +1,5 @@
+import { formatPrice } from '@/lib/format'
+
 import type { DeliveryQuote } from './types'
 
 const TIME_ZONE = 'Asia/Kolkata' // stores run on Indian time wherever the browser is
@@ -18,4 +20,11 @@ export function trackingPollMs(status: string | undefined): number | false {
 export function estimateText(quote: Pick<DeliveryQuote, 'delivery_type' | 'eta_minutes' | 'label'>): string {
   if (quote.delivery_type === 'fast' && quote.eta_minutes !== null) return `${quote.eta_minutes} minutes`
   return quote.label
+}
+
+/** "Add ₹400 more of Cement for free delivery" (amounts and the items that count come from the server). */
+export function freeDeliveryHint(amount: string, hint?: string, threshold?: string | null): string {
+  const what = hint ? ` of ${hint}` : ''
+  const from = threshold && !hint ? ` (orders from ${formatPrice(threshold)})` : ''
+  return `Add ${formatPrice(amount)} more${what} for free delivery${from}.`
 }

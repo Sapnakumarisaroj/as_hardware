@@ -17,11 +17,11 @@ from apps.catalog.models import ProductVariant
 from apps.catalog.selectors import stock_status
 from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError, NotFoundError
-from apps.core.money import q
 from apps.core.permissions import IsStaffRole, managed_store_ids
 from apps.inventory.models import Inventory
 from apps.orders.checkout import quote_from_plan
 from apps.orders.models import OrderShipment, ShipmentStatus
+from apps.orders.pricing import line_from_variant, price_lines
 from apps.orders.serializers import DeliveryQuoteSerializer
 
 from . import workflow
@@ -158,7 +158,11 @@ class ProductDeliveryEstimateView(APIView):
         if variant is None or not variant.product.is_purchasable:
             raise NotFoundError("Product not found.")
         plan = plan_fulfillment({variant.pk: data["quantity"]}, _location(request, data))
-        quote = quote_from_plan(plan, q(variant.price * data["quantity"]), plan.fee_rule if plan.deliverable else None)
+        fee_rule = plan.fee_rule if plan.deliverable else None
+        user = request.user if request.user.is_authenticated else None
+        # The same pricing engine as the cart (bulk tier, offers, free-delivery rules for this zone).
+        totals = price_lines([line_from_variant(variant, data["quantity"])], fee_rule=fee_rule, user=user).totals
+        quote = quote_from_plan(plan, totals, fee_rule)
         return Response(DeliveryQuoteSerializer(quote).data)
 
 
@@ -175,8 +179,9 @@ class CartDeliveryEstimateView(APIView):
         cart = summarize_cart(request.user)
         requirements = {line.item.variant_id: line.item.quantity for line in cart.lines if line.in_stock}
         plan = plan_fulfillment(requirements, location)
-        amount = cart.totals.subtotal - cart.totals.discount_total
-        quote = quote_from_plan(plan, amount, plan.fee_rule if plan.deliverable else None)
+        fee_rule = plan.fee_rule if plan.deliverable else None
+        totals = price_lines(cart.priced_lines, fee_rule=fee_rule, user=request.user).totals
+        quote = quote_from_plan(plan, totals, fee_rule)
         return Response(DeliveryQuoteSerializer(quote).data)
 
 

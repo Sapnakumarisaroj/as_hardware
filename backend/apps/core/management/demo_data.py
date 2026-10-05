@@ -5,9 +5,15 @@ code starts with "DEMO-". Prices are illustrative only. The category tree is the
 planned taxonomy for the store and may be kept in production.
 """
 
+# Top level → children; a child may carry its own children (third level, Phase 15):
+# ("slug", "Name") or ("slug", "Name", [("slug", "Name"), …]).
 CATEGORIES = {
+    ("civil-interiors", "Civil & Interiors"): [
+        ("cement", "Cement", [("grey-cement", "Grey Cement")]),
+        ("adhesives", "Adhesives"),
+    ],
     ("electrical", "Electrical"): [
-        ("wires-cables", "Wires & Cables"),
+        ("wires-cables", "Wires & Cables", [("copper-wire", "Copper Wire")]),
         ("switches-sockets", "Switches & Sockets"),
         ("mcbs", "MCBs & Distribution"),
         ("led-lighting", "LED Bulbs & Lighting"),
@@ -34,8 +40,6 @@ CATEGORIES = {
         ("cutting-tools", "Cutting Tools"),
     ],
     ("construction", "Construction"): [
-        ("cement", "Cement"),
-        ("adhesives", "Adhesives"),
         ("fasteners", "Nuts, Bolts & Screws"),
         ("construction-accessories", "Construction Accessories"),
     ],
@@ -62,8 +66,8 @@ BRANDS = [
 # specs: (name, value, unit)
 PRODUCTS = [
     (
-        "electrical",
         "wires-cables",
+        "copper-wire",
         "FR PVC Insulated Copper Wire, 90 m",
         "VoltLine (Demo)",
         "coil",
@@ -386,8 +390,8 @@ PRODUCTS = [
         [("Blade Length", "300", "mm")],
     ),
     (
-        "construction",
         "cement",
+        "grey-cement",
         "OPC 53 Grade Cement, 50 kg",
         "BuildMax (Demo)",
         "bag",
@@ -397,7 +401,7 @@ PRODUCTS = [
         [("Grade", "53", ""), ("Type", "OPC", ""), ("Weight", "50", "kg")],
     ),
     (
-        "construction",
+        "civil-interiors",
         "adhesives",
         "Tile Adhesive, 20 kg",
         "BuildMax (Demo)",
@@ -408,7 +412,7 @@ PRODUCTS = [
         [("Weight", "20", "kg"), ("Coverage", "3-4", "sq m per bag")],
     ),
     (
-        "construction",
+        "civil-interiors",
         "adhesives",
         "Synthetic Wood Adhesive, 1 kg",
         "BuildMax (Demo)",
@@ -506,6 +510,18 @@ PRODUCTS = [
         [("GOG-AF", "", "199", "139", 80)],
         [("Lens", "Polycarbonate", ""), ("Anti-fog", "Yes", "")],
     ),
+    # Phase 15 additions go at the end: a product's demo SKU contains its position in this list.
+    (
+        "cement",
+        "grey-cement",
+        "PPC Cement",
+        "BuildMax (Demo)",
+        "bag",
+        "28",
+        ["cement", "ppc", "plastering", "masonry"],
+        [("CEM-PPC-50", "50 kg bag", "440", "395", 50000), ("CEM-PPC-25", "25 kg bag", "235", "214", 25000)],
+        [("Type", "PPC", ""), ("Use", "Plastering, masonry, foundations", "")],
+    ),
 ]
 
 # code, name, kind, area, postal code, lat, lng
@@ -590,4 +606,82 @@ OFFERS = [
 COUPONS = [
     ("DEMO10", "Demo coupon: 10% off up to ₹200 on orders above ₹500", "percent", "10", "200", "500"),
     ("DEMOFLAT50", "Demo coupon: ₹50 off on orders above ₹299", "fixed", "50", None, "299"),
+]
+
+
+# --- Phase 15 demo commerce data (all marked "Demo") --------------------------------------------------
+
+# Option types: (name, unit, category slugs, [values])
+OPTION_TYPES = [
+    ("Grade", "", ["cement"], ["53 Grade", "43 Grade", "PPC"]),
+    ("Bag size", "kg", ["cement"], ["50 kg", "25 kg"]),
+    ("Cross-section", "sq mm", ["wires-cables"], ["1.0 sq mm", "1.5 sq mm", "2.5 sq mm", "4.0 sq mm"]),
+    ("Length", "m", ["wires-cables"], ["90 m"]),
+]
+
+# Variant options: sku suffix → {option name: value}
+VARIANT_OPTIONS = {
+    "CEM-OPC53": {"Grade": "53 Grade", "Bag size": "50 kg"},
+    "CEM-PPC-50": {"Grade": "PPC", "Bag size": "50 kg"},
+    "CEM-PPC-25": {"Grade": "PPC", "Bag size": "25 kg"},
+    "WIRE-1.0": {"Cross-section": "1.0 sq mm", "Length": "90 m"},
+    "WIRE-1.5": {"Cross-section": "1.5 sq mm", "Length": "90 m"},
+    "WIRE-2.5": {"Cross-section": "2.5 sq mm", "Length": "90 m"},
+    "WIRE-4.0": {"Cross-section": "4.0 sq mm", "Length": "90 m"},
+}
+
+# Bulk prices: sku suffix → [(from quantity, unit price)]
+PRICE_TIERS = {
+    "CEM-OPC53": [(10, "399"), (30, "389"), (50, "379")],
+    "CEM-PPC-50": [(10, "380"), (30, "372")],
+    "WIRE-1.5": [(5, "1699"), (10, "1659")],
+    "WIRE-2.5": [(5, "2799"), (10, "2749")],
+}
+
+# Products launched recently (sku suffix of the first variant → days ago), for "New launches".
+LAUNCHES = {"CEM-PPC-50": 3}
+
+# Curated lists: (name, rule, description, days valid or None, [first-variant sku suffixes for manual lists])
+COLLECTIONS = [
+    ("Demo: Deals of the week", "manual", "Demo list: this week's picks.", 7, ["CEM-OPC53", "WIRE-1.5", "CEM-PPC-50"]),
+    ("Demo: Construction essentials", "manual", "Demo list: basics for a site.", None,
+     ["CEM-PPC-50", "TILEADH-20", "WOODADH-1"]),
+    ("Demo: Bulk buying", "bulk_pricing", "Demo list: products with bulk prices.", None, []),
+    ("Demo: New launches", "new_launches", "Demo list: launched in the last 60 days.", None, []),
+    ("Demo: Best sellers", "best_sellers", "Demo list: most units sold in the last 30 days.", None, []),
+]  # fmt: skip
+
+# Free-delivery rules: (name, threshold, category slugs)
+FREE_DELIVERY_RULES = [("Demo: Free delivery on cement from ₹2,000", "2000", ["cement"])]
+
+# Phase 15 offers: dicts with the new conditions.
+OFFERS_PHASE15 = [
+    {
+        "name": "Demo: First order delivers free",
+        "description": "Demo offer: free delivery on your first order.",
+        "benefit": "free_delivery",
+        "max_prior_orders": 0,
+        "priority": 40,
+        "categories": [],
+    },
+    {
+        "name": "Demo: Gloves 10+",
+        "description": "Demo offer: 5% off gloves when you buy 10 or more of one kind.",
+        "discount_type": "percent",
+        "value": "5",
+        "min_quantity": 10,
+        "priority": 15,
+        "categories": ["gloves"],
+    },
+    {
+        "name": "Demo: Festive lighting",
+        "description": "Demo festival offer: 8% off LED lighting, up to ₹150.",
+        "discount_type": "percent",
+        "value": "8",
+        "max_discount_amount": "150",
+        "campaign": "Festive (demo)",
+        "per_customer_limit": 2,
+        "priority": 25,
+        "categories": ["led-lighting"],
+    },
 ]

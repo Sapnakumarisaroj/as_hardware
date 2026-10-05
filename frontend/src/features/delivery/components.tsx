@@ -2,7 +2,7 @@ import { useId, useState, type FormEvent, type ReactNode } from 'react'
 
 import { formatPrice } from '@/lib/format'
 
-import { estimateText, formatClock } from './format'
+import { estimateText, formatClock, freeDeliveryHint } from './format'
 import { isValidPincode, savePincode } from './location'
 import type { DeliveryQuote, DeliveryType, OrderDelivery, OrderShipment } from './types'
 
@@ -264,4 +264,35 @@ export function OrderDeliveryCard({
       )}
     </section>
   )
+}
+
+/** Cart/checkout banner: "Free delivery unlocked" or "Add ₹X more for free delivery". */
+export function FreeDeliveryNote({
+  fee,
+  reason,
+  amountToFree,
+  hint,
+  threshold,
+}: {
+  fee: string
+  reason?: string
+  amountToFree?: string
+  hint?: string
+  threshold?: string | null
+}) {
+  if (fee === '0.00' && reason) {
+    return (
+      <p className="rounded-md bg-success-600/10 px-3 py-2 text-sm font-medium text-success-600" role="status">
+        Free delivery unlocked <span className="font-normal">· {reason}</span>
+      </p>
+    )
+  }
+  if (fee !== '0.00' && amountToFree && amountToFree !== '0.00') {
+    return (
+      <p className="rounded-md bg-amber-100 px-3 py-2 text-sm text-ink-900" role="status">
+        {freeDeliveryHint(amountToFree, hint, threshold)}
+      </p>
+    )
+  }
+  return null
 }

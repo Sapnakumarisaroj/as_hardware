@@ -1,14 +1,21 @@
 """Product catalog.
 
 Design notes
-- Category is a self-referencing tree. A *SubCategory* is a Category with a parent
-  (exposed as a proxy model for the admin). Products carry both `category` (top level)
-  and an optional `subcategory` that must be a child of it.
+- Category is a self-referencing tree of at most three levels (Phase 15): department ›
+  category › subcategory, e.g. Civil & Interiors › Cement › Grey Cement. A *SubCategory* is a
+  Category with a parent (proxy model for the admin). Products carry `category` (level 1 or 2)
+  and an optional `subcategory` that must be a direct child of it, so the Phase 4 shape
+  (top-level category + child) keeps working unchanged. Tree helpers: `catalog.tree`.
 - Every purchasable unit is a **ProductVariant** (own SKU, MRP, price, weight). A simple
   product has exactly one variant; a wire sold in 1.5 / 2.5 / 4 sq mm has three. Inventory,
   cart lines and order lines always reference a variant, so there is one code path.
 - Specifications are rows (name/value/unit), not columns, so any hardware type fits.
 - Prices are GST-inclusive (Indian retail convention); `gst_rate` lets orders show the tax part.
+- Bulk pricing (Phase 15): `VariantPriceTier` rows give a lower unit price from a minimum
+  quantity. `orders.pricing.line_from_variant` picks the tier; nothing else prices a line.
+- Options (Phase 15): `OptionType` (Grade, Bag size, …) with `OptionValue`s; each variant's
+  choice is a `VariantOption` row. `ProductVariant.attributes` stays as the display copy.
+- Curated lists (Phase 15): `Collection` (manual picks or automatic rules) + `CollectionItem`.
 """
 
 from decimal import Decimal
@@ -70,15 +77,29 @@ class Category(SoftDeleteModel):
     def is_subcategory(self) -> bool:
         return self.parent_id is not None
 
+    MAX_DEPTH = 3  # department › category › subcategory
+
+    @property
+    def level(self) -> int:
+        """1 for a department/top-level category, 2 for its children, 3 below that."""
+        from .tree import level_of
+
+        return level_of(self.pk, parent_id=self.parent_id)
+
     def clean(self):
-        # Two levels (category › subcategory) keeps navigation simple for customers.
-        if self.parent_id:
-            if self.parent_id == self.pk:
-                raise ValidationError({"parent": "A category cannot be its own parent."})
-            if self.parent.parent_id:
-                raise ValidationError({"parent": "Subcategories cannot have their own subcategories."})
-            if self.pk and self.children.exists():
-                raise ValidationError({"parent": "A category with subcategories cannot become a subcategory."})
+        from .tree import ancestor_ids, subtree_height
+
+        if not self.parent_id:
+            return
+        if self.pk and self.parent_id == self.pk:
+            raise ValidationError({"parent": "A category cannot be its own parent."})
+        parents = ancestor_ids(self.parent_id)  # the parent and everything above it
+        if self.pk and self.pk in parents:
+            raise ValidationError({"parent": "A category cannot be moved under one of its own subcategories."})
+        below = subtree_height(self.pk) if self.pk else 0  # levels under this category
+        if len(parents) + 1 + below > self.MAX_DEPTH:
+            limit = f"Categories can be at most {self.MAX_DEPTH} levels deep"
+            raise ValidationError({"parent": f"{limit} (department › category › subcategory)."})
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -175,6 +196,9 @@ class Product(SoftDeleteModel):
     is_published = models.BooleanField(default=False, help_text="Visible to customers once published.")
     is_featured = models.BooleanField(default=False)
     is_returnable = models.BooleanField(default=True)
+    launch_date = models.DateField(
+        null=True, blank=True, help_text="When the product was launched; drives the automatic 'New launches' list."
+    )
     # Denormalised from approved reviews (maintained by reviews.services).
     rating_avg = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal("0.00"))
     rating_count = models.PositiveIntegerField(default=0)
@@ -192,8 +216,10 @@ class Product(SoftDeleteModel):
         return self.name
 
     def clean(self):
-        if self.category_id and self.category.parent_id:
-            raise ValidationError({"category": "Choose a top-level category; use 'subcategory' for the child."})
+        if self.category_id and self.category.level >= Category.MAX_DEPTH:
+            raise ValidationError(
+                {"category": "Choose a department or a category; put the most specific level in 'subcategory'."}
+            )
         if self.subcategory_id and self.subcategory.parent_id != self.category_id:
             raise ValidationError({"subcategory": "Subcategory must belong to the selected category."})
         if not isinstance(self.tags, list) or not all(isinstance(t, str) for t in self.tags):
@@ -350,3 +376,175 @@ class ProductEmbedding(models.Model):
 
     def __str__(self) -> str:
         return f"embedding of product {self.product_id} ({self.embedder})"
+
+
+# --- Phase 15: bulk pricing ------------------------------------------------------------------
+
+
+class VariantPriceTier(TimeStampedModel):
+    """A lower unit price from `min_quantity` units of one variant ("10+ bags: ₹415").
+
+    The variant's own `price` is the tier for 1 unit up to the first `min_quantity` − 1. Rules
+    (checked by `catalog.services.set_price_tiers`, guarded by constraints): min_quantity ≥ 2 and
+    unique per variant (so ranges can't overlap), price > 0 and ≤ MRP, and a higher quantity never
+    has a higher price than a lower one (variant price included).
+    """
+
+    variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name="price_tiers")
+    min_quantity = models.PositiveIntegerField(validators=[MinValueValidator(2)])
+    unit_price = models.DecimalField(**MONEY_FIELD_KWARGS, validators=[MinValueValidator(Decimal("0.01"))])
+
+    class Meta:
+        ordering = ["variant_id", "min_quantity"]
+        constraints = [
+            models.UniqueConstraint(fields=["variant", "min_quantity"], name="uniq_variant_tier_quantity"),
+            models.CheckConstraint(condition=Q(min_quantity__gte=2), name="tier_min_quantity_gte_2"),
+            models.CheckConstraint(condition=Q(unit_price__gt=0), name="tier_price_positive"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.variant_id}: {self.min_quantity}+ at {self.unit_price}"
+
+
+# --- Phase 15: structured options --------------------------------------------------------------
+
+
+class OptionType(TimeStampedModel):
+    """A way variants differ: Brand, Grade, Bag size, Thickness, Length, Colour, Pack size…
+
+    `categories` limits where the option is offered (a category also covers everything below it);
+    none = any product.
+    """
+
+    name = models.CharField(max_length=60, unique=True)
+    slug = models.SlugField(max_length=70, unique=True)
+    unit = models.CharField(max_length=20, blank=True, help_text='Shown after values, e.g. "kg" or "mm".')
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    categories = models.ManyToManyField(Category, blank=True, related_name="option_types")
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)[:70] or "option"
+        super().save(*args, **kwargs)
+
+
+class OptionValue(TimeStampedModel):
+    option_type = models.ForeignKey(OptionType, on_delete=models.CASCADE, related_name="values")
+    value = models.CharField(max_length=80)
+    slug = models.SlugField(max_length=90)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["option_type_id", "sort_order", "id"]
+        constraints = [models.UniqueConstraint(fields=["option_type", "slug"], name="uniq_option_value_slug")]
+
+    def __str__(self) -> str:
+        return f"{self.option_type.name}: {self.value}"
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.value)[:90] or "value"
+        super().save(*args, **kwargs)
+
+
+class VariantOption(models.Model):
+    """The value a variant has for one option type (one row per type)."""
+
+    variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name="option_values")
+    option_type = models.ForeignKey(OptionType, on_delete=models.PROTECT, related_name="+")
+    value = models.ForeignKey(OptionValue, on_delete=models.PROTECT, related_name="variant_options")
+
+    class Meta:
+        ordering = ["option_type__sort_order", "option_type__name"]
+        constraints = [models.UniqueConstraint(fields=["variant", "option_type"], name="uniq_variant_option_type")]
+        indexes = [models.Index(fields=["value", "variant"])]
+
+    def __str__(self) -> str:
+        return f"{self.variant_id}: {self.value}"
+
+    def clean(self):
+        if self.value_id and self.option_type_id and self.value.option_type_id != self.option_type_id:
+            raise ValidationError({"value": "This value belongs to another option."})
+
+
+# --- Phase 15: curated product lists -----------------------------------------------------------
+
+
+class Collection(TimeStampedModel):
+    """A product list for the shop front: "Deals of the week", "Construction essentials", …
+
+    `rule` decides where the products come from:
+    - manual: the chosen `CollectionItem`s, in their order
+    - best_sellers: most units sold in the last `window_days` days (real orders only)
+    - new_launches: newest `launch_date` (else creation date) within `window_days`
+    - bulk_pricing: products with at least one bulk price tier
+    Automatic rules can be narrowed with `categories` (a category covers its subcategories).
+    Only published, active products are ever listed; an empty list is simply not shown.
+    """
+
+    class Rule(models.TextChoices):
+        MANUAL = "manual", "Chosen products"
+        BEST_SELLERS = "best_sellers", "Best sellers (from orders)"
+        NEW_LAUNCHES = "new_launches", "New launches (by launch date)"
+        BULK_PRICING = "bulk_pricing", "Products with bulk prices"
+
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=140, unique=True)
+    description = models.CharField(max_length=300, blank=True)
+    rule = models.CharField(max_length=20, choices=Rule.choices, default=Rule.MANUAL)
+    window_days = models.PositiveSmallIntegerField(
+        default=30, validators=[MinValueValidator(1), MaxValueValidator(365)],
+        help_text="Best sellers / new launches: how many days back to look.",
+    )  # fmt: skip
+    max_items = models.PositiveSmallIntegerField(default=12, validators=[MinValueValidator(1), MaxValueValidator(60)])
+    categories = models.ManyToManyField(Category, blank=True, related_name="collections")
+    starts_at = models.DateTimeField(null=True, blank=True)
+    ends_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        indexes = [models.Index(fields=["is_active", "sort_order"])]
+
+    def __str__(self) -> str:
+        return self.name
+
+    def clean(self):
+        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+            raise ValidationError({"ends_at": "End must be after start."})
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = unique_slug(self, 140)
+        super().save(*args, **kwargs)
+
+    def is_live(self, now=None) -> bool:
+        from django.utils import timezone
+
+        now = now or timezone.now()
+        return (
+            self.is_active
+            and (self.starts_at is None or self.starts_at <= now)
+            and (self.ends_at is None or self.ends_at > now)
+        )
+
+
+class CollectionItem(models.Model):
+    collection = models.ForeignKey(Collection, on_delete=models.CASCADE, related_name="items")
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="collection_items")
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        constraints = [models.UniqueConstraint(fields=["collection", "product"], name="uniq_collection_product")]
+
+    def __str__(self) -> str:
+        return f"{self.collection_id}: {self.product_id}"

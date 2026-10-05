@@ -19,8 +19,9 @@ from apps.delivery.locations import resolve_location
 from apps.offers.engine import OfferResult
 from apps.offers.models import Coupon
 from apps.offers.services import get_valid_coupon
+from apps.payments.cod_rules import CodDecision, cod_eligibility
 
-from .pricing import Totals, delivery_fee_for, price_lines
+from .pricing import Totals, price_lines
 
 # Orders placed before the Phase 9 ETA engine (no estimate stored) still use this wording.
 ETA_PENDING_MESSAGE = "Delivery estimate will be confirmed after your order is placed."
@@ -48,6 +49,9 @@ class DeliveryQuote:
     location_precision: str | None = None
     reason_code: str = ""
     shipments: list[dict] = field(default_factory=list)
+    # Phase 15: why delivery is free ("Orders from ₹499", a rule or an offer), or which items count.
+    free_delivery_reason: str = ""
+    free_delivery_hint: str = ""
 
 
 @dataclass
@@ -62,6 +66,7 @@ class CheckoutSummary:
     blocking_issues: list[dict] = field(default_factory=list)
     offers: OfferResult = field(default_factory=OfferResult)
     plan: Plan | None = None
+    cod: CodDecision | None = None  # Phase 15: is cash on delivery allowed for this order?
 
     @property
     def can_place_order(self) -> bool:
@@ -87,11 +92,20 @@ def shipment_rows(plan: Plan) -> list[dict]:
     return rows
 
 
-def quote_from_plan(plan: Plan | None, amount_after_discount: Decimal, fee_rule: FeeRule | None) -> DeliveryQuote:
+def quote_from_plan(plan: Plan | None, totals: Totals, fee_rule: FeeRule | None) -> DeliveryQuote:
+    """Delivery part of a quote. The fee and free-delivery progress come from the pricing engine
+    (`totals`, priced with the same `fee_rule`), never from a separate calculation."""
     rule = fee_rule or FeeRule.default()
-    fee = delivery_fee_for(amount_after_discount, rule)
-    to_free = q(max(rule.free_min - amount_after_discount, ZERO)) if fee > 0 else ZERO
-    base = {"fee": fee, "free_delivery_min_order": rule.free_min, "amount_to_free_delivery": to_free}
+    fee = totals.delivery_fee
+    to_free = q(max(totals.amount_to_free_delivery, ZERO)) if fee > 0 else ZERO
+    threshold = totals.free_delivery_threshold if totals.free_delivery_threshold is not None else rule.free_min
+    base = {
+        "fee": fee,
+        "free_delivery_min_order": threshold,
+        "amount_to_free_delivery": to_free,
+        "free_delivery_reason": totals.free_delivery_reason,
+        "free_delivery_hint": totals.free_delivery_hint if fee > 0 else "",
+    }
     if plan is None:
         return DeliveryQuote(available=False, **base, message=CHOOSE_ADDRESS_MESSAGE)
     if not plan.deliverable:
@@ -156,21 +170,22 @@ def build_checkout(user, *, address_id: int | None = None, coupon_code: str = ""
     fee_rule = plan.fee_rule if plan and plan.deliverable and plan.location else None
 
     lines = cart.priced_lines
-    pricing = price_lines(lines, fee_rule=fee_rule)  # automatic offers
+    pricing = price_lines(lines, fee_rule=fee_rule, user=user)  # automatic offers
     coupon, coupon_error = None, None
     if coupon_code.strip() and lines:
         try:
             coupon = get_valid_coupon(coupon_code, user)
-            pricing = price_lines(lines, coupon=coupon, fee_rule=fee_rule)  # coupon on top of offers
+            pricing = price_lines(lines, coupon=coupon, fee_rule=fee_rule, user=user)  # coupon on top of offers
         except ServiceError as exc:
             coupon = None
             coupon_error = {"code": exc.error_code, "message": str(exc.detail), "details": exc.details}
             issues.append({"code": "coupon_invalid", "message": str(exc.detail)})
     totals = pricing.totals
 
-    delivery = quote_from_plan(plan, totals.subtotal - totals.discount_total, fee_rule)
+    delivery = quote_from_plan(plan, totals, fee_rule)
     if cart.lines and not cart.issues and plan is not None and not plan.deliverable:
         issues.append({"code": "not_deliverable", "message": plan.message})
+    cod = cod_eligibility(grand_total=totals.grand_total, plan=plan if plan and plan.deliverable else None)
 
     return CheckoutSummary(
         cart=cart,
@@ -183,4 +198,5 @@ def build_checkout(user, *, address_id: int | None = None, coupon_code: str = ""
         blocking_issues=issues,
         offers=pricing.offers,
         plan=plan,
+        cod=cod,
     )

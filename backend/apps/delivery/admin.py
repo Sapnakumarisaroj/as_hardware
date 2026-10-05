@@ -9,7 +9,15 @@ from . import workflow
 from .assignment import assign_shipment, partners_with_load, reassign_shipment, unassign_shipment
 from .cod import cash_by_partner
 from .fulfillment import FeeRule
-from .models import DeliveryAssignment, DeliveryPartner, DeliveryStatusHistory, DeliveryZone, GeocodeCache, PinCode
+from .models import (
+    DeliveryAssignment,
+    DeliveryPartner,
+    DeliveryStatusHistory,
+    DeliveryZone,
+    FreeDeliveryRule,
+    GeocodeCache,
+    PinCode,
+)
 from .serializers import latest_delivery
 
 
@@ -256,6 +264,7 @@ class DeliveryZoneAdmin(admin.ModelAdmin):
             },
         ),
         ("Delivery fee", {"fields": ("delivery_fee_override", "free_delivery_min_order")}),
+        ("Payment", {"fields": ("cod_enabled",)}),
         (
             "Fast delivery",
             {
@@ -301,3 +310,14 @@ class GeocodeCacheAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+@admin.register(FreeDeliveryRule)
+class FreeDeliveryRuleAdmin(admin.ModelAdmin):
+    """Free delivery from a threshold, optionally only in some zones or for some products/categories."""
+
+    list_display = ("name", "threshold", "starts_at", "ends_at", "is_active")
+    list_editable = ("is_active",)
+    list_filter = ("is_active",)
+    search_fields = ("name", "description")
+    filter_horizontal = ("zones", "products", "categories")

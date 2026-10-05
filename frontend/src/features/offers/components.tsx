@@ -16,7 +16,9 @@ export function OfferBadge({ offer, className = '' }: { offer: ProductOffer; cla
       <span aria-hidden>🏷</span>
       <span>
         <span className="sr-only">Offer: </span>
+        {offer.campaign ? `${offer.campaign} · ` : ''}
         {offer.badge}
+        {offer.min_quantity && offer.min_quantity > 1 ? ` on ${offer.min_quantity}+` : ''}
       </span>
     </span>
   )
@@ -34,13 +36,20 @@ export function ProductOfferCallout({ offer }: { offer: ProductOffer }) {
         Applied automatically in your cart{minimum && ` when eligible items total ${formatPrice(offer.min_order_value)} or more`}.
         No code needed.
       </p>
+      {offer.conditions && offer.conditions.length > 0 && (
+        <ul className="mt-1 list-disc pl-5 text-xs text-ink-800" aria-label="Offer conditions">
+          {offer.conditions.map((condition) => (
+            <li key={condition}>{condition}</li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
 
 /** Applied offers + "add ₹X more to unlock" hints from the server's cart evaluation. */
 export function CartOfferNotes({ offers }: { offers: CartOffers }) {
-  if (!offers.applied.length && !offers.missed.length) return null
+  if (!offers.applied.length && !offers.missed.length && !offers.free_delivery) return null
   return (
     <div className="space-y-2" aria-live="polite">
       {offers.applied.map((offer) => (
@@ -48,9 +57,16 @@ export function CartOfferNotes({ offers }: { offers: CartOffers }) {
           <span className="font-semibold">{offer.name}</span> applied — you save {formatPrice(offer.discount)}
         </p>
       ))}
+      {offers.free_delivery && (
+        <p className="rounded-md bg-success-600/10 px-3 py-2 text-sm text-success-600">
+          <span className="font-semibold">{offers.free_delivery.name}</span> applied — free delivery
+        </p>
+      )}
       {offers.missed.map((offer) => (
         <p key={offer.id} className="rounded-md bg-amber-100 px-3 py-2 text-sm text-ink-900">
-          Add {formatPrice(offer.shortfall)} more of eligible items to unlock{' '}
+          {offer.units_short
+            ? `Add ${offer.units_short} more of an eligible item to unlock `
+            : `Add ${formatPrice(offer.shortfall)} more of eligible items to unlock `}
           <span className="font-semibold">{offer.name}</span> ({offer.badge}).
         </p>
       ))}

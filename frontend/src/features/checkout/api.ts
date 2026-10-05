@@ -19,7 +19,19 @@ export interface CheckoutPreview {
   offers: CartOffers
   blocking_issues: { code: string; message: string }[]
   can_place_order: boolean
-  payment_methods: { value: PaymentMethod; label: string; test_mode: boolean }[]
+  payment_methods: PaymentOption[]
+}
+
+/** A payment choice and whether this order can use it (cash on delivery has rules, e.g. a maximum). */
+export interface PaymentOption {
+  value: PaymentMethod
+  label: string
+  test_mode: boolean
+  available?: boolean
+  reason_code?: string
+  /** Why it can't be used, e.g. "Cash on Delivery isn't available for orders above ₹10,000." */
+  message?: string
+  max_order_value?: string | null
 }
 
 export const checkoutKeys = {

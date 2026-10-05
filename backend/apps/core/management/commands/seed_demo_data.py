@@ -16,8 +16,19 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
-from apps.catalog.models import Brand, Category, Product, ProductSpecification, ProductVariant, normalize_sku
-from apps.delivery.models import DeliveryZone, PinCode
+from apps.catalog.models import (
+    Brand,
+    Category,
+    Collection,
+    OptionType,
+    Product,
+    ProductSpecification,
+    ProductVariant,
+    normalize_sku,
+)
+from apps.catalog.services import set_price_tiers, set_variant_options
+from apps.catalog.tree import breadcrumb
+from apps.delivery.models import DeliveryZone, FreeDeliveryRule, PinCode
 from apps.inventory.models import Inventory, StockMovement
 from apps.inventory.services import apply_movement
 from apps.offers.models import Coupon, Offer
@@ -26,12 +37,19 @@ from apps.stores.models import Store
 from ..demo_data import (
     BRANDS,
     CATEGORIES,
+    COLLECTIONS,
     COUPONS,
+    FREE_DELIVERY_RULES,
+    LAUNCHES,
     OFFERS,
+    OFFERS_PHASE15,
+    OPTION_TYPES,
     PIN_CODES,
+    PRICE_TIERS,
     PRODUCTS,
     STORE_DELIVERY,
     STORES,
+    VARIANT_OPTIONS,
     ZONES,
 )
 
@@ -91,6 +109,7 @@ class Command(BaseCommand):
             created_stock = self._inventory(stores, products)
             self._coupons()
             self._offers()
+            self._commerce(products)
             if with_rider:
                 self._demo_rider()
         created_images = 0 if no_images else self._images(products)
@@ -99,7 +118,8 @@ class Command(BaseCommand):
                 f"Demo data ready: {Category.objects.count()} categories, {len(brands)} brands, "
                 f"{len(products)} products, {ProductVariant.objects.filter(sku__startswith='DEMO-').count()} variants, "
                 f"{len(stores)} stores, {created_stock} new stock records, {len(COUPONS)} coupons, "
-                f"{len(OFFERS)} offers, {created_images} new demo images."
+                f"{len(OFFERS) + len(OFFERS_PHASE15)} offers, {len(COLLECTIONS)} curated lists, "
+                f"{created_images} new demo images."
             )
         )
 
@@ -112,22 +132,25 @@ class Command(BaseCommand):
         for product in products:
             variant_names = list(product.variants.order_by("sort_order").values_list("name", flat=True))
             created += ensure_demo_images(
-                product, product.category.slug, variant_names, specs_by_name.get(product.name, [])
+                product, breadcrumb(product.category)[0].slug, variant_names, specs_by_name.get(product.name, [])
             )
         return created
 
     def _categories(self) -> dict[str, Category]:
         result = {}
-        for position, ((slug, name), children) in enumerate(CATEGORIES.items()):
-            parent, _ = Category.all_objects.update_or_create(
-                slug=slug, defaults={"name": name, "parent": None, "sort_order": position, "is_deleted": False}
+
+        def upsert(slug, name, parent, position):
+            result[slug], _ = Category.all_objects.update_or_create(
+                slug=slug, defaults={"name": name, "parent": parent, "sort_order": position, "is_deleted": False}
             )
-            result[slug] = parent
-            for child_pos, (child_slug, child_name) in enumerate(children):
-                result[child_slug], _ = Category.all_objects.update_or_create(
-                    slug=child_slug,
-                    defaults={"name": child_name, "parent": parent, "sort_order": child_pos, "is_deleted": False},
-                )
+            return result[slug]
+
+        for position, ((slug, name), children) in enumerate(CATEGORIES.items()):
+            parent = upsert(slug, name, None, position)
+            for child_pos, child in enumerate(children):
+                node = upsert(child[0], child[1], parent, child_pos)
+                for grand_pos, (grand_slug, grand_name) in enumerate(child[2] if len(child) > 2 else []):
+                    upsert(grand_slug, grand_name, node, grand_pos)
         return result
 
     def _products(self, categories, brands) -> list[Product]:
@@ -283,4 +306,73 @@ class Command(BaseCommand):
                     "is_active": True,
                 },
             )
+            offer.categories.set(Category.objects.filter(slug__in=category_slugs))
+
+    def _commerce(self, products) -> None:
+        """Phase 15 demo data: options, bulk prices, launches, curated lists, free-delivery rule, offers."""
+        now = timezone.now()
+        types = {}
+        for position, (name, unit, category_slugs, values) in enumerate(OPTION_TYPES):
+            option_type, _ = OptionType.objects.update_or_create(
+                name=name, defaults={"slug": slugify(name), "unit": unit, "sort_order": position, "is_active": True}
+            )
+            option_type.categories.set(Category.objects.filter(slug__in=category_slugs))
+            for value_pos, value in enumerate(values):
+                option_type.values.update_or_create(
+                    slug=slugify(value), defaults={"value": value, "sort_order": value_pos}
+                )
+            types[name] = option_type
+        variants = {v.sku: v for v in ProductVariant.objects.filter(sku__startswith="DEMO-").select_related("product")}
+        for suffix, options in VARIANT_OPTIONS.items():
+            if variant := variants.get(normalize_sku(f"DEMO-{suffix}")):
+                set_variant_options(variant, [{"option_type": types[k].pk, "value": v} for k, v in options.items()])
+        for suffix, tiers in PRICE_TIERS.items():
+            if variant := variants.get(normalize_sku(f"DEMO-{suffix}")):
+                set_price_tiers(variant, [{"min_quantity": m, "unit_price": p} for m, p in tiers])
+        for suffix, days in LAUNCHES.items():
+            if variant := variants.get(normalize_sku(f"DEMO-{suffix}")):
+                Product.objects.filter(pk=variant.product_id).update(
+                    launch_date=timezone.localdate() - timedelta(days=days)
+                )
+        for position, (name, rule, description, days, suffixes) in enumerate(COLLECTIONS):
+            collection, _ = Collection.objects.update_or_create(
+                name=name,
+                defaults={
+                    "slug": slugify(name),
+                    "rule": rule,
+                    "description": description,
+                    "window_days": 60 if rule == "new_launches" else 30,
+                    "starts_at": now - timedelta(hours=1) if days else None,
+                    "ends_at": now + timedelta(days=days) if days else None,
+                    "is_active": True,
+                    "sort_order": position,
+                },
+            )
+            collection.items.all().delete()
+            for item_pos, suffix in enumerate(suffixes):
+                if variant := variants.get(normalize_sku(f"DEMO-{suffix}")):
+                    collection.items.create(product_id=variant.product_id, sort_order=item_pos)
+        for name, threshold, category_slugs in FREE_DELIVERY_RULES:
+            rule, _ = FreeDeliveryRule.objects.update_or_create(
+                name=name,
+                defaults={
+                    "threshold": Decimal(threshold),
+                    "starts_at": now - timedelta(days=1),
+                    "ends_at": now + timedelta(days=90),
+                    "is_active": True,
+                },
+            )
+            rule.categories.set(Category.objects.filter(slug__in=category_slugs))
+        for data in OFFERS_PHASE15:
+            data = dict(data)
+            category_slugs = data.pop("categories")
+            defaults = {
+                "discount_type": "percent",
+                "value": Decimal("0"),
+                "starts_at": now - timedelta(days=1),
+                "ends_at": now + timedelta(days=90),
+                "is_active": True,
+                **{k: Decimal(v) if k in ("value", "max_discount_amount") else v for k, v in data.items()},
+            }
+            offer, _ = Offer.objects.update_or_create(name=defaults.pop("name"), defaults=defaults)
             offer.categories.set(Category.objects.filter(slug__in=category_slugs))

@@ -55,6 +55,13 @@ interface Draft {
   show_in_checkout: boolean
   categories: number[]
   products: { id: number; name: string; sku: string }[]
+  // Offers only (Phase 15)
+  benefit: 'discount' | 'free_delivery'
+  min_quantity: string
+  first_orders: string
+  campaign: string
+  offer_usage_limit: string
+  offer_per_customer: string
 }
 
 /** ISO instant ↔ the value of <input type="datetime-local"> in the viewer's time zone. */
@@ -87,6 +94,13 @@ function toDraft(rule: Rule | null): Draft {
     show_in_checkout: coupon?.show_in_checkout ?? false,
     categories: rule?.categories ?? [],
     products: rule?.product_details ?? [],
+    benefit: offer?.benefit ?? 'discount',
+    min_quantity: offer?.min_quantity ? String(offer.min_quantity) : '',
+    first_orders:
+      offer?.max_prior_orders !== null && offer?.max_prior_orders !== undefined ? String(offer.max_prior_orders + 1) : '',
+    campaign: offer?.campaign ?? '',
+    offer_usage_limit: offer?.usage_limit ? String(offer.usage_limit) : '',
+    offer_per_customer: offer?.per_customer_limit ? String(offer.per_customer_limit) : '',
   }
 }
 
@@ -104,7 +118,22 @@ function toInput(draft: Draft, kind: Kind): RuleInput {
     categories: draft.categories,
     products: draft.products.map((product) => product.id),
   }
-  if (kind === 'offer') return { ...shared, name: draft.name.trim(), priority: Number(draft.priority) || 100 }
+  if (kind === 'offer') {
+    const freeDelivery = draft.benefit === 'free_delivery'
+    return {
+      ...shared,
+      ...(freeDelivery ? { discount_type: 'fixed', value: '0', max_discount_amount: null } : {}),
+      name: draft.name.trim(),
+      priority: Number(draft.priority) || 100,
+      benefit: draft.benefit,
+      min_quantity: Number(draft.min_quantity) || 0,
+      // "First N orders" → at most N−1 earlier orders.
+      max_prior_orders: draft.first_orders ? Math.max(Number(draft.first_orders) - 1, 0) : null,
+      campaign: draft.campaign.trim(),
+      usage_limit: draft.offer_usage_limit ? Number(draft.offer_usage_limit) : null,
+      per_customer_limit: draft.offer_per_customer ? Number(draft.offer_per_customer) : null,
+    }
+  }
   return {
     ...shared,
     code: draft.code.trim().toUpperCase(),
@@ -117,10 +146,11 @@ function toInput(draft: Draft, kind: Kind): RuleInput {
 function problem(draft: Draft, kind: Kind): string {
   if (kind === 'offer' && !draft.name.trim()) return 'Give the offer a name; customers see it.'
   if (kind === 'coupon' && !/^[A-Za-z0-9_-]+$/.test(draft.code.trim())) return 'The code may contain letters, digits, “-” and “_”.'
+  if (draft.starts_at && draft.ends_at && draft.ends_at <= draft.starts_at) return 'The end must be after the start.'
+  if (kind === 'offer' && draft.benefit === 'free_delivery') return ''
   const value = Number(draft.value)
   if (!(value > 0)) return 'Enter the discount.'
   if (draft.discount_type === 'percent' && value > 100) return 'A percentage can’t be more than 100.'
-  if (draft.starts_at && draft.ends_at && draft.ends_at <= draft.starts_at) return 'The end must be after the start.'
   return ''
 }
 
@@ -263,25 +293,50 @@ function RuleDialog({
         />
       )}
       <FormField id="rule-description" label="Description" maxLength={255} value={draft.description} onChange={(e) => change({ description: e.target.value })} />
+      {kind === 'offer' && (
+        <div className="grid grid-cols-2 gap-3">
+          <SelectField
+            id="rule-benefit"
+            label="Gives"
+            value={draft.benefit}
+            onChange={(e) => change({ benefit: e.target.value as Draft['benefit'] })}
+          >
+            <option value="discount">A discount</option>
+            <option value="free_delivery">Free delivery</option>
+          </SelectField>
+          <FormField
+            id="rule-campaign"
+            label="Festival / campaign"
+            maxLength={60}
+            value={draft.campaign}
+            onChange={(e) => change({ campaign: e.target.value })}
+            hint="Optional label, e.g. Diwali."
+          />
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
-        <SelectField
-          id="rule-type"
-          label="Discount"
-          value={draft.discount_type}
-          onChange={(e) => change({ discount_type: e.target.value as Draft['discount_type'] })}
-        >
-          <option value="percent">Percentage</option>
-          <option value="fixed">Fixed amount (₹)</option>
-        </SelectField>
-        <FormField
-          id="rule-value"
-          label={draft.discount_type === 'percent' ? 'Percent off' : 'Amount off (₹)'}
-          required
-          inputMode="decimal"
-          value={draft.value}
-          onChange={(e) => change({ value: e.target.value })}
-        />
-        {draft.discount_type === 'percent' && (
+        {(kind === 'coupon' || draft.benefit === 'discount') && (
+          <>
+            <SelectField
+              id="rule-type"
+              label="Discount"
+              value={draft.discount_type}
+              onChange={(e) => change({ discount_type: e.target.value as Draft['discount_type'] })}
+            >
+              <option value="percent">Percentage</option>
+              <option value="fixed">Fixed amount (₹)</option>
+            </SelectField>
+            <FormField
+              id="rule-value"
+              label={draft.discount_type === 'percent' ? 'Percent off' : 'Amount off (₹)'}
+              required
+              inputMode="decimal"
+              value={draft.value}
+              onChange={(e) => change({ value: e.target.value })}
+            />
+          </>
+        )}
+        {(kind === 'coupon' || draft.benefit === 'discount') && draft.discount_type === 'percent' && (
           <FormField
             id="rule-cap"
             label="At most (₹)"
@@ -302,15 +357,53 @@ function RuleDialog({
         <FormField id="rule-start" label="Starts" type="datetime-local" required value={draft.starts_at} onChange={(e) => change({ starts_at: e.target.value })} />
         <FormField id="rule-end" label="Ends" type="datetime-local" value={draft.ends_at} onChange={(e) => change({ ends_at: e.target.value })} hint="Empty: until switched off." />
         {kind === 'offer' ? (
-          <FormField
-            id="rule-priority"
-            label="Priority"
-            type="number"
-            min={0}
-            value={draft.priority}
-            onChange={(e) => change({ priority: e.target.value })}
-            hint="Lower wins when offers overlap."
-          />
+          <>
+            <FormField
+              id="rule-priority"
+              label="Priority"
+              type="number"
+              min={0}
+              value={draft.priority}
+              onChange={(e) => change({ priority: e.target.value })}
+              hint="Lower wins when offers overlap."
+            />
+            <FormField
+              id="rule-min-qty"
+              label="Minimum units of an item"
+              type="number"
+              min={0}
+              value={draft.min_quantity}
+              onChange={(e) => change({ min_quantity: e.target.value })}
+              hint="e.g. 10 for “10+ bags”. Empty: any."
+            />
+            <FormField
+              id="rule-first-orders"
+              label="Only a customer’s first … orders"
+              type="number"
+              min={1}
+              value={draft.first_orders}
+              onChange={(e) => change({ first_orders: e.target.value })}
+              hint="1 = first order only. Empty: everyone."
+            />
+            <FormField
+              id="rule-offer-limit"
+              label="Total uses"
+              type="number"
+              min={1}
+              value={draft.offer_usage_limit}
+              onChange={(e) => change({ offer_usage_limit: e.target.value })}
+              hint="Orders in total. Empty: unlimited."
+            />
+            <FormField
+              id="rule-offer-per-customer"
+              label="Uses per customer"
+              type="number"
+              min={1}
+              value={draft.offer_per_customer}
+              onChange={(e) => change({ offer_per_customer: e.target.value })}
+              hint="Empty: unlimited."
+            />
+          </>
         ) : (
           <>
             <FormField
@@ -459,7 +552,18 @@ function Rules({ kind, list, query, crud }: { kind: Kind; list: ListParams; quer
             cell: (rule) => ((rule as Coupon).show_in_checkout ? <Badge tone="info">Shown</Badge> : <Badge>Private</Badge>),
           },
         ] satisfies Column<Rule>[])
-      : ([{ header: 'Priority', numeric: true, cell: (rule) => (rule as Offer).priority }] satisfies Column<Rule>[])),
+      : ([
+          {
+            header: 'Conditions',
+            cell: (rule) => {
+              const offer = rule as Offer
+              const used = offer.usage_limit ? `${offer.used_count ?? 0} of ${offer.usage_limit} used` : ''
+              const parts = [...(offer.conditions ?? []), used].filter(Boolean)
+              return parts.length ? <span className="text-xs">{parts.join(' · ')}</span> : <span className="text-xs text-ink-600">None</span>
+            },
+          },
+          { header: 'Priority', numeric: true, cell: (rule) => (rule as Offer).priority },
+        ] satisfies Column<Rule>[])),
     { header: 'Status', cell: (rule) => <StatusBadge status={rule.state} text={STATE_TEXT[rule.state]} /> },
     actions,
   ]

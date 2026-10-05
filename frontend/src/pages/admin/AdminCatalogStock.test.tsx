@@ -257,11 +257,12 @@ describe('categories and brands', () => {
     expect(await screen.findByText('12 products · position 1')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit Tools' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit Drills' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Add subcategory to Drills' })).not.toBeInTheDocument() // two levels only
+    // Phase 15: three levels — a department gets categories, a category gets subcategories.
+    expect(screen.getByRole('button', { name: 'Add subcategory to Drills' })).toBeInTheDocument()
     expect(screen.getByText('Inactive')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Add subcategory to Tools' }))
-    const dialog = within(screen.getByRole('dialog', { name: 'Add subcategory' }))
+    await user.click(screen.getByRole('button', { name: 'Add category to Tools' }))
+    const dialog = within(screen.getByRole('dialog', { name: 'Add category inside' }))
     expect(dialog.getByLabelText('Inside')).toHaveValue('10')
     await user.type(dialog.getByLabelText(/^Name/), 'Hand Tools')
     await user.clear(dialog.getByLabelText('Position'))

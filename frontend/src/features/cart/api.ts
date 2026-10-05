@@ -13,7 +13,12 @@ export interface CartLine {
   product_slug: string
   variant_name: string
   quantity: number
+  /** Per unit at this quantity (bulk tier applied by the server). */
   unit_price: string
+  /** The normal price for one unit. */
+  base_unit_price?: string
+  /** Bulk pricing for this line; null when the item has no bulk prices. */
+  bulk?: CartLineBulk | null
   unit_mrp: string
   price_at_add: string
   price_changed: boolean
@@ -29,6 +34,12 @@ export interface CartLine {
   image: string | null
 }
 
+export interface CartLineBulk {
+  applied_min_quantity: number | null
+  saving: string
+  next_tier: { min_quantity: number; unit_price: string; units_more: number; reachable: boolean } | null
+}
+
 export interface CartTotals {
   subtotal: string
   mrp_total: string
@@ -40,6 +51,14 @@ export interface CartTotals {
   /** Automatic offers (no code). discount_total = offer_discount + coupon_discount. */
   offer_discount: string
   coupon_discount: string
+  bulk_savings?: string
+  /** Delivery is free, and why (`free_delivery_reason`), or how much more would make it free. */
+  free_delivery?: boolean
+  free_delivery_reason?: string
+  amount_to_free_delivery?: string
+  free_delivery_threshold?: string | null
+  /** Items that count towards that threshold, e.g. "Cement" (empty = everything). */
+  free_delivery_hint?: string
 }
 
 export interface AppliedOffer {
@@ -58,11 +77,17 @@ export interface MissedOffer {
   min_order_value: string
   /** How much more to spend on the offer's items to unlock it. */
   shortfall: string
+  /** Quantity offers: units still needed on an item ("add 2 more"). */
+  units_short?: number
+  min_quantity?: number
+  benefit?: 'discount' | 'free_delivery'
 }
 
 export interface CartOffers {
   applied: AppliedOffer[]
   missed: MissedOffer[]
+  /** A free-delivery offer that applies to this cart. */
+  free_delivery?: AppliedOffer | null
 }
 
 export interface Cart {

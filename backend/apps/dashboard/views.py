@@ -15,6 +15,7 @@ from .scope import date_range, store_ids_for
 ADMIN_SECTIONS = [
     "dashboard", "orders", "products", "categories", "brands", "inventory", "stores", "warehouses",
     "delivery", "offers", "coupons", "customers", "returns", "refunds", "support", "analytics", "search",
+    "options", "collections", "free-delivery", "payment-settings",
 ]  # fmt: skip
 MANAGER_SECTIONS = [
     "dashboard", "orders", "inventory", "stores", "delivery", "returns", "refunds", "support", "analytics",

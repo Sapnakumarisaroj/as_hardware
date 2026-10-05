@@ -6,8 +6,10 @@ gateway handles those. We keep only gateway reference IDs, amounts, statuses and
 """
 
 import uuid
+from decimal import Decimal
 
 from django.conf import settings
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
 
@@ -132,3 +134,41 @@ class WebhookEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.provider}:{self.event_type} {self.event_id}"
+
+
+class PaymentSettings(models.Model):
+    """Shop-wide payment rules editable by administrators (one row, pk=1; Phase 15).
+
+    Cash on delivery is also switched per store (`Store.cod_enabled`) and per delivery zone
+    (`DeliveryZone.cod_enabled`). Checked by `payments.cod_rules` at checkout and when ordering.
+    """
+
+    cod_enabled = models.BooleanField(default=True, help_text="Offer cash on delivery at all.")
+    cod_max_order_value = models.DecimalField(
+        **MONEY_FIELD_KWARGS,
+        null=True,
+        blank=True,
+        default=Decimal("10000.00"),
+        validators=[MinValueValidator(Decimal("1.00"))],
+        help_text="Largest order total payable in cash. Blank = no limit.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        verbose_name = "payment settings"
+        verbose_name_plural = "payment settings"
+
+    def __str__(self) -> str:
+        return "Payment settings"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls) -> "PaymentSettings":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

@@ -77,6 +77,7 @@ class ZoneSerializer(serializers.ModelSerializer):
             "free_delivery_min_order",
             "effective_fee",
             "effective_free_from",
+            "cod_enabled",
             "is_active",
         ]
 
@@ -135,6 +136,7 @@ class StoreListSerializer(serializers.ModelSerializer):
             "postal_code",
             "is_active",
             "accepts_orders",
+            "cod_enabled",
             "avg_prep_minutes",
             "own_riders",
             "has_location",

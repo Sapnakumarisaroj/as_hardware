@@ -292,18 +292,24 @@ gap table: `docs/COMMERCE_PARITY.md`. No code changed in this step.
 - [x] ROADMAP: new Phases 15 (commerce core), 16 (storefront parity UI), 17 (loyalty + cashback foundation); former 15–24 renumbered to 18–27 with commerce additions noted; owner decisions 5 (credit rules) and 6 (COD limits) added
 - [x] Owner confirmed the numbering (next phase = 15 Commerce core) and decided credit rules (≤ 20 % of an order, 90-day expiry, proportional restore on refunded returns) and COD (₹10,000 maximum, admin-configurable, no exclusions initially)
 
-### Phase 15 — Commerce core (planned)
-- [ ] `VariantPriceTier` + validation (ascending quantity, non-increasing price, ≤ MRP); tier lookup in `orders.pricing.line_from_variant`
-- [ ] Tier info on `OrderItem` snapshot (additive migration); 409 `totals_changed` when a tier changes mid-checkout; return refunds of tiered lines tested
-- [ ] API fields: `price_tiers`, `bulk_available`, applied tier, next tier (product, cart, checkout preview, assistant cards)
-- [ ] Product option types per category (order, labels, allowed values) on top of `ProductVariant.attributes`; variant-attribute filters in listing/facets
-- [ ] Category tree: allow department › category › subcategory (backward compatible); seed taxonomy as demo data
-- [ ] Merchandising: new-launch window, bestseller rank, `Collection` (curated product lists with dates) for homepage rails
-- [ ] Offer engine: quantity-based, first-order, campaign/festival label, offer usage + per-customer limits, free-delivery offer type (same engine, no second pricing path)
-- [ ] `FreeDeliveryRule` (threshold, zones, products/categories, start/end) used by the Phase 9 fee rule; "Free delivery unlocked" / "Add ₹X more"
-- [ ] COD eligibility: maximum order value ₹10,000 (admin-configurable), per store/zone switch, optional excluded products/categories (none initially), reason at checkout and in the order API
-- [ ] Dashboard screens: tiers (in product form), option types, collections, free-delivery rules, COD rules; permission matrix tests
-- [ ] Demo data: tiers on cement/wire/pipe demo variants, option sets, collections, one free-delivery rule
+### Phase 15 — Commerce core ✅
+`apps/catalog/{tree,quote,collections}.py`, `apps/payments/cod_rules.py`, `apps/dashboard/commerce.py`, additive
+migrations in catalog/offers/delivery/payments/stores/orders, `frontend/src/pages/admin/CommercePages.tsx`,
+`features/catalog/components/{BulkPricing,OptionPicker}.tsx`. One pricing engine throughout (`orders.pricing` +
+`offers.engine`); no second pricing path.
+- [x] `VariantPriceTier` (min quantity ≥ 2 → unit price) with validation: quantities ascending, prices non-increasing, ≤ MRP, > 0, below the variant's own price; a refused tier list keeps the old tiers; lowering the normal price below a tier is refused. Tier lookup in `orders.pricing.line_from_variant` (the engine also never charges more for more units if data is bad)
+- [x] `OrderItem.base_unit_price` + `price_tier_min_quantity` snapshot (additive migration); a tier change between preview and order gives 409 `totals_changed`; returns refund what was paid for the tiered units (existing return maths, tested)
+- [x] API: variant `price_tiers`, listing `bulk_pricing`, cart line `bulk` (applied tier, saving, `next_tier` with `units_more`); `GET /api/products/{slug}/quote/?quantity=&variant=|opt_*=` runs the engine for one line (product page, assistant, later voice). The assistant's add-to-cart gets the tier through the cart API
+- [x] Product options: `OptionType` (name, unit, order, categories) › `OptionValue`; `VariantOption` rows mirrored into `ProductVariant.attributes` (backward compatible); variant chosen by options, invalid combinations refused; `opt_<type>=<value>` listing filters and `options` facets
+- [x] Category tree up to three levels (department › category › subcategory), loops and a fourth level refused, products keep `category` + `subcategory`; department filters include every level; `/api/categories/` returns the tree with counts and breadcrumbs; inactive categories hidden from customers. Seed taxonomy as demo data
+- [x] Merchandising: `Product.launch_date` (new launches), `Collection` + `CollectionItem` (manual lists in order, or automatic: best sellers from orders, new launches by launch date, products with bulk prices), dates/active/empty lists hidden; bestseller rank comes from real order data, not a stored number
+- [x] Offer engine: `benefit` discount | free delivery, `min_quantity` (quantity-based), `max_prior_orders` (first order / first N orders, signed-in only), `campaign` label (festival offers are date-bound offers), `usage_limit` + `per_customer_limit` counted by `OfferRedemption` (released on cancel); an offer running out during checkout → 409; conditions in words in the API
+- [x] `FreeDeliveryRule` (threshold, zones, products/categories, start/end, active) on top of the zone/global threshold; `free_delivery_reason` / `free_delivery_hint` ("Add ₹X more"); order records why delivery was free
+- [x] COD eligibility in one function used by preview and `place_order`: shop-wide switch, `PaymentSettings.cod_max_order_value` (₹10,000 default, blank = no limit), `Store.cod_enabled`, `DeliveryZone.cod_enabled`; the first failing rule's reason in `payment_methods[]` at checkout and enforced when ordering
+- [x] Dashboard: tiers and options in the product form, option types, collections (with preview), free-delivery rules, payment settings (COD), COD switches on stores and zones; permission matrix (visitors/customers out, store managers read-only, admins change; settings changes audit-logged)
+- [x] Demo data: option sets, tiers on cement/wire/pipe variants, launch dates, curated lists, one free-delivery rule, quantity/first-order/festival/free-delivery offers
+- [x] Tests: 48 new backend tests (catalog 22, commerce rules 19, dashboard 7) + frontend (`CommerceFeatures.test.tsx`, `AdminCommerce.test.tsx`); full suites pass (frontend 286). ruff lint/format clean, `makemigrations --check` clean, frontend tsc/eslint clean; migrations applied to the dev DB
+- [~] Not built: COD exclusions for individual products/categories (owner decided "no exclusions initially"; the rule function has one place to add them). Storefront display of all of this is Phase 16; cashback offers are Phase 17
 
 ### Phase 16 — Storefront parity UI (planned)
 - [ ] Homepage sections in the agreed order, each hidden without data; recently viewed (new); AI entry points
@@ -339,7 +345,7 @@ gap table: `docs/COMMERCE_PARITY.md`. No code changed in this step.
 - Stores whose own riders have no accounts move orders through the delivery statuses by hand; those deliveries have no delivery code, photo or cash record
 - Delivery zones, PIN codes and store delivery settings are managed in the dashboard (Phase 11); polygons are still entered as JSON in Django admin (no map editor)
 - Public OpenStreetMap services (tiles, Nominatim, OSRM demo) have usage limits and no SLA (FREE_TOOLS.md)
-- Offers have no usage limits or per-customer caps, no "buy X get Y"/bundle or free-delivery offer types, and only one coupon per order
+- Offers have no "buy X get Y"/bundle or cashback types (cashback: Phase 17), and only one coupon per order
 - Product listing prices stay the catalogue price; the offer discount appears in the cart (the badge says so), not as a reduced list price
 - Razorpay is implemented but inactive until the owner adds keys and registers the webhook (DEPLOYMENT.md). Only one gateway at a time; switching providers leaves older attempts with their original provider
 - Refund speed is Razorpay's `normal`; instant refunds, partial captures, EMI/offers configuration and payment links aren't used. Automatic refunds of *duplicate* payments refund the second payment in full

@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 
+from apps.catalog.tree import lineage, parent_map
 from apps.core.exceptions import ServiceError
 from apps.core.money import ZERO, q
 
@@ -52,13 +53,14 @@ def coupon_discount(coupon: Coupon, lines: Iterable, subtotal: Decimal) -> Decim
     product_ids = set(coupon.products.values_list("id", flat=True))
     category_ids = set(coupon.categories.values_list("id", flat=True))
     if product_ids or category_ids:
+        # A category covers everything below it (department › category › subcategory).
+        parents = parent_map() if category_ids else {}
         eligible = sum(
             (
                 line.line_total
                 for line in lines
                 if line.product_id in product_ids
-                or line.category_id in category_ids
-                or (line.subcategory_id is not None and line.subcategory_id in category_ids)
+                or category_ids & lineage((line.category_id, line.subcategory_id), parents)
             ),
             ZERO,
         )

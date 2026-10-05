@@ -47,6 +47,8 @@ def _image_url(image, request) -> str:
 class AdminVariantSerializer(serializers.ModelSerializer):
     stock_available = serializers.SerializerMethodField()
     stock_reserved = serializers.SerializerMethodField()
+    price_tiers = serializers.SerializerMethodField()
+    options = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductVariant
@@ -66,6 +68,22 @@ class AdminVariantSerializer(serializers.ModelSerializer):
             "sort_order",
             "stock_available",
             "stock_reserved",
+            "price_tiers",
+            "options",
+        ]
+
+    def get_price_tiers(self, obj) -> list[dict]:
+        return [{"min_quantity": t.min_quantity, "unit_price": str(t.unit_price)} for t in obj.price_tiers.all()]
+
+    def get_options(self, obj) -> list[dict]:
+        return [
+            {
+                "option_type": o.option_type_id,
+                "option_name": o.option_type.name,
+                "value_id": o.value_id,
+                "value": o.value.value,
+            }
+            for o in obj.option_values.all()
         ]
 
     def get_stock_available(self, obj) -> int:
@@ -140,6 +158,7 @@ class AdminProductDetailSerializer(AdminProductListSerializer):
     variants = serializers.SerializerMethodField()
     specifications = ProductSpecificationSerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
+    option_types = serializers.SerializerMethodField()
 
     class Meta(AdminProductListSerializer.Meta):
         fields = AdminProductListSerializer.Meta.fields + [
@@ -151,9 +170,23 @@ class AdminProductDetailSerializer(AdminProductListSerializer):
             "max_order_quantity",
             "rating_avg",
             "rating_count",
+            "launch_date",
             "variants",
             "specifications",
             "images",
+            "option_types",
+        ]
+
+    def get_option_types(self, obj) -> list[dict]:
+        """Options that can be set on this product's variants (its category's, or shop-wide ones)."""
+        return [
+            {
+                "id": t.pk,
+                "name": t.name,
+                "unit": t.unit,
+                "values": [{"id": v.pk, "value": v.value} for v in t.values.all()],
+            }
+            for t in services.option_types_for(obj)
         ]
 
     def get_variants(self, obj) -> list[dict]:
@@ -219,7 +252,10 @@ class AdminProductViewSet(viewsets.ModelViewSet):
             )
         )
         if self.action != "list":
-            return qs.prefetch_related("variants", "specifications")
+            return qs.prefetch_related(
+                "variants__price_tiers", "variants__option_values__option_type", "variants__option_values__value",
+                "specifications",
+            )  # fmt: skip
         params = self.request.query_params
         stock = (
             Inventory.objects.filter(is_active=True, store__is_deleted=False)
@@ -414,6 +450,7 @@ class AdminCategorySerializer(serializers.ModelSerializer):
     parent_name = serializers.CharField(source="parent.name", read_only=True, default=None)
     product_count = serializers.IntegerField(read_only=True, default=0)
     children = serializers.SerializerMethodField()
+    level = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
@@ -429,14 +466,23 @@ class AdminCategorySerializer(serializers.ModelSerializer):
             "is_active",
             "product_count",
             "children",
+            "level",
         ]
         extra_kwargs = {"slug": {"required": False}, "image": {"required": False}}
 
+    def get_level(self, obj) -> int:
+        levels = self.context.get("levels")
+        return levels.get(obj.pk, 1) if levels else obj.level
+
     def get_children(self, obj) -> list[dict]:
-        if obj.parent_id or not self.context.get("with_children"):
+        """Nested children down to the third level (department › category › subcategory)."""
+        if not self.context.get("with_children"):
             return []
-        children = [c for c in obj.children.all() if not c.is_deleted]
-        return AdminCategorySerializer(children, many=True, context={**self.context, "with_children": False}).data
+        tree = self.context.get("tree", {})
+        children = tree.get(obj.pk)
+        if children is None:
+            children = [c for c in obj.children.all() if not c.is_deleted]
+        return AdminCategorySerializer(children, many=True, context=self.context).data
 
     def validate(self, attrs):
         from django.core.exceptions import ValidationError as DjangoValidationError
@@ -456,17 +502,16 @@ class AdminCategorySerializer(serializers.ModelSerializer):
         return attrs
 
 
-def _product_counts():
-    """Products that are not deleted, counted where they sit: a product with a subcategory
-    counts for the subcategory, and for its parent through the tree total in the UI."""
-    live = Q(is_deleted=False)
-    direct = dict(Product.all_objects.filter(live).values_list("category_id").annotate(n=Count("id")))
-    sub = dict(
-        Product.all_objects.filter(live, subcategory__isnull=False)
-        .values_list("subcategory_id")
-        .annotate(n=Count("id"))
-    )
-    return direct, sub
+def _product_counts() -> dict[int, int]:
+    """Products that are not deleted, counted for their deepest category and every level above it."""
+    from apps.catalog.tree import ancestor_ids, parent_map
+
+    parents = parent_map()
+    counts: dict[int, int] = {}
+    for category_id, subcategory_id in Product.objects.values_list("category_id", "subcategory_id"):
+        for node in ancestor_ids(subcategory_id or category_id, parents):
+            counts[node] = counts.get(node, 0) + 1
+    return counts
 
 
 @extend_schema_view(
@@ -494,20 +539,30 @@ class AdminCategoryViewSet(viewsets.ModelViewSet):
         return {**super().get_serializer_context(), "with_children": self.action in ("list", "retrieve") and not flat}
 
     def list(self, request, *args, **kwargs):
-        qs = self.get_queryset()
+        from apps.catalog.tree import ancestor_ids, parent_map
+
         flat = request.query_params.get("flat") in ("1", "true")
+        counts = _product_counts()
+        everything = list(self.get_queryset())
+        parents = parent_map()
+        levels = {c.pk: len(ancestor_ids(c.pk, parents)) for c in everything}
+        tree: dict[int, list] = {}
+        for category in everything:
+            category.product_count = counts.get(category.pk, 0)
+            tree.setdefault(category.parent_id, []).append(category)
         if term := (request.query_params.get("q") or "").strip():
-            qs = qs.filter(Q(name__icontains=term) | Q(children__name__icontains=term)).distinct()
-        if not flat:
-            qs = qs.filter(parent__isnull=True)
-        direct, sub = _product_counts()
-        categories = list(qs)
-        for category in categories:
-            category.product_count = sub.get(category.pk, 0) if category.parent_id else direct.get(category.pk, 0)
-            if not flat:
-                for child in category.children.all():
-                    child.product_count = sub.get(child.pk, 0)
-        return Response(self.get_serializer(categories, many=True).data)
+            hits = {c.pk for c in everything if term.lower() in c.name.lower()}
+            # Keep a match's whole branch: its ancestors (to reach it) and its own children.
+            keep = {a for pk in hits for a in ancestor_ids(pk, parents)} | {
+                c.pk for c in everything if c.parent_id in hits
+            }
+            everything = [c for c in everything if c.pk in keep]
+            tree = {}
+            for category in everything:
+                tree.setdefault(category.parent_id, []).append(category)
+        categories = everything if flat else tree.get(None, [])
+        context = {**self.get_serializer_context(), "tree": tree, "levels": levels}
+        return Response(self.get_serializer_class()(categories, many=True, context=context).data)
 
     def perform_create(self, serializer):
         record_audit(action="category.create", actor=self.request.user, target=serializer.save(), request=self.request)

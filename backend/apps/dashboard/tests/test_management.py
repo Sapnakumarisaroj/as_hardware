@@ -152,8 +152,11 @@ def test_categories_subcategories_and_ordering(admin_client, api_client):
     assert [c["name"] for c in tree] == ["Paint", "Tools"]
     assert [c["name"] for c in tree[1]["children"]] == ["Hand Tools"]
 
-    # A subcategory can't get subcategories of its own.
-    deeper = admin_client.post("/api/admin/categories/", {"name": "Deep", "parent": sub.data["id"]}, format="json")
+    # Phase 15: three levels (department › category › subcategory), never a fourth.
+    third = admin_client.post("/api/admin/categories/", {"name": "Spanners", "parent": sub.data["id"]}, format="json")
+    assert third.status_code == 201, third.data
+    assert admin_client.get("/api/admin/categories/").data[1]["children"][0]["children"][0]["name"] == "Spanners"
+    deeper = admin_client.post("/api/admin/categories/", {"name": "Deep", "parent": third.data["id"]}, format="json")
     assert deeper.status_code == 400
 
     off = admin_client.patch(f"/api/admin/categories/{paint.data['id']}/", {"is_active": False}, format="json")

@@ -610,5 +610,27 @@ answers: "can be wrong"), `ai {mode, provider, model, calibrated}`, `image {form
 `products[]` (catalogue cards like the assistant's: `variant_id`, `reason`, `match_label`, `match_confidence`).
 Adding to the cart is the normal `POST /api/cart/items/` with the card's `variant_id`.
 
+## Commerce core ✅ (Phase 15)
+All prices come from the one engine (`orders.pricing` + `offers.engine`); clients never send prices.
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET | `/api/products/{slug}/quote/?quantity=&variant=` (or `opt_<type>=<value>`) | public | One line priced by the engine: unit price with bulk tier, offers, totals, `next_tier`. A preview; the cart prices again |
+| GET | `/api/options/` | public | Active option types with ordered values and units |
+| GET | `/api/collections/`, `/api/collections/{slug}/` | public | Live curated lists (manual or automatic: best sellers, new launches, bulk pricing); empty or out-of-date lists are not returned |
+| CRUD | `/api/admin/option-types/` | admin (store managers read) | Option types and values |
+| CRUD | `/api/admin/collections/` | admin | Lists, items, rule, dates; preview |
+| CRUD | `/api/admin/free-delivery-rules/` | admin | Threshold, zones, products/categories, start/end |
+| GET/PATCH | `/api/admin/payment-settings/` | admin (store managers read) | `cod_enabled`, `cod_max_order_value` (₹10,000 default; null = no limit). Audit-logged |
+
+Additive fields:
+- Product listing: `bulk_pricing {from_quantity, lowest_unit_price}` (null without tiers). Detail variants: `price_tiers[] {min_quantity, max_quantity, unit_price, is_base, saving_percent}` and `options[]`; categories carry `breadcrumb`.
+- Listing parameters: `opt_<option-type-slug>=value-slug,…`, `bulk_pricing=true`; `category` with a department slug includes all three levels. Facets add `options[]`.
+- `/api/categories/`: up to three levels (`children` nested twice), each with `product_count`.
+- Cart lines: `unit_price` (tiered), `bulk {applied_min_quantity, saving, next_tier {min_quantity, unit_price, units_more, reachable}}` (null without tiers). The quote endpoint returns `price_tiers` and `next_tier` too.
+- Checkout preview: `free_delivery_reason`, `free_delivery_hint` ("Add ₹X more"), `payment_methods[] {value, label, available, reason_code, message, max_order_value}` (COD reasons: `cod_disabled`, `cod_limit`, `cod_store`, `cod_zone`). Placing a COD order that isn't allowed is refused with the same reason.
+- Offers (`/api/offers/…`, cart `applied`): `benefit` (`discount` | `free_delivery`), `min_quantity`, `campaign`, `conditions[]` in words. An offer that reaches its limit between preview and order → 409 `totals_changed`.
+- Admin products: `price_tiers[]` and variant `options` in the product form; stores and zones: `cod_enabled`.
+
 ## Planned 🔜
 - **AI** more endpoints in Phases 18–22 (voice, projects, calculators, compatibility, smart cart). **Notifications/support channels** (Phase 23).

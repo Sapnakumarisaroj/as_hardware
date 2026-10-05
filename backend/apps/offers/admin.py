@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils import timezone
 
-from .models import Coupon, CouponRedemption, Offer
+from .models import Coupon, CouponRedemption, Offer, OfferRedemption
 
 
 @admin.register(Coupon)
@@ -58,15 +58,23 @@ class OfferAdmin(admin.ModelAdmin):
     list_editable = ("priority", "is_active")
     search_fields = ("name", "description")
     filter_horizontal = ("products", "categories")
+    readonly_fields = ("used_count",)
     fieldsets = (
-        (None, {"fields": ("name", "description", "is_active", "priority")}),
-        ("Discount", {"fields": ("discount_type", "value", "max_discount_amount", "min_order_value")}),
+        (None, {"fields": ("name", "description", "campaign", "is_active", "priority")}),
+        ("Benefit", {"fields": ("benefit", "discount_type", "value", "max_discount_amount", "min_order_value")}),
+        (
+            "Conditions",
+            {
+                "fields": ("min_quantity", "max_prior_orders", "usage_limit", "per_customer_limit", "used_count"),
+                "description": "Minimum units per item; earlier orders allowed (0 = first order only); usage limits.",
+            },
+        ),
         ("Schedule", {"fields": ("starts_at", "ends_at")}),
         (
             "Applies to",
             {
                 "fields": ("products", "categories"),
-                "description": "Leave both empty to apply to the whole cart. A category includes its subcategories.",
+                "description": "Leave both empty to apply to the whole cart. A category includes everything below it.",
             },
         ),
     )
@@ -75,3 +83,19 @@ class OfferAdmin(admin.ModelAdmin):
     def is_live(self, obj):
         now = timezone.now()
         return obj.is_active and obj.starts_at <= now and (obj.ends_at is None or obj.ends_at > now)
+
+
+@admin.register(OfferRedemption)
+class OfferRedemptionAdmin(admin.ModelAdmin):
+    """Orders that used an offer (for usage limits). Read-only; cancelling the order removes the row."""
+
+    list_display = ("offer", "user", "order", "discount_amount", "created_at")
+    search_fields = ("offer__name", "user__email", "order__order_number")
+    list_select_related = ("offer", "user", "order")
+    readonly_fields = ("offer", "user", "order", "discount_amount", "created_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
