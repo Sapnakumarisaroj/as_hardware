@@ -38,6 +38,11 @@ import type {
   OptionTypeInput,
   OptionTypeRow,
   PaymentSettings,
+  LoyaltySettings,
+  CashbackRuleRow,
+  CashbackRuleInput,
+  AdminCreditEntry,
+  AdminReferral,
   ProductInput,
   Rider,
   Role,
@@ -521,5 +526,41 @@ export function useSavePaymentSettings() {
     async (data: Partial<Pick<PaymentSettings, 'cod_enabled' | 'cod_max_order_value'>>) =>
       (await api.patch<PaymentSettings>('/admin/payment-settings/', data)).data,
     ['payment-settings'],
+  )
+}
+
+// --- Loyalty (Phase 17, administrators) ---------------------------------------------------------------
+
+export function useLoyaltySettings() {
+  const staff = useIsStaff()
+  return useQuery({
+    queryKey: ['admin', 'loyalty', 'settings'],
+    queryFn: async () => (await api.get<LoyaltySettings>('/admin/loyalty/settings/')).data,
+    enabled: staff,
+  })
+}
+
+export function useSaveLoyaltySettings() {
+  return useChange(
+    async (data: Partial<Omit<LoyaltySettings, 'updated_at'>>) =>
+      (await api.patch<LoyaltySettings>('/admin/loyalty/settings/', data)).data,
+    ['loyalty'],
+  )
+}
+
+export const useCashbackRules = () => useAll<CashbackRuleRow>('loyalty', '/admin/loyalty/cashback-rules/')
+export const useCashbackRuleCrud = () =>
+  useCrud<CashbackRuleInput, CashbackRuleRow>('/admin/loyalty/cashback-rules/', ['loyalty'])
+
+export const useLoyaltyLedger = (filters: Filters) =>
+  useList<AdminCreditEntry>('loyalty', '/admin/loyalty/ledger/', filters)
+
+export const useReferrals = () => useAll<AdminReferral>('loyalty', '/admin/loyalty/referrals/')
+
+export function useGivePromoCredit() {
+  return useChange(
+    async (input: { user: number; amount: string; reason: string; expiry_days?: number }) =>
+      (await api.post<AdminCreditEntry>('/admin/loyalty/promo-credits/', input)).data,
+    ['loyalty'],
   )
 }

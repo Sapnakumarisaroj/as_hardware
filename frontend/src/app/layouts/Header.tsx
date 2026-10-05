@@ -77,6 +77,9 @@ function AccountMenu() {
         <Link to="/wishlist" onClick={close} className="block px-4 py-2 hover:bg-steel-50">
           Wishlist
         </Link>
+        <Link to="/account/wallet" onClick={close} className="block px-4 py-2 hover:bg-steel-50">
+          Wallet
+        </Link>
         <button
           type="button"
           onClick={() => {
@@ -200,6 +203,9 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
               </Link>
               <Link to="/wishlist" onClick={onClose} className={link}>
                 Wishlist
+              </Link>
+              <Link to="/account/wallet" onClick={onClose} className={link}>
+                Wallet
               </Link>
               <button
                 type="button"

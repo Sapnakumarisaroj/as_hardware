@@ -662,5 +662,27 @@ narrowed. Facets use the same understood filters.
 **Dashboard:** `/api/admin/products/{id}/` reads and writes `quick_answer`, `uses`, `installation_steps`, `faqs` and
 `accessories` (`[{product: id, note}]`, replace-all, in order; a product can't be its own accessory).
 
+## Loyalty and cashback ✅ (Phase 17)
+Credits are shop credit, never cash. Every amount is decided by the server from the ledger.
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET | `/api/loyalty/wallet/` | customer | `{balance, spendable, pending, eligible, earned, restored, used, expired, reversed, expiring_soon {amount, first_expiry, within_days}, rules {enabled, max_order_share, expiry_days, never_cash, referral_reward, referee_reward}, referral {code, rewards_on, joined, rewarded, used_code}}` |
+| GET | `/api/loyalty/ledger/` | customer | Own entries, newest first, paginated; `?kind=` (`cashback`, `promo`, `referral`, `restore`, `redemption`, `expiry`), `?status=` (`pending`, `eligible`, `available`, `expired`, `reversed`, `posted`). Row: `{id, kind, kind_label, status, status_label, amount (− = used/expired), remaining, available_at, expires_at, order_number, reference, description, created_at}`. Read only (writes 405; others' entries 404) |
+| POST | `/api/loyalty/referral/` | customer | `{code}` once, before the first order. Errors 400: `invalid_referral_code`, `own_referral_code`, `referral_already_used`, `not_a_new_customer` |
+| GET/PATCH | `/api/admin/loyalty/settings/` | admin | `{credits_enabled, max_order_share (0–100), expiry_days (1–3650), referral_reward, referee_reward, updated_at}`; audited |
+| CRUD | `/api/admin/loyalty/cashback-rules/` | admin | `{name, description, reward_type percent|fixed, percent, fixed_amount, max_amount, min_order_value, products[], categories[], first_order_only, starts_at, ends_at, is_active, priority}` + `summary`, `state` |
+| POST | `/api/admin/loyalty/promo-credits/` | admin | `{user, amount ≥ 1, reason, expiry_days?}` → 201 ledger entry (the only way to add credit by hand; audited) |
+| GET | `/api/admin/loyalty/ledger/` | admin | All entries, `?user=`, `?kind=`, `?status=`, `?q=` (customer, order number, reference); read only |
+| GET | `/api/admin/loyalty/customers/{id}/` | admin | A customer's wallet |
+| GET | `/api/admin/loyalty/referrals/` | admin | Latest 200 referrals with status |
+
+**Checkout:** `POST /api/checkout/preview/` and `POST /api/orders/` accept `use_credits` (bool, default false). The
+preview adds `credits {enabled, available, max_share_percent, max_usable, usable, use_credits, applied, remaining_to_pay}`
+and `cashback {amount, rule, summary} | null`; `totals.credit_discount` is the credit applied (already deducted from
+`grand_total`). If the balance changed between preview and order → 409 `totals_changed`.
+**Orders:** detail adds `credit_discount` and `loyalty {credits_used, credits_restored, earned[{kind, amount, status,
+status_label, available_at, description}]}`. Return `refund_amount` leaves out the credit share of the items.
+
 ## Planned 🔜
 - **AI** more endpoints in Phases 18–22 (voice, projects, calculators, compatibility, smart cart). **Notifications/support channels** (Phase 23).

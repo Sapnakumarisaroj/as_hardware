@@ -683,6 +683,22 @@ display components. The browser never calculates a time or a fee; it shows what 
   Open Graph and JSON-LD.
 - **Recently viewed** is a `useSyncExternalStore` over localStorage (slugs only); products are fetched fresh.
 
+### Loyalty credits (Phase 17)
+- **Ledger, not balances.** `apps/loyalty/ledger.py` is the only writer. Credits are lots with their own expiry;
+  every use or expiry is a debit allocated to lots (oldest expiry first, rows locked with `select_for_update`), so the
+  same credit can't be spent twice and a lot can't go below zero. Balance and wallet totals are sums over entries.
+- **Pricing.** `orders.pricing.price_lines(..., use_credits=True)` prices once without credits, asks
+  `ledger.credit_quote` for the cap (share × goods after offers and coupon, ≤ spendable) and prices again with that
+  amount as the last discount layer (spread pro rata like the coupon; GST on what is paid; the delivery decision is
+  made before credits). Checkout preview and `place_order` share this path; `place_order` then redeems the same
+  amount inside the order transaction and records pending cashback (`cashback_for` on `paid_by_line`).
+- **Lifecycle hooks.** `orders.services._apply_transition` calls `on_order_cancelled` (reverse waiting credits, restore
+  used credits with original expiry) and `on_order_delivered` (pending → eligible with `available_at` = delivery +
+  return window; referral rewards). `orders.returns.receive_return` calls `on_return_received` with the credit share
+  of the returned units and the paid amount refunded (`paid_amounts` excludes credits, so refunds pay back money only).
+- **Jobs.** `loyalty.release_credits` and `loyalty.expire_credits` run in `manage.py run_jobs` (cron). Both are
+  idempotent and safe to run concurrently (status-guarded updates / row locks).
+
 ## 9. Environments
 | | Local (Windows) | Production (existing hosting) |
 |---|---|---|

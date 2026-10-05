@@ -16,12 +16,13 @@ from apps.core.exceptions import ServiceError
 from apps.core.money import ZERO, q
 from apps.delivery.fulfillment import FeeRule, Plan, plan_fulfillment
 from apps.delivery.locations import resolve_location
+from apps.loyalty.ledger import cashback_for
 from apps.offers.engine import OfferResult
 from apps.offers.models import Coupon
 from apps.offers.services import get_valid_coupon
 from apps.payments.cod_rules import CodDecision, cod_eligibility
 
-from .pricing import Totals, price_lines
+from .pricing import Totals, paid_by_line, price_lines
 
 # Orders placed before the Phase 9 ETA engine (no estimate stored) still use this wording.
 ETA_PENDING_MESSAGE = "Delivery estimate will be confirmed after your order is placed."
@@ -67,6 +68,9 @@ class CheckoutSummary:
     offers: OfferResult = field(default_factory=OfferResult)
     plan: Plan | None = None
     cod: CodDecision | None = None  # Phase 15: is cash on delivery allowed for this order?
+    credits: object | None = None  # Phase 17: loyalty.ledger.CreditQuote (available, cap, usable)
+    use_credits: bool = False
+    cashback: object | None = None  # loyalty.ledger.CashbackQuote: earned if this order is placed
 
     @property
     def can_place_order(self) -> bool:
@@ -145,7 +149,9 @@ def quote_from_plan(plan: Plan | None, totals: Totals, fee_rule: FeeRule | None)
     )
 
 
-def build_checkout(user, *, address_id: int | None = None, coupon_code: str = "") -> CheckoutSummary:
+def build_checkout(
+    user, *, address_id: int | None = None, coupon_code: str = "", use_credits: bool = False
+) -> CheckoutSummary:
     cart = summarize_cart(user)
     issues: list[dict] = []
 
@@ -170,12 +176,12 @@ def build_checkout(user, *, address_id: int | None = None, coupon_code: str = ""
     fee_rule = plan.fee_rule if plan and plan.deliverable and plan.location else None
 
     lines = cart.priced_lines
-    pricing = price_lines(lines, fee_rule=fee_rule, user=user)  # automatic offers
+    pricing = price_lines(lines, fee_rule=fee_rule, user=user, use_credits=use_credits)  # automatic offers
     coupon, coupon_error = None, None
     if coupon_code.strip() and lines:
         try:
             coupon = get_valid_coupon(coupon_code, user)
-            pricing = price_lines(lines, coupon=coupon, fee_rule=fee_rule, user=user)  # coupon on top of offers
+            pricing = price_lines(lines, coupon=coupon, fee_rule=fee_rule, user=user, use_credits=use_credits)
         except ServiceError as exc:
             coupon = None
             coupon_error = {"code": exc.error_code, "message": str(exc.detail), "details": exc.details}
@@ -186,6 +192,7 @@ def build_checkout(user, *, address_id: int | None = None, coupon_code: str = ""
     if cart.lines and not cart.issues and plan is not None and not plan.deliverable:
         issues.append({"code": "not_deliverable", "message": plan.message})
     cod = cod_eligibility(grand_total=totals.grand_total, plan=plan if plan and plan.deliverable else None)
+    cashback = cashback_for(user, lines, paid_by_line(lines, totals, pricing.offers.line_discounts)) if lines else None
 
     return CheckoutSummary(
         cart=cart,
@@ -199,4 +206,7 @@ def build_checkout(user, *, address_id: int | None = None, coupon_code: str = ""
         offers=pricing.offers,
         plan=plan,
         cod=cod,
+        credits=pricing.credits,
+        use_credits=use_credits,
+        cashback=cashback,
     )

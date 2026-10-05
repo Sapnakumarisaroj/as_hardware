@@ -88,6 +88,7 @@ describe('dashboard: navigation', () => {
       ['Coupons', '/admin/coupons'],
       ['Free delivery', '/admin/free-delivery'],
       ['Cash on delivery', '/admin/payment-settings'],
+      ['Loyalty & cashback', '/admin/loyalty'],
       ['Inventory', '/admin/inventory'],
       ['Delivery', '/admin/delivery'],
       ['Stores', '/admin/stores'],

@@ -8,7 +8,7 @@ import { AddressFormModal, AddressList } from '@/features/addresses/components'
 import { useAddresses } from '@/features/addresses/api'
 import { useAuth } from '@/features/auth/context'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
-import { checkoutKeys, useCheckoutPreview, type CheckoutPreview } from '@/features/checkout/api'
+import { checkoutKeys, useCheckoutPreview, type CheckoutCredits, type CheckoutPreview } from '@/features/checkout/api'
 import { DeliveryEstimate, FreeDeliveryNote } from '@/features/delivery/components'
 import { useAvailableCoupons } from '@/features/offers/api'
 import { AvailableCouponList, CartOfferNotes } from '@/features/offers/components'
@@ -128,12 +128,73 @@ function CouponBox({
   )
 }
 
+/**
+ * Phase 17: shop credit. The server says what is available, the most this order may use (its share of
+ * the goods after offers and coupon) and what it applied; the page only sends "use my credits" yes/no.
+ */
+function CreditsBox({
+  credits,
+  onChange,
+  busy,
+}: {
+  credits: CheckoutCredits
+  onChange: (value: boolean) => void
+  busy: boolean
+}) {
+  const row = 'flex justify-between gap-4 py-0.5'
+  return (
+    <div className="space-y-3 text-sm" data-testid="credits-box">
+      <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-md px-3 py-2 ring-1 ring-steel-200 has-checked:bg-amber-100 has-checked:ring-2 has-checked:ring-amber-500">
+        <input
+          type="checkbox"
+          checked={credits.use_credits}
+          disabled={busy || Number(credits.usable) <= 0}
+          onChange={(e) => onChange(e.target.checked)}
+          className="size-5 accent-amber-600"
+        />
+        <span>
+          <span className="block font-semibold">Use my credits</span>
+          <span className="block text-xs text-ink-600">
+            Up to {formatPrice(credits.usable)} on this order
+          </span>
+        </span>
+      </label>
+      <dl className="rounded-md bg-steel-50 p-3">
+        <div className={row}>
+          <dt>Available credits</dt>
+          <dd>{formatPrice(credits.available)}</dd>
+        </div>
+        <div className={row}>
+          <dt>Maximum for this order ({Number(credits.max_share_percent)}%)</dt>
+          <dd>{formatPrice(credits.max_usable)}</dd>
+        </div>
+        <div className={`${row} font-semibold`}>
+          <dt>Credits applied</dt>
+          <dd>{formatPrice(credits.applied)}</dd>
+        </div>
+        <div className={`${row} font-semibold`}>
+          <dt>Remaining to pay</dt>
+          <dd>{formatPrice(credits.remaining_to_pay)}</dd>
+        </div>
+      </dl>
+      <p className="text-xs text-ink-600">
+        Credits are not cash. Credits that expire soonest are used first. If you cancel or return items, the credits
+        used on them come back with their original expiry date.{' '}
+        <Link to="/account/wallet" className="font-semibold text-amber-600 hover:underline">
+          Your wallet
+        </Link>
+      </p>
+    </div>
+  )
+}
+
 export function CheckoutPage() {
   usePageMeta('Checkout')
   const { status } = useAuth()
   const addresses = useAddresses()
   const [chosenAddressId, setChosenAddressId] = useState<number | null>(null)
   const [coupon, setCoupon] = useState('')
+  const [useCredits, setUseCredits] = useState(false)
   const [method, setMethod] = useState<PaymentMethod | null>(null)
   const [note, setNote] = useState('')
   const [addingAddress, setAddingAddress] = useState(false)
@@ -148,7 +209,7 @@ export function CheckoutPage() {
     list[0]?.id ??
     null
 
-  const preview = useCheckoutPreview(addressId, coupon)
+  const preview = useCheckoutPreview(addressId, coupon, useCredits)
   const placeOrder = usePlaceOrder()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -208,9 +269,15 @@ export function CheckoutPage() {
   async function applyCoupon(code: string): Promise<string | null> {
     try {
       const result = await queryClient.fetchQuery({
-        queryKey: checkoutKeys.preview(addressId, code),
+        queryKey: checkoutKeys.preview(addressId, code, useCredits),
         queryFn: async () =>
-          (await api.post<CheckoutPreview>('/checkout/preview/', { address_id: addressId, coupon_code: code })).data,
+          (
+            await api.post<CheckoutPreview>('/checkout/preview/', {
+              address_id: addressId,
+              coupon_code: code,
+              use_credits: useCredits,
+            })
+          ).data,
       })
       if (result.coupon_error) return result.coupon_error.message
       setCoupon(code)
@@ -232,6 +299,7 @@ export function CheckoutPage() {
         customerNote: note.trim(),
         expectedTotal: data.totals.grand_total,
         idempotencyKey,
+        useCredits,
       },
       {
         onSuccess: (order) => {
@@ -336,7 +404,13 @@ export function CheckoutPage() {
             )}
           </Step>
 
-          <Step n={5} title="Payment method">
+          {data.credits?.enabled && Number(data.credits.available) > 0 && (
+            <Step n={5} title="Credits">
+              <CreditsBox credits={data.credits} onChange={setUseCredits} busy={preview.isFetching} />
+            </Step>
+          )}
+
+          <Step n={data.credits?.enabled && Number(data.credits.available) > 0 ? 6 : 5} title="Payment method">
             <fieldset>
               <legend className="sr-only">Choose how to pay</legend>
               <div className="space-y-2">
@@ -408,6 +482,12 @@ export function CheckoutPage() {
                 threshold={data.totals.free_delivery_threshold}
               />
             </div>
+            {data.cashback && (
+              <p className="mt-3 rounded-md bg-success-600/10 px-3 py-2 text-sm text-success-600" data-testid="cashback-note">
+                You’ll earn {formatPrice(data.cashback.amount)} cashback ({data.cashback.summary}). It becomes usable once
+                the return window after delivery has passed.
+              </p>
+            )}
             {data.offers.missed.length > 0 && (
               <div className="mt-3">
                 <CartOfferNotes offers={{ applied: [], missed: data.offers.missed }} />

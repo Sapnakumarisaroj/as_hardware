@@ -50,7 +50,7 @@ describe('checkout page', () => {
     expect(await screen.findByRole('heading', { name: 'Checkout' })).toBeInTheDocument()
     const addresses = screen.getByRole('radiogroup', { name: 'Delivery address' })
     expect(within(addresses).getByRole('radio', { name: /Deliver to Asha Kulkarni/ })).toBeChecked()
-    expect(lastPreviewBody(api.post)).toEqual({ address_id: 31, coupon_code: '' })
+    expect(lastPreviewBody(api.post)).toEqual({ address_id: 31, coupon_code: '', use_credits: false })
 
     const delivery = screen.getByRole('heading', { name: /Delivery information/ }).closest('section')!
     expect(delivery).toHaveTextContent('Fast delivery available')
@@ -153,7 +153,7 @@ describe('checkout page', () => {
     const api = mockApi({ get: baseGet(), post: { '/checkout/preview/': checkoutPreview() } })
     const { user } = renderRoute('/checkout')
     await user.click(await screen.findByRole('radio', { name: /Deliver to Site office/ }))
-    await waitFor(() => expect(lastPreviewBody(api.post)).toEqual({ address_id: 32, coupon_code: '' }))
+    await waitFor(() => expect(lastPreviewBody(api.post)).toEqual({ address_id: 32, coupon_code: '', use_credits: false }))
   })
 
   it('without saved addresses the shopper adds one and it becomes the delivery address', async () => {
@@ -192,7 +192,7 @@ describe('checkout page', () => {
       expect(api.post).toHaveBeenCalledWith('/addresses/', expect.objectContaining({ name: 'New Home', postal_code: '411001' })),
     )
     expect(await screen.findByRole('radio', { name: /Deliver to New Home/ })).toBeChecked()
-    await waitFor(() => expect(lastPreviewBody(api.post)).toEqual({ address_id: 40, coupon_code: '' }))
+    await waitFor(() => expect(lastPreviewBody(api.post)).toEqual({ address_id: 40, coupon_code: '', use_credits: false }))
   })
 
   it('address form shows the server’s validation message', async () => {
@@ -245,10 +245,10 @@ describe('checkout page', () => {
     expect(await screen.findByText(/applied — you save/)).toBeInTheDocument()
     expect(within(summaryBox()).getByText('Coupon discount (TOOLS10)')).toBeInTheDocument()
     expect(within(summaryBox()).getByText('−₹80')).toBeInTheDocument()
-    expect(lastPreviewBody(api.post)).toEqual({ address_id: 31, coupon_code: 'TOOLS10' })
+    expect(lastPreviewBody(api.post)).toEqual({ address_id: 31, coupon_code: 'TOOLS10', use_credits: false })
 
     await user.click(screen.getByRole('button', { name: /Remove\s*coupon TOOLS10/ }))
-    await waitFor(() => expect(lastPreviewBody(api.post)).toEqual({ address_id: 31, coupon_code: '' }))
+    await waitFor(() => expect(lastPreviewBody(api.post)).toEqual({ address_id: 31, coupon_code: '', use_credits: false }))
   })
 
   it('places a COD order once (idempotency key + shown total) and shows the confirmation', async () => {
@@ -280,6 +280,7 @@ describe('checkout page', () => {
       coupon_code: '',
       customer_note: 'Call first',
       expected_total: '800.00',
+      use_credits: false, // the customer didn't choose credits; the server decides any amount
     })
     expect((config as { headers: Record<string, string> }).headers['Idempotency-Key']).toMatch(/^[A-Za-z0-9_-]{8,64}$/)
     expect(await screen.findByRole('heading', { name: 'Thank you! Your order is placed.' })).toBeInTheDocument()

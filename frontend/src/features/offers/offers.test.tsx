@@ -152,7 +152,7 @@ describe('automatic offers', () => {
     await user.click(screen.getByRole('button', { name: /Apply\s*coupon DEMO10/ }))
     expect(await screen.findByText(/applied — you save/)).toBeInTheDocument()
     await waitFor(() =>
-      expect(api.post).toHaveBeenLastCalledWith('/checkout/preview/', { address_id: 31, coupon_code: 'DEMO10' }),
+      expect(api.post).toHaveBeenLastCalledWith('/checkout/preview/', { address_id: 31, coupon_code: 'DEMO10', use_credits: false }),
     )
     const summary = screen.getByRole('region', { name: 'Order summary' })
     expect(within(summary).getByText('Offer: Tools week')).toBeInTheDocument()

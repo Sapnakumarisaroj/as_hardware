@@ -53,6 +53,7 @@ export function AccountPage() {
   const tiles = [
     { to: '/account/orders', title: 'Orders', text: 'Track, cancel, return and buy again' },
     { to: '/account/returns', title: 'Returns', text: 'Return requests and refunds' },
+    { to: '/account/wallet', title: 'Wallet', text: 'Credits, cashback and your referral code' },
     { to: '/account/addresses', title: 'Addresses', text: 'Manage delivery addresses' },
     { to: '/wishlist', title: 'Wishlist', text: 'Items you saved' },
     { to: '/cart', title: 'Cart', text: 'Ready to check out' },
@@ -221,6 +222,39 @@ function PaymentInfo({ order }: { order: OrderDetail }) {
   )
 }
 
+/** Credits used on this order and cashback earned with it (Phase 17), straight from the ledger. */
+function OrderCredits({ order }: { order: OrderDetail }) {
+  const loyalty = order.loyalty
+  if (!loyalty) return null
+  const used = loyalty.credits_used !== '0.00'
+  const live = loyalty.earned.filter((e) => e.status !== 'reversed')
+  if (!used && !live.length) return null
+  return (
+    <section aria-labelledby="credits-heading" className="rounded-lg bg-white p-5 text-sm ring-1 ring-steel-200">
+      <h2 id="credits-heading" className="mb-2 text-base font-bold">
+        Credits & cashback
+      </h2>
+      {used && (
+        <p>
+          Credits used: <span className="font-semibold">{formatPrice(loyalty.credits_used)}</span>
+          {loyalty.credits_restored !== '0.00' && ` · ${formatPrice(loyalty.credits_restored)} given back`}
+        </p>
+      )}
+      {live.map((entry, index) => (
+        <p key={index} className="mt-1">
+          {entry.kind === 'cashback' ? 'Cashback' : 'Reward'}:{' '}
+          <span className="font-semibold text-success-600">{formatPrice(entry.amount)}</span> · {entry.status_label}
+          {entry.status === 'eligible' && entry.available_at && ` (usable from ${formatDate(entry.available_at)})`}
+          {entry.status === 'pending' && ' (usable after delivery and the return window)'}
+        </p>
+      ))}
+      <Link to="/account/wallet" className="mt-2 inline-block font-semibold text-amber-600 hover:underline">
+        Your wallet
+      </Link>
+    </section>
+  )
+}
+
 export function OrderDetailPage() {
   const { number = '' } = useParams()
   usePageMeta(`Order ${number}`)
@@ -321,6 +355,7 @@ export function OrderDetailPage() {
             </h2>
             <PaymentInfo order={data} />
           </section>
+          <OrderCredits order={data} />
           <section aria-labelledby="address-heading" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
             <h2 id="address-heading" className="mb-2 text-base font-bold">
               Delivery address

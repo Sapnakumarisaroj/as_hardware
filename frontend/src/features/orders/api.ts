@@ -60,6 +60,8 @@ export interface PlaceOrderInput {
   expectedTotal: string
   /** Same key for every retry of one "Place order" attempt, so a double submit can't create two orders. */
   idempotencyKey: string
+  /** Pay part with shop credit; the server decides how much (never more than its share). */
+  useCredits?: boolean
 }
 
 export function usePlaceOrder() {
@@ -76,6 +78,7 @@ export function usePlaceOrder() {
             coupon_code: input.couponCode,
             customer_note: input.customerNote,
             expected_total: input.expectedTotal,
+            use_credits: input.useCredits ?? false,
           },
           { headers: { 'Idempotency-Key': input.idempotencyKey } },
         )

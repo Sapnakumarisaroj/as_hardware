@@ -99,6 +99,16 @@ class Order(TimeStampedModel):
     )
     tax_total = models.DecimalField(**MONEY_FIELD_KWARGS, help_text="GST contained in the amount payable.")
     grand_total = models.DecimalField(**MONEY_FIELD_KWARGS)
+    # Phase 17 snapshots, so returns and refunds stay right if loyalty rules change later.
+    credit_discount = models.DecimalField(
+        **MONEY_FIELD_KWARGS, default=0, help_text="Shop credit used (already deducted from grand_total)."
+    )
+    loyalty_snapshot = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Rules and amounts at ordering: {"max_order_share", "expiry_days", "credits_available", '
+        '"cashback": {"amount", "rule_id", "rule_name", "summary"}}.',
+    )
     coupon = models.ForeignKey("offers.Coupon", null=True, blank=True, on_delete=models.SET_NULL, related_name="orders")
     coupon_code = models.CharField(max_length=30, blank=True)
     customer_note = models.CharField(max_length=500, blank=True)

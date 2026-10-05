@@ -236,6 +236,7 @@ class CheckoutPreviewView(APIView):
             request.user,
             address_id=serializer.validated_data.get("address_id"),
             coupon_code=serializer.validated_data["coupon_code"],
+            use_credits=serializer.validated_data["use_credits"],
         )
         return Response(CheckoutPreviewSerializer(summary, context={"request": request}).data)
 

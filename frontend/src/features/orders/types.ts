@@ -156,7 +156,23 @@ export interface AddressSnapshot {
   address_type: string
 }
 
+/** Phase 17: credits used on the order, given back, and cashback/rewards earned with it. */
+export interface OrderLoyalty {
+  credits_used: string
+  credits_restored: string
+  earned: {
+    kind: 'cashback' | 'referral'
+    amount: string
+    status: 'pending' | 'eligible' | 'available' | 'reversed' | 'expired'
+    status_label: string
+    available_at: string | null
+    description: string
+  }[]
+}
+
 export interface OrderDetail extends Omit<OrderSummary, 'item_count' | 'item_names' | 'image'> {
+  credit_discount?: string
+  loyalty?: OrderLoyalty
   public_id: string
   address_snapshot: AddressSnapshot
   store_name: string | null

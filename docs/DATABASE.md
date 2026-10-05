@@ -306,6 +306,23 @@ functions), which keeps the PostgreSQL/MySQL/SQLite portability rules above.
 - No other tables: PIN delivery flags are computed per request from inventory + the Phase 9 engine (cached 60 s per
   PIN), recently viewed lives in the browser, the sitemap is generated from existing rows.
 
+## loyalty ✅ (Phase 17, migrations `loyalty.0001`, `orders.0010`)
+- **LoyaltySettings** (one row, pk 1): `credits_enabled`, `max_order_share` (20.00 %), `expiry_days` (90),
+  `referral_reward`, `referee_reward` (0 = off), `updated_by/at`.
+- **CreditEntry** (the ledger): `user`, `kind` (cashback, promo, referral, restore = credits; redemption, expiry =
+  debits), `status` (pending, eligible, available = credited, expired, reversed, posted), `amount` (signed; check
+  constraint: credits > 0, debits < 0), `available_at`, `expires_at`, `order`, `return_request`, `source` (restored
+  credit → lot it came from; replacement cashback → the one replaced), `reference` (required, check constraint),
+  `description`, `created_by`, `created_at`. Indexes (user, status), (status, available_at), expires_at.
+  **Balance = Σ amount of entries with status available/expired/posted** (an expired lot is offset by its expiry entry).
+- **CreditAllocation**: `debit` → `lot`, `amount` > 0. Lot remaining = amount − Σ allocations.
+- **CashbackRule**: `reward_type` percent|fixed, `percent`, `fixed_amount`, `max_amount`, `min_order_value`,
+  M2M products/categories, `first_order_only`, `starts_at/ends_at`, `is_active`, `priority`.
+- **ReferralCode** (user 1:1, unique code) and **Referral** (`referrer`, `referee` unique, `status` joined/rewarded/
+  no_reward, `rewarded_order`; check constraint referrer ≠ referee).
+- **orders.Order** gains `credit_discount` (default 0) and `loyalty_snapshot` (JSON: share, expiry days, credits
+  available, cashback amount/rule at ordering).
+
 ## Planned tables 🔜
 `accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 14–19) · `django_cache` (prod DB cache, created by `createcachetable`).
 

@@ -50,6 +50,8 @@ export interface SummaryTotals {
   delivery_fee: string
   tax_total: string
   grand_total: string
+  /** Phase 17: shop credit used, already taken off grand_total. */
+  credit_discount?: string
 }
 
 /** Server-calculated money only: the browser formats these strings but never adds them up. */
@@ -71,6 +73,7 @@ export function PriceSummary({
   const mrpSavings = totals.mrp_total !== totals.subtotal
   const hasOffers = totals.offer_discount !== '0.00'
   const hasCoupon = totals.coupon_discount !== '0.00'
+  const credits = totals.credit_discount && totals.credit_discount !== '0.00' ? totals.credit_discount : null
   return (
     <section aria-label={heading}>
       <h2 className="mb-2 text-base font-bold">{heading}</h2>
@@ -109,8 +112,14 @@ export function PriceSummary({
           <dt>Delivery fee</dt>
           <dd>{totals.delivery_fee === '0.00' ? 'Free' : formatPrice(totals.delivery_fee)}</dd>
         </div>
+        {credits && (
+          <div className={`${row} text-success-600`} data-testid="credits-row">
+            <dt>Credits used</dt>
+            <dd>−{formatPrice(credits)}</dd>
+          </div>
+        )}
         <div className="mt-2 flex justify-between border-t border-steel-200 pt-3 text-base font-bold">
-          <dt>Total</dt>
+          <dt>{credits ? 'To pay' : 'Total'}</dt>
           <dd>{formatPrice(totals.grand_total)}</dd>
         </div>
       </dl>

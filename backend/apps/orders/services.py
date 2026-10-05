@@ -21,6 +21,9 @@ from apps.delivery.fulfillment import Plan, plan_fulfillment
 from apps.delivery.locations import resolve_location
 from apps.inventory.models import Inventory, StockMovement
 from apps.inventory.services import InsufficientStock, apply_movement, total_available
+from apps.loyalty.ledger import cashback_for, on_order_cancelled, on_order_delivered, record_cashback
+from apps.loyalty.ledger import redeem as redeem_credits
+from apps.loyalty.models import LoyaltySettings
 from apps.notifications.services import notify
 from apps.offers.models import Coupon, CouponRedemption, Offer, OfferRedemption
 from apps.offers.services import get_valid_coupon
@@ -31,7 +34,7 @@ from integrations.payments import get_payment_provider
 
 from .delivery_info import delivery_sentence, refresh_delivery_estimate
 from .models import Order, OrderItem, OrderShipment, OrderStatus, OrderStatusHistory, PaymentMethod, PaymentStatus
-from .pricing import line_from_variant, price_lines
+from .pricing import line_from_variant, paid_by_line, price_lines
 from .shipments import LEFT_THE_STORE, mirror_order_status, sync_order_status
 from .state_machine import (
     CUSTOMER_CANCELLABLE,
@@ -96,6 +99,7 @@ def place_order(
     customer_note: str = "",
     expected_total: Decimal | None = None,
     idempotency_key: str | None = None,
+    use_credits: bool = False,
 ) -> tuple[Order, Payment]:
     """Create an order from the cart in one transaction (any failure rolls everything back).
 
@@ -103,6 +107,8 @@ def place_order(
     - `expected_total`: the grand total the customer was shown. If prices, stock-driven
       totals or the coupon changed since, nothing is created and `totals_changed` (409)
       returns the new figures for the customer to review.
+    - `use_credits` (Phase 17): pay part of the order with shop credit; the amount is decided
+      here (at most the shop's share), never by the client.
     """
     if payment_method not in PaymentMethod.values:
         raise OrderError("Unsupported payment method.", code="invalid_payment_method")
@@ -147,7 +153,8 @@ def place_order(
     # Bulk tiers, offers, coupon and delivery fee: the one pricing engine (orders.pricing).
     lines = [line_from_variant(item.variant, item.quantity) for item in items]
     coupon = get_valid_coupon(coupon_code, user, lock=True) if coupon_code.strip() else None
-    pricing = price_lines(lines, coupon=coupon, fee_rule=plan.fee_rule, user=user)  # offers, then the coupon
+    # Offers, then the coupon, then credits (if chosen): one engine, one result.
+    pricing = price_lines(lines, coupon=coupon, fee_rule=plan.fee_rule, user=user, use_credits=use_credits)
     totals, offers = pricing.totals, pricing.offers
     if expected_total is not None and q(expected_total) != totals.grand_total:
         raise TotalsChanged(
@@ -159,6 +166,8 @@ def place_order(
         if not cod.available:
             raise OrderError(cod.message, code="cod_unavailable", details={"reason": cod.reason_code})
     _claim_offers(offers, user, totals)
+    cashback = cashback_for(user, lines, paid_by_line(lines, totals, offers.line_discounts))
+    credit_rules = LoyaltySettings.load()
 
     latest = plan.latest
     order = Order.objects.create(
@@ -194,6 +203,18 @@ def place_order(
         free_delivery_reason=totals.free_delivery_reason[:160],
         tax_total=totals.tax_total,
         grand_total=totals.grand_total,
+        credit_discount=totals.credit_discount,
+        loyalty_snapshot={
+            "max_order_share": str(credit_rules.max_order_share),
+            "expiry_days": credit_rules.expiry_days,
+            "credits_available": str(pricing.credits.balance) if pricing.credits else "0.00",
+            "cashback": {
+                "amount": str(cashback.amount),
+                "rule_id": cashback.rule_id,
+                "rule_name": cashback.rule_name,
+                "summary": cashback.summary,
+            },
+        },
         coupon=coupon,
         coupon_code=coupon.code if coupon else "",
         customer_note=customer_note[:500],
@@ -254,6 +275,9 @@ def place_order(
             offer_id=applied.offer.id, user=user, order=order, discount_amount=applied.discount
         )
         Offer.objects.filter(pk=applied.offer.id).update(used_count=F("used_count") + 1)
+    # Credits: locked and used oldest-expiry first; a changed balance rolls everything back (409).
+    redeem_credits(user, order, totals.credit_discount)
+    record_cashback(order, cashback)  # pending until delivery + return window
 
     _record_status(order, "", OrderStatus.PENDING, user, "Order placed")
     payment = create_payment_for_order(order)
@@ -418,6 +442,7 @@ def _apply_transition(order: Order, to_status: str, *, actor, note: str = "", mi
             if not payment.refunds.exists():
                 create_refund(payment, payment.amount, reason=f"Order cancelled: {note}", requested_by=actor)
         _release_coupon(order)
+        on_order_cancelled(order)  # pending cashback reversed, used credits given back (Phase 17)
     elif to_status == OrderStatus.DELIVERED and not order.delivered_at:
         order.delivered_at = now
         fields.append("delivered_at")
@@ -429,6 +454,7 @@ def _apply_transition(order: Order, to_status: str, *, actor, note: str = "", mi
             if collected:
                 order.payment_status = PaymentStatus.PAID
                 fields.append("payment_status")
+        on_order_delivered(order)  # cashback/referral clock: usable after the return window
     order.save(update_fields=fields)
     _record_status(order, from_status, to_status, actor, note)
     return order

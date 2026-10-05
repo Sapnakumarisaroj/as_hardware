@@ -25,6 +25,7 @@ export type Section =
   | 'collections'
   | 'free-delivery'
   | 'payment-settings'
+  | 'loyalty'
 
 export interface StoreRef {
   id: number
@@ -861,4 +862,68 @@ export interface PaymentSettings {
   updated_by_name: string | null
   stores_without_cod: { id: number; name: string }[]
   zones_without_cod: { id: number; name: string; store_name: string }[]
+}
+
+// --- Loyalty (Phase 17) ---------------------------------------------------------------------------------
+
+export interface LoyaltySettings {
+  credits_enabled: boolean
+  /** % of the goods (after offers and coupon) credits may pay. */
+  max_order_share: string
+  expiry_days: number
+  referral_reward: string
+  referee_reward: string
+  updated_at: string
+}
+
+export interface CashbackRuleInput {
+  name: string
+  description: string
+  reward_type: 'percent' | 'fixed'
+  percent: string | null
+  fixed_amount: string | null
+  max_amount: string | null
+  min_order_value: string
+  products: number[]
+  categories: number[]
+  first_order_only: boolean
+  starts_at: string
+  ends_at: string | null
+  is_active: boolean
+  priority: number
+}
+
+export interface CashbackRuleRow extends CashbackRuleInput {
+  id: number
+  summary: string
+  state: 'live' | 'scheduled' | 'expired' | 'inactive'
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminCreditEntry {
+  id: number
+  kind: string
+  kind_label: string
+  status: string
+  status_label: string
+  amount: string
+  remaining: string | null
+  available_at: string | null
+  expires_at: string | null
+  order_number: string | null
+  reference: string
+  description: string
+  created_at: string
+  customer?: { id: number; name: string; email: string }
+}
+
+export interface AdminReferral {
+  id: number
+  referrer: { id: number; name: string; email: string }
+  referee: { id: number; name: string; email: string }
+  status: 'joined' | 'rewarded' | 'no_reward'
+  status_label: string
+  order_number: string | null
+  created_at: string
 }

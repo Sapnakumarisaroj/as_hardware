@@ -40,7 +40,7 @@ semantic, image and voice search, Project Builder, quantity, compatibility, smar
 | Offers (6) | Percent/fixed, cap, minimum spend, dates, product/category targets, priority, one coupon per order | No quantity-based, first-order, festival/campaign, free-delivery or cashback offer types; no usage/per-customer limits on offers (TASKS known limitation) | 15 (cashback offers in 17) |
 | Free delivery (5, 9) | Global `FREE_DELIVERY_MIN_ORDER` + per-zone `free_delivery_min_order`; checkout returns `amount_to_free_delivery` | No date-bound rules, no product/category eligibility | 15 |
 | Cash on delivery (5, 8, 10) | COD is a first-class method; cash collected by the rider, handover, manual COD refunds | No COD eligibility rules or order-value limit (decided: ₹10,000 maximum, admin-configurable, no exclusions initially) | 15 |
-| Loyalty (—) | `Payment.Method.WALLET` enum value only | No ledger, rules or wallet | 17 |
+| Loyalty (—) | `Payment.Method.WALLET` enum value only | No ledger, rules or wallet | 17 ✅ (ledger, cashback rules, wallet, referrals) |
 | Fast delivery (9) | Zone cutoff, ETA engine, fast-store stock filter, PIN check in the header | Listing/card fast badge is based on stock at fast stores, not on the selected PIN | 16 ✅ (badge and filter only for the chosen PIN) |
 | Product card / page (4, 6, 9) | Image, name, brand, rating, MRP/price/discount, offer badge, stock, delivery estimate, specs, reviews, related | Bulk table/indicator, options count, quantity stepper on card, free-delivery message, payment options, GST note, return-policy text, accessories, Buy Now | 16 |
 | Homepage (4, 6) | Hero, categories, offers, best sellers, featured, fast delivery, recently added, recommended; empty sections hidden | Deals of the week, department rails, bulk buying, AI entry points, recently viewed | 16 |
@@ -142,6 +142,6 @@ Tested = automated tests (backend/frontend) and the live HTTP checks of Phase 16
 | Buy now, wishlist, sticky add on phones | ✅ tested | |
 | Brand pages | ✅ tested | `/brands`, `/brand/:slug` |
 | Recently viewed, recommendations | ✅ tested | Browser history + wishlist/last viewed category |
-| Cashback / wallet / referral | ⏳ 17 | |
+| Cashback / wallet / referral | ✅ tested (17) | Ledger-only balance, pending until the return window, 20 % cap, 90-day expiry, wallet page, referral codes |
 | Voice shopping | ⏳ 18 | |
 | Project builder, quantity estimates, compatibility, smart cart | ⏳ 19–22 | Entry point links to the assistant today |

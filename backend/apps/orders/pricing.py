@@ -11,6 +11,9 @@ product price quote and everything AI-driven that goes through those). Order of 
 4. GST included in each line's net amount.
 5. Delivery fee from the zone rule, waived by the zone's free-delivery threshold, a live
    `FreeDeliveryRule` or a free-delivery offer (`resolve_delivery`; Phase 15).
+6. Credits (Phase 17), only when the customer chooses to use them: at most the shop's share of the
+   goods after offers and coupon, spread over the lines like the coupon. They don't change the
+   delivery decision (using credits never costs free delivery).
 """
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -74,6 +77,13 @@ class Totals:
     free_delivery_threshold: Decimal | None = None
     free_delivery_hint: str = ""
     bulk_savings: Decimal = ZERO
+    # Phase 17: shop credit used on this order (already deducted from grand_total; not in discount_total).
+    credit_discount: Decimal = ZERO
+
+    @property
+    def goods_after_discounts(self) -> Decimal:
+        """Goods after offers and coupon, before credits: what the credit share is measured on."""
+        return q(self.subtotal - self.discount_total)
 
     @property
     def savings_vs_mrp(self) -> Decimal:
@@ -268,12 +278,14 @@ def calculate_totals(
     fee_rule=None,
     free_delivery_rules: Sequence[FreeDeliveryTarget] = (),
     free_delivery_offer=None,
+    credits: Decimal = ZERO,
 ) -> Totals:
     """Totals for priced lines.
 
     `line_discounts` (variant_id → amount) are automatic-offer discounts on specific lines.
-    `discount` is the coupon, spread pro rata over what is left after offers. GST is included in
-    prices, so each line's tax is computed on its own net amount.
+    `discount` is the coupon, spread pro rata over what is left after offers. `credits` (already
+    capped by the caller) come off after the coupon in the same way. GST is included in prices, so
+    each line's tax is computed on its own net amount.
     """
     lines = list(lines)
     line_discounts = line_discounts or {}
@@ -288,11 +300,14 @@ def calculate_totals(
     coupon = q(min(max(discount, ZERO), after_offers))
     net = after_offers - coupon
     factor = (net / after_offers) if after_offers else ZERO
-    tax_total = q(sum((included_tax(nets[line.variant_id] * factor, line.gst_rate) for line in lines), ZERO))
     final_nets = {variant_id: amount * factor for variant_id, amount in nets.items()}
     delivery = resolve_delivery(
         lines, final_nets, net, fee_rule, rules=free_delivery_rules, free_delivery_offer=free_delivery_offer
     )
+    credit = q(min(max(credits, ZERO), net))
+    paid_factor = ((net - credit) / after_offers) if after_offers else ZERO
+    tax_total = q(sum((included_tax(nets[line.variant_id] * paid_factor, line.gst_rate) for line in lines), ZERO))
+    net -= credit
     return Totals(
         subtotal=subtotal,
         mrp_total=mrp_total,
@@ -307,7 +322,22 @@ def calculate_totals(
         free_delivery_threshold=delivery.threshold,
         free_delivery_hint=delivery.hint,
         bulk_savings=q(sum((line.bulk_saving for line in lines), ZERO)),
+        credit_discount=credit,
     )
+
+
+def paid_by_line(lines: Sequence[PricedLine], totals: Totals, line_discounts: Mapping[int, Decimal]) -> dict:
+    """variant_id → what the customer pays for the goods of each line after offers, coupon and
+    credits (coupon and credits spread pro rata, as in `calculate_totals`). Used for cashback."""
+    nets = {
+        line.variant_id: line.line_total - min(line_discounts.get(line.variant_id, ZERO), line.line_total)
+        for line in lines
+    }
+    after_offers = sum(nets.values(), ZERO)
+    if not after_offers:
+        return dict.fromkeys(nets, ZERO)
+    paid_goods = after_offers - totals.coupon_discount - totals.credit_discount
+    return {variant_id: q(amount * paid_goods / after_offers) for variant_id, amount in nets.items()}
 
 
 @dataclass(frozen=True)
@@ -326,13 +356,17 @@ class Pricing:
     totals: Totals
     offers: "OfferResult"
     coupon: object | None = None  # offers.models.Coupon
+    credits: object | None = None  # loyalty.ledger.CreditQuote (signed-in customers)
 
 
-def price_lines(lines: Iterable[PricedLine], *, coupon=None, fee_rule=None, user=None) -> Pricing:
+def price_lines(
+    lines: Iterable[PricedLine], *, coupon=None, fee_rule=None, user=None, use_credits: bool = False
+) -> Pricing:
     """The one pricing path for cart, checkout, coupon preview and order placement:
-    automatic offers first, then the coupon on what remains. Raises CouponError if the
-    coupon does not apply to these lines. `user` decides customer-specific offers (first
-    order, per-customer limits); None = a visitor."""
+    automatic offers first, then the coupon on what remains, then (when `use_credits`) the
+    customer's credits up to the shop's share. Raises CouponError if the coupon does not apply
+    to these lines. `user` decides customer-specific offers (first order, per-customer limits)
+    and whose credits; None = a visitor."""
     from apps.offers.engine import apply_offers
     from apps.offers.services import coupon_discount
 
@@ -352,15 +386,24 @@ def price_lines(lines: Iterable[PricedLine], *, coupon=None, fee_rule=None, user
         ]
         discount = coupon_discount(coupon, net_lines, q(sum((n.line_total for n in net_lines), ZERO)))
     rules = load_free_delivery_rules(getattr(fee_rule, "zone_id", None)) if lines else []
-    return Pricing(
-        totals=calculate_totals(
+
+    def totals_with(credits: Decimal) -> Totals:
+        return calculate_totals(
             lines,
             discount,
             line_discounts=offers.line_discounts,
             fee_rule=fee_rule,
             free_delivery_rules=rules,
             free_delivery_offer=offers.free_delivery,
-        ),
-        offers=offers,
-        coupon=coupon,
-    )
+            credits=credits,
+        )
+
+    totals = totals_with(ZERO)
+    credit_quote = None
+    if user is not None and getattr(user, "is_authenticated", False) and lines:
+        from apps.loyalty.ledger import credit_quote as quote_credits
+
+        credit_quote = quote_credits(user, totals.goods_after_discounts)  # the 20 % cap is measured here
+        if use_credits and credit_quote.usable > 0:
+            totals = totals_with(credit_quote.usable)
+    return Pricing(totals=totals, offers=offers, coupon=coupon, credits=credit_quote)

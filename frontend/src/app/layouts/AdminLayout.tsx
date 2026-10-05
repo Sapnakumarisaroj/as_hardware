@@ -38,6 +38,7 @@ const MENU: { title: string; items: [Section, string, string][] }[] = [
       ['coupons', 'Coupons', '/admin/coupons'],
       ['free-delivery', 'Free delivery', '/admin/free-delivery'],
       ['payment-settings', 'Cash on delivery', '/admin/payment-settings'],
+      ['loyalty', 'Loyalty & cashback', '/admin/loyalty'],
     ],
   },
   {

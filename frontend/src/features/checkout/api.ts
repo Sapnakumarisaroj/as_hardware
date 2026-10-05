@@ -20,6 +20,22 @@ export interface CheckoutPreview {
   blocking_issues: { code: string; message: string }[]
   can_place_order: boolean
   payment_methods: PaymentOption[]
+  /** Phase 17: shop credit (the server decides how much may be used: its share of the goods). */
+  credits?: CheckoutCredits
+  /** Cashback this order would earn (pending until delivery and the return window). */
+  cashback?: { amount: string; rule: string; summary: string } | null
+}
+
+export interface CheckoutCredits {
+  enabled: boolean
+  available: string
+  max_share_percent: string
+  /** The most credit this order may use (its share of the goods after offers and coupon). */
+  max_usable: string
+  usable: string
+  use_credits: boolean
+  applied: string
+  remaining_to_pay: string
 }
 
 /** A payment choice and whether this order can use it (cash on delivery has rules, e.g. a maximum). */
@@ -36,15 +52,22 @@ export interface PaymentOption {
 
 export const checkoutKeys = {
   all: ['checkout'] as const,
-  preview: (addressId: number | null, couponCode: string) => ['checkout', 'preview', addressId, couponCode] as const,
+  preview: (addressId: number | null, couponCode: string, useCredits = false) =>
+    ['checkout', 'preview', addressId, couponCode, useCredits] as const,
 }
 
-export function useCheckoutPreview(addressId: number | null, couponCode: string) {
+export function useCheckoutPreview(addressId: number | null, couponCode: string, useCredits = false) {
   const { status } = useAuth()
   return useQuery({
-    queryKey: checkoutKeys.preview(addressId, couponCode),
+    queryKey: checkoutKeys.preview(addressId, couponCode, useCredits),
     queryFn: async () =>
-      (await api.post<CheckoutPreview>('/checkout/preview/', { address_id: addressId, coupon_code: couponCode })).data,
+      (
+        await api.post<CheckoutPreview>('/checkout/preview/', {
+          address_id: addressId,
+          coupon_code: couponCode,
+          use_credits: useCredits,
+        })
+      ).data,
     enabled: status === 'authenticated',
     placeholderData: keepPreviousData,
     // Prices and stock can change: always re-check when the page is revisited.

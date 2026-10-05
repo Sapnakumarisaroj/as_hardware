@@ -58,24 +58,42 @@ def return_deadline(order: Order) -> datetime | None:
     return order.delivered_at + timedelta(days=settings.RETURN_WINDOW_DAYS)
 
 
-def paid_amounts(order: Order, items: Iterable[OrderItem] | None = None) -> dict[int, Decimal]:
-    """What the customer paid for each line (order_item.id → amount), after offers and coupon.
+def _spread(amounts: dict[int, Decimal], total: Decimal) -> dict[int, Decimal]:
+    """Split `total` over `amounts` pro rata; the rounding remainder goes to the last line, so the
+    shares add up exactly to `total`."""
+    base = sum(amounts.values(), ZERO)
+    total = min(total, base)
+    if not total or not base:
+        return dict.fromkeys(amounts, ZERO)
+    result, allocated = {}, ZERO
+    for index, (item_id, amount) in enumerate(amounts.items()):
+        share = total - allocated if index == len(amounts) - 1 else q(total * amount / base)
+        allocated += share
+        result[item_id] = share
+    return result
 
-    The coupon is spread pro rata over the post-offer line amounts, and the rounding remainder
-    goes to the last line, so the shares add up exactly to `order.coupon_discount`.
-    """
+
+def credit_shares(order: Order, items: Iterable[OrderItem] | None = None) -> dict[int, Decimal]:
+    """The shop credit used on each line (order_item.id → amount), Phase 17. Spread like the coupon,
+    over the line amounts after offers and coupon. Always computed over all of the order's lines."""
+    items = list(order.items.all()) if items is None else list(items)
+    nets = {item.id: max(item.line_total - item.offer_discount, ZERO) for item in items}
+    coupons = _spread(nets, order.coupon_discount)
+    after_coupon = {item_id: net - coupons[item_id] for item_id, net in nets.items()}
+    return _spread(after_coupon, order.credit_discount)
+
+
+def paid_amounts(order: Order, items: Iterable[OrderItem] | None = None) -> dict[int, Decimal]:
+    """What the customer paid for each line (order_item.id → amount), after offers, coupon and
+    credits. Coupon and credits are spread pro rata over the post-offer line amounts, and the rounding
+    remainder goes to the last line, so the shares add up exactly to the order's figures. Credits
+    are not money: a refund pays back what was paid, and the credits come back as credits."""
     items = list(items if items is not None else order.items.all())
     nets = {item.id: max(item.line_total - item.offer_discount, ZERO) for item in items}
-    base = sum(nets.values(), ZERO)
-    coupon = min(order.coupon_discount, base)
-    if not coupon or not base:
-        return {item_id: q(net) for item_id, net in nets.items()}
-    result, allocated = {}, ZERO
-    for index, (item_id, net) in enumerate(nets.items()):
-        share = coupon - allocated if index == len(nets) - 1 else q(coupon * net / base)
-        allocated += share
-        result[item_id] = q(net - share)
-    return result
+    coupons = _spread(nets, order.coupon_discount)
+    after_coupon = {item_id: net - coupons[item_id] for item_id, net in nets.items()}
+    credits = _spread(after_coupon, order.credit_discount)
+    return {item_id: q(amount - credits[item_id]) for item_id, amount in after_coupon.items()}
 
 
 def counted_quantities(returns: Iterable[ReturnRequest], statuses=ReturnRequest.COUNTED_STATUSES) -> dict[int, int]:
@@ -328,6 +346,7 @@ def receive_return(ret: ReturnRequest, *, actor, note: str = "", restock: bool =
             reason=f"Return {ret.return_number} ({ret.get_reason_display()})",
             requested_by=actor,
         )
+    _loyalty_after_return(ret, order, lines)
     ret.status, ret.received_at, ret.restocked = RS.RECEIVED, timezone.now(), restock
     if note.strip():
         ret.decision_note = note.strip()[:255]
@@ -356,3 +375,29 @@ def receive_return(ret: ReturnRequest, *, actor, note: str = "", restock: bool =
         data={"order_number": order.order_number, "return_number": ret.return_number},
     )
     return ret
+
+
+def _loyalty_after_return(ret: ReturnRequest, order: Order, lines) -> None:
+    """Phase 17: credits used on the returned units come back (original expiry; expired ones don't),
+    and the order's pending cashback shrinks by the share of the paid goods being refunded."""
+    from apps.loyalty.ledger import on_return_received
+
+    items = list(order.items.all())
+    shares = credit_shares(order, items)
+    paid = paid_amounts(order, items)
+    by_id = {item.id: item for item in items}
+    returned_credit = ZERO
+    for line in lines:
+        item = by_id.get(line.order_item_id)
+        if item and item.quantity:
+            returned_credit += shares.get(item.id, ZERO) * line.quantity / item.quantity
+    on_return_received(
+        ret,
+        order,
+        returned_credit=q(returned_credit),
+        returned_paid=ret.refund_amount,
+        paid_total=sum(paid.values(), ZERO),
+        already_returned=sum(
+            (r.refund_amount for r in order.returns.filter(status=RS.RECEIVED).exclude(pk=ret.pk)), ZERO
+        ),
+    )

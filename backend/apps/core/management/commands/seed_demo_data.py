@@ -113,6 +113,7 @@ class Command(BaseCommand):
             self._offers()
             self._commerce(products)
             self._product_pages()
+            self._loyalty()
             if with_rider:
                 self._demo_rider()
         created_images = 0 if no_images else self._images(products)
@@ -310,6 +311,25 @@ class Command(BaseCommand):
                 },
             )
             offer.categories.set(Category.objects.filter(slug__in=category_slugs))
+
+    def _loyalty(self) -> None:
+        """Phase 17 demo: one cashback rule. No balances are seeded — credits only come from orders,
+        returns, referrals or a promotional credit given in the dashboard (with a reason)."""
+        from apps.loyalty.models import CashbackRule
+
+        CashbackRule.objects.update_or_create(
+            name="Demo: 2% cashback on orders from ₹50,000",
+            defaults={
+                "description": "Demo rule: 2% of what you pay, up to ₹2,000, usable after the return window.",
+                "reward_type": "percent",
+                "percent": Decimal("2"),
+                "max_amount": Decimal("2000"),
+                "min_order_value": Decimal("50000"),
+                "starts_at": timezone.now() - timedelta(days=1),
+                "ends_at": None,
+                "is_active": True,
+            },
+        )
 
     def _product_pages(self) -> None:
         """Phase 16 demo data: product-page content (uses, steps, FAQ) and linked accessories."""

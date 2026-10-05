@@ -59,6 +59,8 @@ export interface CartTotals {
   free_delivery_threshold?: string | null
   /** Items that count towards that threshold, e.g. "Cement" (empty = everything). */
   free_delivery_hint?: string
+  /** Phase 17: shop credit used (already taken off grand_total). */
+  credit_discount?: string
 }
 
 export interface AppliedOffer {

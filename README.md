@@ -3,7 +3,11 @@
 AI-powered hardware marketplace with fast delivery from nearby stores: a Django REST API and a React SPA. Delivery
 times are calculated per order (store, distance, preparation, riders, workload), never a fixed promise.
 
-> Status: **Phase 16 complete** — the full storefront: a home page built from live data (departments, curated
+> Status: **Phase 17 complete** — loyalty and cashback: a credit ledger (balance always added up from entries),
+> cashback rules (e.g. 2 % on orders from ₹50,000) that stay pending until the return window after delivery has
+> passed, promotional credit and referral codes, credits paying up to 20 % of an order at checkout (oldest expiry
+> first, 90 days, never cash), automatic reversal and restore on cancellations and returns, a wallet page at
+> `/account/wallet` and loyalty controls in the dashboard. No balances are seeded. **Phase 16** — the full storefront: a home page built from live data (departments, curated
 > lists, department rails, bulk buying, offers, AI entry points, recently viewed), PIN-aware delivery (the fast badge
 > appears only where the delivery engine can deliver fast to your PIN), product pages with bulk prices per quantity,
 > offers, COD rules, delivery fee and free-delivery progress, uses/steps/FAQ and accessories, brand pages, category

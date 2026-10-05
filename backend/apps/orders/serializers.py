@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -430,10 +431,13 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     return_window_ends_at = serializers.SerializerMethodField()
     can_reorder = serializers.SerializerMethodField()
     returns = ReturnRequestSerializer(many=True, read_only=True)
+    loyalty = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
+            "credit_discount",
+            "loyalty",
             "order_number",
             "public_id",
             "status",
@@ -493,6 +497,9 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         refunds = [refund for payment in obj.payments.all() for refund in payment.refunds.all()]
         return RefundSummarySerializer(refunds, many=True).data
 
+    def get_loyalty(self, obj) -> dict:
+        return order_loyalty(obj)
+
     def get_can_cancel(self, obj) -> bool:
         return obj.status in CUSTOMER_CANCELLABLE and not any(s.status in LEFT_THE_STORE for s in obj.shipments.all())
 
@@ -512,6 +519,32 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         return describe_delivery(obj)
 
 
+def order_loyalty(order) -> dict:
+    """Phase 17: credits used on the order, credits given back, and its cashback/rewards with status."""
+    from apps.loyalty.models import CreditEntry
+
+    entries = list(CreditEntry.objects.filter(order=order).order_by("created_at", "pk"))
+    kinds = (CreditEntry.Kind.CASHBACK, CreditEntry.Kind.REFERRAL)
+    return {
+        "credits_used": str(order.credit_discount),
+        "credits_restored": str(
+            sum((e.amount for e in entries if e.kind == CreditEntry.Kind.RESTORE), Decimal("0.00"))
+        ),
+        "earned": [
+            {
+                "kind": e.kind,
+                "amount": str(e.amount),
+                "status": e.status,
+                "status_label": e.get_status_display(),
+                "available_at": e.available_at,
+                "description": e.description,
+            }
+            for e in entries
+            if e.kind in kinds
+        ],
+    }
+
+
 class PlaceOrderSerializer(serializers.Serializer):
     """Only identifiers and choices are accepted — never prices or totals.
 
@@ -525,11 +558,17 @@ class PlaceOrderSerializer(serializers.Serializer):
     customer_note = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
     expected_total = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
     idempotency_key = serializers.RegexField(IDEMPOTENCY_KEY_PATTERN, required=False, allow_null=True, allow_blank=True)
+    use_credits = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Pay part with shop credit; the server decides how much (≤ the shop's share).",
+    )
 
 
 class CheckoutPreviewRequestSerializer(serializers.Serializer):
     address_id = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     coupon_code = serializers.CharField(max_length=30, required=False, allow_blank=True, default="")
+    use_credits = serializers.BooleanField(required=False, default=False)
 
 
 class _IssueSerializer(serializers.Serializer):
@@ -604,6 +643,31 @@ class CheckoutPreviewSerializer(serializers.Serializer):
     blocking_issues = _IssueSerializer(many=True)
     can_place_order = serializers.BooleanField()
     payment_methods = serializers.SerializerMethodField()
+    credits = serializers.SerializerMethodField()
+    cashback = serializers.SerializerMethodField()
+
+    def get_credits(self, obj) -> dict:
+        """Phase 17: available credit, the most this order may use (shop's share of the goods after offers
+        and coupon), what is applied (only when chosen) and what is left to pay."""
+        quote = obj.credits
+        applied = obj.totals.credit_discount
+        return {
+            "enabled": bool(quote and quote.enabled),
+            "available": str(quote.balance if quote else "0.00"),
+            "max_share_percent": str(quote.max_share if quote else "0.00"),
+            "max_usable": str(quote.cap if quote else "0.00"),
+            "usable": str(quote.usable if quote else "0.00"),
+            "use_credits": obj.use_credits,
+            "applied": str(applied),
+            "remaining_to_pay": str(obj.totals.grand_total),
+        }
+
+    def get_cashback(self, obj) -> dict | None:
+        """Cashback this order would earn (pending until delivery + the return window)."""
+        quote = obj.cashback
+        if quote is None or quote.amount <= 0:
+            return None
+        return {"amount": str(quote.amount), "rule": quote.rule_name, "summary": quote.summary}
 
     def get_cart(self, obj) -> dict:
         from apps.carts.serializers import CartSerializer

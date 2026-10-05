@@ -76,6 +76,7 @@ export const routes: RouteObject[] = [
           { path: 'account/orders/:number', lazy: async () => ({ Component: (await account()).OrderDetailPage }) },
           { path: 'account/addresses', lazy: async () => ({ Component: (await account()).AddressesPage }) },
           { path: 'account/returns', lazy: async () => ({ Component: (await account()).ReturnsPage }) },
+          { path: 'account/wallet', lazy: async () => ({ Component: (await import('@/pages/WalletPage')).WalletPage }) },
           { path: '*', element: <NotFoundPage /> },
         ],
       },
@@ -124,6 +125,10 @@ export const routes: RouteObject[] = [
           { path: 'collections', lazy: async () => ({ Component: (await commerce()).AdminCollectionsPage }) },
           { path: 'free-delivery', lazy: async () => ({ Component: (await commerce()).AdminFreeDeliveryPage }) },
           { path: 'payment-settings', lazy: async () => ({ Component: (await commerce()).AdminPaymentSettingsPage }) },
+          {
+            path: 'loyalty',
+            lazy: async () => ({ Component: (await import('@/pages/admin/LoyaltyPages')).AdminLoyaltyPage }),
+          },
           { path: 'customers', lazy: async () => ({ Component: (await customers()).AdminCustomersPage }) },
           { path: 'customers/:id', lazy: async () => ({ Component: (await customers()).AdminCustomerPage }) },
           { path: 'returns', lazy: async () => ({ Component: (await returns()).AdminReturnsPage }) },
