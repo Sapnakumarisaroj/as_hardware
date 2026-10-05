@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
@@ -10,6 +11,7 @@ from .models import (
     OptionType,
     Product,
     ProductImage,
+    ProductRelation,
     ProductSpecification,
     ProductVariant,
     RecentSearch,
@@ -110,10 +112,16 @@ class CategorySerializer(_ProductCountMixin, serializers.ModelSerializer):
 
 
 class BrandSerializer(serializers.ModelSerializer):
+    product_count = serializers.SerializerMethodField()
+
     class Meta:
         model = Brand
-        fields = ["id", "name", "slug", "logo", "description", "is_active"]
+        fields = ["id", "name", "slug", "logo", "description", "is_active", "product_count"]
         extra_kwargs = {"slug": {"required": False}}
+
+    def get_product_count(self, obj) -> int | None:
+        """Products customers can see (Phase 16 brand pages); null where not counted."""
+        return getattr(obj, "visible_products", None)
 
 
 class _NamedRefSerializer(serializers.Serializer):
@@ -239,6 +247,8 @@ class ProductListSerializer(serializers.ModelSerializer):
     image_alt = serializers.SerializerMethodField()
     offer = serializers.SerializerMethodField()
     bulk_pricing = serializers.SerializerMethodField()
+    delivery = serializers.SerializerMethodField()
+    free_delivery = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -267,7 +277,46 @@ class ProductListSerializer(serializers.ModelSerializer):
             "image_alt",
             "offer",
             "bulk_pricing",
+            "delivery",
+            "free_delivery",
         ]
+
+    def get_delivery(self, obj) -> dict | None:
+        """Phase 16, only when the request names a PIN (`postal_code`): can a store serving that PIN
+        supply it, and can it come by fast delivery there now. Null without a PIN (no badge then)."""
+        pin = self.context.get("pin")
+        if pin is None:
+            return None
+        if hasattr(obj, "pin_stock"):
+            deliverable, fast = obj.pin_stock > 0, obj.pin_fast_stock > 0
+        else:  # product detail: from the per-variant sets
+            deliverable = bool(self.context.get("pin_variant_ids"))
+            fast = bool(self.context.get("fast_variant_ids"))
+        return {"postal_code": pin.postal_code, "deliverable": deliverable, "fast": deliverable and fast}
+
+    def get_free_delivery(self, obj) -> dict | None:
+        """A live free-delivery rule aimed at this product or its category: {name, threshold}.
+        Rules limited to zones count only when the request's PIN is in one of them."""
+        from apps.orders.pricing import load_free_delivery_rules
+
+        if "free_delivery_rules" not in self.context:
+            pin = self.context.get("pin")
+            rules = [r for r in load_free_delivery_rules(pin.zone_id if pin else None) if not r.targets_everything]
+            self.context["free_delivery_rules"] = rules
+            if rules:
+                from .tree import parent_map
+
+                self.context["free_delivery_parents"] = parent_map()
+        rules = self.context["free_delivery_rules"]
+        if not rules:
+            return None
+        from .tree import lineage
+
+        mine = lineage((obj.category_id, obj.subcategory_id), self.context["free_delivery_parents"])
+        for rule in rules:  # cheapest threshold first
+            if obj.pk in rule.product_ids or rule.category_ids & mine:
+                return {"name": rule.name, "threshold": _money(rule.threshold)}
+        return None
 
     def get_bulk_pricing(self, obj) -> dict | None:
         """Phase 15: {"from_quantity": 10, "lowest_unit_price": "395.00"} when any variant has bulk
@@ -349,6 +398,10 @@ class ProductDetailSerializer(ProductListSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
     options = serializers.SerializerMethodField()
     breadcrumb = serializers.SerializerMethodField()
+    uses = serializers.SerializerMethodField()
+    installation_steps = serializers.SerializerMethodField()
+    return_policy = serializers.SerializerMethodField()
+    accessories = serializers.SerializerMethodField()
 
     class Meta(ProductListSerializer.Meta):
         fields = ProductListSerializer.Meta.fields + [
@@ -364,7 +417,49 @@ class ProductDetailSerializer(ProductListSerializer):
             "images",
             "options",
             "breadcrumb",
+            "quick_answer",
+            "uses",
+            "installation_steps",
+            "faqs",
+            "return_policy",
+            "accessories",
         ]
+
+    @staticmethod
+    def _lines(text: str) -> list[str]:
+        return [line.strip(" -•\t") for line in (text or "").splitlines() if line.strip(" -•\t")]
+
+    def get_uses(self, obj) -> list[str]:
+        return self._lines(obj.uses)
+
+    def get_installation_steps(self, obj) -> list[str]:
+        return self._lines(obj.installation_steps)
+
+    def get_return_policy(self, obj) -> dict:
+        """From the product flag and the shop's return window (Phase 7 rules), in words."""
+        days = settings.RETURN_WINDOW_DAYS
+        if obj.is_returnable:
+            text = f"Returnable within {days} days of delivery."
+        else:
+            text = "This item can't be returned once delivered."
+        return {"returnable": obj.is_returnable, "window_days": days if obj.is_returnable else None, "text": text}
+
+    def get_accessories(self, obj) -> list[dict]:
+        """Products the shop linked as accessories (published, active, not deleted), in the shop's order."""
+        from . import selectors
+
+        ids = [r.related_id for r in obj.relations.all() if r.kind == ProductRelation.Kind.ACCESSORY]
+        if not ids:
+            return []
+        rows = {p.pk: p for p in selectors.product_queryset().filter(pk__in=ids).prefetch_related("images")}
+        notes = {r.related_id: r.note for r in obj.relations.all()}
+        out = []
+        for product_id in ids:
+            if product_id in rows:
+                data = ProductListSerializer(rows[product_id], context={"request": self.context.get("request")}).data
+                data["relation_note"] = notes.get(product_id, "")
+                out.append(data)
+        return out
 
     def get_variants(self, obj) -> list[dict]:
         variants = [v for v in obj.variants.all() if v.is_active]
@@ -543,9 +638,15 @@ class SpecificationWriteSerializer(serializers.Serializer):
     unit = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
 
 
+class AccessoryWriteSerializer(serializers.Serializer):
+    product = serializers.IntegerField(help_text="Id of the accessory product")
+    note = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+
+
 class ProductWriteSerializer(serializers.ModelSerializer):
     variants = VariantWriteSerializer(many=True, required=False)
     specifications = SpecificationWriteSerializer(many=True, required=False)
+    accessories = AccessoryWriteSerializer(many=True, required=False, max_length=20)
 
     class Meta:
         model = Product
@@ -568,10 +669,22 @@ class ProductWriteSerializer(serializers.ModelSerializer):
             "is_featured",
             "is_returnable",
             "launch_date",
+            "quick_answer",
+            "uses",
+            "installation_steps",
+            "faqs",
             "variants",
             "specifications",
+            "accessories",
         ]
         extra_kwargs = {"slug": {"required": False}}
+
+    def validate_faqs(self, value):
+        from .models import valid_faqs
+
+        if not valid_faqs(value) or len(value) > 20:
+            raise serializers.ValidationError('Up to 20 items of {"question": "…", "answer": "…"}, both filled.')
+        return value
 
     def validate_tags(self, value):
         if not isinstance(value, list) or not all(isinstance(t, str) and len(t) <= 50 for t in value):

@@ -159,6 +159,7 @@ class AdminProductDetailSerializer(AdminProductListSerializer):
     specifications = ProductSpecificationSerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
     option_types = serializers.SerializerMethodField()
+    accessories = serializers.SerializerMethodField()
 
     class Meta(AdminProductListSerializer.Meta):
         fields = AdminProductListSerializer.Meta.fields + [
@@ -175,6 +176,18 @@ class AdminProductDetailSerializer(AdminProductListSerializer):
             "specifications",
             "images",
             "option_types",
+            "quick_answer",
+            "uses",
+            "installation_steps",
+            "faqs",
+            "accessories",
+        ]
+
+    def get_accessories(self, obj) -> list[dict]:
+        """Linked accessories (Phase 16) in order: [{id, name, slug, note}]."""
+        return [
+            {"id": r.related_id, "name": r.related.name, "slug": r.related.slug, "note": r.note}
+            for r in obj.relations.select_related("related").order_by("sort_order", "id")
         ]
 
     def get_option_types(self, obj) -> list[dict]:

@@ -15,10 +15,12 @@ interface Props {
   disabled?: boolean
   className?: string
   label?: string
+  /** "Buy now": add, then go straight to checkout (Phase 16). */
+  buyNow?: boolean
 }
 
 /** Adds a specific variant to the server cart; the backend validates stock and price. */
-export function AddToCartButton({ variantId, productName, quantity = 1, disabled, className, label }: Props) {
+export function AddToCartButton({ variantId, productName, quantity = 1, disabled, className, label, buyNow = false }: Props) {
   const { status } = useAuth()
   const addToCart = useAddToCart()
   const toast = useToast()
@@ -29,13 +31,17 @@ export function AddToCartButton({ variantId, productName, quantity = 1, disabled
     if (status !== 'authenticated') {
       savePendingAction({ type: 'cart', variantId, quantity, productName })
       toast.show('Sign in to add items to your cart — we’ll add this one for you.', { tone: 'info' })
-      navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`)
+      const next = buyNow ? '/checkout' : location.pathname + location.search
+      navigate(`/login?next=${encodeURIComponent(next)}`)
       return
     }
     addToCart.mutate(
       { variantId, quantity },
       {
-        onSuccess: () => toast.show(`Added to cart: ${productName}`, { action: { label: 'View cart', to: '/cart' } }),
+        onSuccess: () =>
+          buyNow
+            ? navigate('/checkout')
+            : toast.show(`Added to cart: ${productName}`, { action: { label: 'View cart', to: '/cart' } }),
         onError: (error) =>
           toast.show(error instanceof ApiError ? error.message : 'Could not add to cart.', { tone: 'error' }),
       },
@@ -49,8 +55,8 @@ export function AddToCartButton({ variantId, productName, quantity = 1, disabled
       disabled={disabled || addToCart.isPending || status === 'loading'}
       className={className ?? 'btn-primary w-full'}
     >
-      <CartIcon className="size-4" />
-      {addToCart.isPending ? 'Adding…' : (label ?? 'Add to cart')}
+      {!buyNow && <CartIcon className="size-4" />}
+      {addToCart.isPending ? (buyNow ? 'One moment…' : 'Adding…') : (label ?? (buyNow ? 'Buy now' : 'Add to cart'))}
     </button>
   )
 }

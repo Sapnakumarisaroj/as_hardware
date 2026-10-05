@@ -277,6 +277,11 @@ function blank(): ProductInput {
     variants: [{ ...EMPTY_VARIANT, is_default: true }],
     specifications: [],
     launch_date: null,
+    quick_answer: '',
+    uses: '',
+    installation_steps: '',
+    faqs: [],
+    accessories: [],
   }
 }
 
@@ -309,6 +314,11 @@ function fromProduct(product: AdminProduct): ProductInput {
     })),
     specifications: product.specifications.map((s) => ({ name: s.name, value: s.value })),
     launch_date: product.launch_date ?? null,
+    quick_answer: product.quick_answer ?? '',
+    uses: product.uses ?? '',
+    installation_steps: product.installation_steps ?? '',
+    faqs: product.faqs ?? [],
+    accessories: (product.accessories ?? []).map((a) => ({ product: a.id, note: a.note })),
   }
 }
 
@@ -357,7 +367,141 @@ function problems(form: ProductInput): string[] {
   form.specifications.forEach((spec, index) => {
     if (!spec.name.trim() || !spec.value.trim()) found.push(`Specification ${index + 1}: fill in both name and value.`)
   })
+  ;(form.faqs ?? []).forEach((faq, index) => {
+    if (!faq.question.trim() || !faq.answer.trim()) found.push(`Question ${index + 1}: fill in both question and answer.`)
+  })
   return found
+}
+
+/**
+ * Phase 16 product-page content: quick answer, uses, steps, questions and linked accessories. Each block
+ * appears on the product page only when filled in. Accessories are chosen from the shop's products.
+ */
+function ProductPageContent({
+  form,
+  set,
+  productId,
+  names,
+  onName,
+}: {
+  form: ProductInput
+  set: <K extends keyof ProductInput>(key: K, value: ProductInput[K]) => void
+  productId: number | null
+  names: Record<number, string>
+  onName: (id: number, name: string) => void
+}) {
+  const [term, setTerm] = useState('')
+  const results = useProducts({ q: term.trim(), page_size: 8 }, term.trim().length >= 2)
+  const faqs = form.faqs ?? []
+  const accessories = form.accessories ?? []
+  const chosen = new Set(accessories.map((a) => a.product))
+  return (
+    <Panel title="Product page">
+      <div className="grid gap-3">
+        <FormField
+          id="quick_answer"
+          label="Quick answer"
+          value={form.quick_answer ?? ''}
+          onChange={(e) => set('quick_answer', e.target.value)}
+          maxLength={300}
+          hint="One line shown under the name, e.g. “For RCC slabs, beams and columns”."
+        />
+        <TextAreaField id="uses" label="Recommended uses (one per line)" rows={3} value={form.uses ?? ''} onChange={(v) => set('uses', v)} />
+        <TextAreaField
+          id="installation_steps"
+          label="How to install / use (one step per line)"
+          rows={4}
+          value={form.installation_steps ?? ''}
+          onChange={(v) => set('installation_steps', v)}
+        />
+        <fieldset>
+          <legend className="label">Questions & answers</legend>
+          <ul className="space-y-2">
+            {faqs.map((faq, index) => (
+              <li key={index} className="grid gap-2 rounded-md bg-steel-50 p-2 sm:grid-cols-[1fr_1.5fr_auto]">
+                <FormField
+                  id={`faq-${index}-q`}
+                  label={`Question ${index + 1}`}
+                  value={faq.question}
+                  onChange={(e) => set('faqs', faqs.map((f, i) => (i === index ? { ...f, question: e.target.value } : f)))}
+                />
+                <FormField
+                  id={`faq-${index}-a`}
+                  label={`Answer ${index + 1}`}
+                  value={faq.answer}
+                  onChange={(e) => set('faqs', faqs.map((f, i) => (i === index ? { ...f, answer: e.target.value } : f)))}
+                />
+                <button
+                  type="button"
+                  className="self-end text-sm font-semibold text-danger-600 hover:underline"
+                  onClick={() => set('faqs', faqs.filter((_, i) => i !== index))}
+                >
+                  Remove <span className="sr-only">question {index + 1}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button type="button" className="btn-secondary mt-2 px-2.5 py-1.5" onClick={() => set('faqs', [...faqs, { question: '', answer: '' }])}>
+            Add a question
+          </button>
+        </fieldset>
+        <fieldset>
+          <legend className="label">Recommended accessories (“Goes well with”)</legend>
+          {accessories.length > 0 && (
+            <ul className="mb-2 space-y-2" aria-label="Chosen accessories">
+              {accessories.map((accessory, index) => (
+                <li key={accessory.product} className="flex flex-wrap items-end gap-2 rounded-md bg-steel-50 p-2">
+                  <span className="min-w-40 flex-1 text-sm font-semibold">{names[accessory.product] ?? `Product ${accessory.product}`}</span>
+                  <FormField
+                    id={`accessory-${accessory.product}-note`}
+                    label="Why it goes with it"
+                    value={accessory.note}
+                    maxLength={120}
+                    onChange={(e) => set('accessories', accessories.map((a, i) => (i === index ? { ...a, note: e.target.value } : a)))}
+                  />
+                  <button
+                    type="button"
+                    className="text-sm font-semibold text-danger-600 hover:underline"
+                    onClick={() => set('accessories', accessories.filter((_, i) => i !== index))}
+                  >
+                    Remove <span className="sr-only">{names[accessory.product]}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <FormField
+            id="accessory-search"
+            label="Find a product to add"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            hint="Type at least 2 letters of the name or SKU."
+          />
+          {term.trim().length >= 2 && (
+            <ul className="mt-1 divide-y divide-steel-100 rounded-md ring-1 ring-steel-200" aria-label="Matching products">
+              {(results.data?.results ?? [])
+                .filter((row) => row.id !== productId && !chosen.has(row.id))
+                .map((row) => (
+                  <li key={row.id}>
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-steel-50"
+                      onClick={() => {
+                        onName(row.id, row.name)
+                        set('accessories', [...accessories, { product: row.id, note: '' }])
+                        setTerm('')
+                      }}
+                    >
+                      Add {row.name} <span className="text-xs text-ink-600">({row.sku})</span>
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </fieldset>
+      </div>
+    </Panel>
+  )
 }
 
 function Images({ product }: { product: AdminProduct }) {
@@ -447,6 +591,9 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
   const save = useSaveProduct(product?.id)
   const [form, setForm] = useState<ProductInput>(() => (product ? fromProduct(product) : blank()))
   const [shown, setShown] = useState<string[]>([])
+  const [accessoryNames, setAccessoryNames] = useState<Record<number, string>>(() =>
+    Object.fromEntries((product?.accessories ?? []).map((a) => [a.id, a.name])),
+  )
   const set = <K extends keyof ProductInput>(key: K, value: ProductInput[K]) => setForm((current) => ({ ...current, [key]: value }))
   const flat = flattenCategories(categories.data ?? [])
   const subcategories = flat.find((entry) => entry.category.id === form.category)?.category.children ?? []
@@ -493,6 +640,9 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
           options: (v.options ?? []).filter((o) => o.value.trim() !== '').map((o) => ({ ...o, value: o.value.trim() })),
         })),
         specifications: form.specifications.map((s) => ({ name: s.name.trim(), value: s.value.trim() })),
+        quick_answer: (form.quick_answer ?? '').trim(),
+        faqs: (form.faqs ?? []).map((f) => ({ question: f.question.trim(), answer: f.answer.trim() })),
+        accessories: (form.accessories ?? []).map((a) => ({ product: a.product, note: a.note.trim() })),
       },
       {
         onSuccess: (saved) => {
@@ -600,6 +750,14 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
           </div>
         </div>
       </Panel>
+
+      <ProductPageContent
+        form={form}
+        set={set}
+        productId={product?.id ?? null}
+        names={accessoryNames}
+        onName={(id, name) => setAccessoryNames((current) => ({ ...current, [id]: name }))}
+      />
 
       <Panel
         title="Variants and prices"

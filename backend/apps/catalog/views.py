@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from django.db.models import Prefetch
+from django.db.models import Count, Prefetch, Q
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -112,7 +112,8 @@ class BrandViewSet(viewsets.ModelViewSet):
     pagination_class = None
 
     def get_queryset(self):
-        qs = Brand.objects.all()
+        visible = Q(products__is_active=True, products__is_published=True, products__is_deleted=False)
+        qs = Brand.objects.annotate(visible_products=Count("products", filter=visible)).order_by("name")
         return qs if is_admin(self.request.user) else qs.filter(is_active=True)
 
     def perform_create(self, serializer):
@@ -186,16 +187,42 @@ class ProductViewSet(viewsets.ModelViewSet):
                     queryset=VariantOption.objects.select_related("option_type", "value"),
                 ),
                 "specifications",
+                "relations",
             )
         return qs
 
+    def _pin(self):
+        from apps.delivery.pin import pin_context
+
+        return pin_context(self.request.query_params.get("postal_code"))
+
+    def _interpreted(self, base, params):
+        """Phase 16: filters the search words name ("53 grade cement" → Cement + Grade 53), applied only
+        when they still leave results. `interpret=0` turns this off (the shopper removed them)."""
+        from .interpret import interpret
+
+        query = normalize_query(params.get("q"))
+        if not query or params.get("interpret") in ("0", "false"):
+            return params, None
+        found = interpret(query, params)
+        if not found:
+            return params, None
+        merged = params.copy()
+        for name, value in found.filters.items():
+            merged[name] = value
+        if not selectors.filter_products(base, merged).exists():
+            return params, None
+        return merged, found
+
     def list(self, request, *args, **kwargs):
-        params = request.query_params
-        qs = selectors.filter_products(self._base_queryset(), params, search=False)
+        pin = self._pin()
+        qs = selectors.annotate_pin(self._base_queryset(), pin)
+        params, interpreted = self._interpreted(qs, request.query_params)
+        qs = selectors.filter_products(qs, params, search=False)
         result = selectors.apply_search(qs, params)
         qs = selectors.order_products(result.queryset, params.get("ordering"), searching=bool(result.terms))
         page = self.paginate_queryset(qs)
-        data = ProductListSerializer(page, many=True, context={"request": request}).data
+        data = ProductListSerializer(page, many=True, context={"request": request, "pin": pin}).data
         if result.reasons:
             for item in data:
                 if reason := result.reasons.get(item["id"]):
@@ -206,12 +233,18 @@ class ProductViewSet(viewsets.ModelViewSet):
             response.data["search"] = {"query": params.get("q", "").strip(), "matched": result.matched}
             if result.mode == "hybrid":  # additive: plain keyword results keep the Phase 4 shape
                 response.data["search"].update(mode=result.mode, related_terms=list(result.related_terms))
+            if interpreted:
+                response.data["search"]["interpreted"] = interpreted.labels
+        if pin is not None:
+            response.data["delivery_context"] = pin.as_dict()
         return response
 
     @action(detail=False, methods=["get"])
     def facets(self, request):
-        """Filter options + counts for the same parameters as the listing."""
-        return Response(selectors.product_facets(self._base_queryset(), request.query_params))
+        """Filter options + counts for the same parameters as the listing (incl. understood filters)."""
+        base = selectors.annotate_pin(self._base_queryset(), self._pin())
+        params, _ = self._interpreted(base, request.query_params)
+        return Response(selectors.product_facets(base, params))
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -269,12 +302,19 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 
 def _detail_data(product, request) -> dict:
+    from apps.delivery.pin import pin_context
+
     variant_ids = [v.id for v in product.variants.all()]
+    pin = pin_context(request.query_params.get("postal_code"))
     context = {
         "request": request,
         "stock_map": selectors.variant_stock_map(variant_ids),
-        "fast_variant_ids": selectors.variant_fast_delivery_ids(variant_ids),
+        # With a PIN, a variant is "fast" only when a store fast to that PIN holds it (Phase 16).
+        "fast_variant_ids": selectors.variant_fast_delivery_ids(variant_ids, pin),
+        "pin": pin,
     }
+    if pin is not None:
+        context["pin_variant_ids"] = selectors.variant_ids_at_stores(variant_ids, pin.serving_store_ids)
     return ProductDetailSerializer(product, context=context).data
 
 
@@ -357,6 +397,22 @@ class OptionTypeListView(APIView):
         return Response(OptionTypeSerializer(types, many=True).data)
 
 
+def _with_pin_stock(products, request):
+    """Phase 16: add the shopper's PIN delivery flags to products loaded outside the listing query."""
+    from apps.delivery.pin import pin_context
+
+    pin = pin_context(request.query_params.get("postal_code"))
+    if pin is None or not products:
+        return pin
+    rows = selectors.annotate_pin(Product.objects.filter(pk__in=[p.pk for p in products]), pin).values_list(
+        "pk", "pin_stock", "pin_fast_stock"
+    )
+    stock = {pk: (s, f) for pk, s, f in rows}
+    for product in products:
+        product.pin_stock, product.pin_fast_stock = stock.get(product.pk, (0, 0))
+    return pin
+
+
 class CollectionListView(APIView):
     """Live curated lists that have products right now, each with its product cards (public).
     Empty or out-of-date lists are left out, so the shop front never shows an empty section."""
@@ -368,7 +424,8 @@ class CollectionListView(APIView):
         collections = list(live_collections())
         products = {c.pk: collection_products(c) for c in collections}
         visible = [c for c in collections if products[c.pk]]
-        context = {"request": request, "collection_products": products}
+        pin = _with_pin_stock([p for c in visible for p in products[c.pk]], request)
+        context = {"request": request, "collection_products": products, "pin": pin}
         return Response(CollectionSerializer(visible, many=True, context=context).data)
 
 
@@ -383,5 +440,6 @@ class CollectionDetailView(APIView):
         products = collection_products(collection) if collection else []
         if not products:
             raise NotFoundError("This list isn't available right now.")
-        context = {"request": request, "collection_products": {collection.pk: products}}
+        pin = _with_pin_stock(products, request)
+        context = {"request": request, "collection_products": {collection.pk: products}, "pin": pin}
         return Response(CollectionSerializer(collection, context=context).data)

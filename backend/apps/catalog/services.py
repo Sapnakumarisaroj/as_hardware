@@ -37,6 +37,7 @@ def save_product(*, instance: Product | None, data: dict, actor=None) -> Product
     """
     variants = data.pop("variants", None)
     specs = data.pop("specifications", None)
+    accessories = data.pop("accessories", None)
 
     product = instance or Product()
     for field, value in data.items():
@@ -57,9 +58,35 @@ def save_product(*, instance: Product | None, data: dict, actor=None) -> Product
             ProductSpecification.objects.create(
                 product=product, name=spec["name"], value=spec["value"], unit=spec.get("unit", ""), sort_order=order
             )
+    if accessories is not None:
+        set_accessories(product, accessories)
     _ensure_single_default_variant(product)
     _check_product_rules(product)
     return product
+
+
+def set_accessories(product: Product, rows: list[dict]) -> None:
+    """Replace the product's linked accessories (Phase 16) with `rows` = [{product: id, note}] in order."""
+    from .models import ProductRelation
+
+    wanted = []
+    for row in rows:
+        related_id = row["product"]
+        if related_id == product.pk:
+            raise ServiceError("A product can't be its own accessory.", code="invalid_accessory")
+        if related_id in (w[0] for w in wanted):
+            continue
+        wanted.append((related_id, (row.get("note") or "")[:120]))
+    found = set(Product.objects.filter(pk__in=[w[0] for w in wanted]).values_list("pk", flat=True))
+    if missing := [w[0] for w in wanted if w[0] not in found]:
+        raise ServiceError(f"Unknown accessory product {missing[0]}.", code="invalid_accessory")
+    product.relations.filter(kind=ProductRelation.Kind.ACCESSORY).delete()
+    ProductRelation.objects.bulk_create(
+        [
+            ProductRelation(product=product, related_id=related_id, note=note, sort_order=order)
+            for order, (related_id, note) in enumerate(wanted)
+        ]
+    )
 
 
 def _upsert_variants(product: Product, variants: list[dict]) -> None:

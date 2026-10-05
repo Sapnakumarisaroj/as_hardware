@@ -51,7 +51,7 @@ describe('search by photo', () => {
   it('is reachable from the search bar', async () => {
     mockApi({ get: { ...shopGet, '/products/': page([]), '/ai/image-search/': status } })
     const { user, router } = renderRoute('/')
-    await user.click(await screen.findByRole('link', { name: 'Search by photo' }))
+    await user.click(await within(screen.getByRole('banner')).findByRole('link', { name: 'Search by photo' }))
     await waitFor(() => expect(currentUrl(router)).toBe('/image-search'))
     expect(await screen.findByRole('heading', { name: 'Search by photo', level: 1 })).toBeInTheDocument()
   })

@@ -87,6 +87,25 @@ export function ProductBrowser({ fixed = {}, heading, categoryLinks = false, emp
         </aside>
 
         <div aria-busy={products.isFetching}>
+          {products.data?.search?.interpreted?.length ? (
+            <p className="mb-3 rounded-md bg-steel-100 px-3 py-2 text-sm text-ink-900" role="status" data-testid="interpreted">
+              Showing{' '}
+              {products.data.search.interpreted.map((item, index) => (
+                <span key={item.param}>
+                  {index > 0 && ' · '}
+                  <span className="font-semibold">{item.label}</span>
+                </span>
+              ))}{' '}
+              for “{products.data.search.query}”.{' '}
+              <button
+                type="button"
+                onClick={() => state.setParam('interpret', '0')}
+                className="font-semibold text-amber-600 hover:underline"
+              >
+                Search all products instead
+              </button>
+            </p>
+          ) : null}
           {products.data?.search?.matched === 'related' && (
             <p className="mb-3 rounded-md bg-amber-100 px-3 py-2 text-sm text-ink-900" role="status">
               We didn’t find those exact words in “{products.data.search.query}”, so we searched for what you probably
@@ -152,7 +171,7 @@ export function ProductBrowser({ fixed = {}, heading, categoryLinks = false, emp
 }
 
 function countActive({ filters }: ListingState): number {
-  return Object.keys(filters).filter((key) => key !== 'q' && key !== 'ordering').length
+  return Object.keys(filters).filter((key) => key !== 'q' && key !== 'ordering' && key !== 'interpret').length
 }
 
 function ActiveFilters({ state, facets }: { state: ListingState; facets: ProductFacets }) {
@@ -175,6 +194,15 @@ function ActiveFilters({ state, facets }: { state: ListingState; facets: Product
   if (filters.discount) chips.push({ label: `${filters.discount}%+ off`, remove: () => state.setParam('discount', null) })
   if (filters.availability) chips.push({ label: 'In stock', remove: () => state.setParam('availability', null) })
   if (filters.fast_delivery) chips.push({ label: 'Fast delivery', remove: () => state.setParam('fast_delivery', null) })
+  if (filters.bulk_pricing) chips.push({ label: 'Bulk price', remove: () => state.setParam('bulk_pricing', null) })
+  for (const [key, value] of Object.entries(filters)) {
+    if (!key.startsWith('opt_')) continue
+    const option = facets.options?.find((o) => `opt_${o.slug}` === key)
+    for (const item of csv(value)) {
+      const label = `${option?.name ?? key.slice(4)}: ${option?.values.find((v) => v.slug === item)?.value ?? item}`
+      chips.push({ label, remove: () => state.toggleValue(key, item) })
+    }
+  }
   for (const [key, value] of Object.entries(filters)) {
     if (!key.startsWith('spec_')) continue
     const spec = facets.specifications.find((s) => `spec_${s.key}` === key)

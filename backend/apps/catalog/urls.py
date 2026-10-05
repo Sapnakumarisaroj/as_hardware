@@ -3,6 +3,7 @@ from rest_framework.routers import SimpleRouter
 
 from apps.reviews.views import ProductReviewsView
 
+from .seo import sitemap_view
 from .views import (
     BrandViewSet,
     CategoryViewSet,
@@ -26,5 +27,6 @@ urlpatterns = [
     path("collections/", CollectionListView.as_view(), name="collection-list"),
     path("collections/<slug:slug>/", CollectionDetailView.as_view(), name="collection-detail"),
     path("options/", OptionTypeListView.as_view(), name="option-types"),
+    path("seo/sitemap.xml", sitemap_view, name="sitemap"),
     *router.urls,
 ]

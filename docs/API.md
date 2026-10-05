@@ -632,5 +632,35 @@ Additive fields:
 - Offers (`/api/offers/…`, cart `applied`): `benefit` (`discount` | `free_delivery`), `min_quantity`, `campaign`, `conditions[]` in words. An offer that reaches its limit between preview and order → 409 `totals_changed`.
 - Admin products: `price_tiers[]` and variant `options` in the product form; stores and zones: `cod_enabled`.
 
+## Storefront ✅ (Phase 16)
+All additive; existing responses keep their fields.
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| GET | `/api/products/?postal_code=411038` | public | Adds `delivery_context {postal_code, serviceable, fast_delivery_available, label, message, fast_unavailable_reason}` and per product `delivery {postal_code, deliverable, fast}` (null without a PIN). `fast_delivery=true` then means fast **to that PIN**; `deliverable=true` keeps products a store serving the PIN has |
+| GET | `/api/products/facets/?postal_code=…` | public | `availability.fast_delivery` counts fast-to-PIN products |
+| GET | `/api/products/{slug}/?postal_code=…` | public | `delivery` for the PIN; variants' `fast_delivery` is for that PIN |
+| GET | `/api/products/{slug}/quote/?…&postal_code=…` | public | Adds `payment_options {online, cod {available, reason_code, message, max_order_value}}` (same rules as checkout; with a PIN the store and zone that would deliver are checked) |
+| GET | `/api/collections/?postal_code=…` | public | Products carry `delivery` for the PIN |
+| GET | `/api/products/?slugs=a,b,c` | public | Only these products (max 20; recently viewed). Unpublished ones drop out |
+| GET | `/api/brands/`, `/api/brands/{slug}/` | public | Adds `product_count` (products customers can see). Brand page products: `/api/products/?brand=<slug>` + facets |
+| GET | `/api/seo/sitemap.xml` | public | XML sitemap of /, /brands, categories, brands with products and published products on `FRONTEND_URL` (cached 1 h) |
+
+**Listing fields added:** `free_delivery {name, threshold}` (a live free-delivery rule aimed at the product or its
+category; zone-limited rules only for a PIN in the zone), `delivery` (above).
+**Product detail fields added:** `quick_answer`, `uses[]`, `installation_steps[]`, `faqs[{question, answer}]`,
+`return_policy {returnable, window_days, text}`, `accessories[]` (listing shape + `relation_note`; published only).
+**Search:** with `q`, words that name catalogue values become filters when they still leave results, returned as
+`search.interpreted [{param, value, label}]` (e.g. `opt_grade`/`53-grade`, `category`/`cement`, `spec_weight`/`20`).
+`interpret=0` turns this off; a filter the request sets itself wins. A query that is only a category word is not
+narrowed. Facets use the same understood filters.
+**Listing parameters (documented in full above):** `q`, `category` (any level; a department includes everything below),
+`subcategory`, `brand`, `min_price`, `max_price`, `rating`, `discount`, `availability`/`in_stock`, `fast_delivery`,
+`deliverable`, `featured`, `bestseller`, `bulk_pricing`, `opt_<type>`, `spec_<key>`, `exclude`, `slugs`, `postal_code`,
+`interpret`, `ordering` (`relevance`, `price`, `-price`, `newest`, `rating`, `discount`, `popular`, `name`), `page`,
+`page_size`.
+**Dashboard:** `/api/admin/products/{id}/` reads and writes `quick_answer`, `uses`, `installation_steps`, `faqs` and
+`accessories` (`[{product: id, note}]`, replace-all, in order; a product can't be its own accessory).
+
 ## Planned 🔜
 - **AI** more endpoints in Phases 18–22 (voice, projects, calculators, compatibility, smart cart). **Notifications/support channels** (Phase 23).

@@ -37,6 +37,7 @@ function routes() {
   return {
     '/categories/': [],
     '/products/': productPage([]),
+    '/products/facets/': { total: 0, categories: [], brands: [], price: { min: null, max: null }, ratings: [], discounts: [], availability: { in_stock: 0, fast_delivery: 0 }, specifications: [] },
     '/offers/': [],
     '/delivery/check/': ({ params }: RequestInfo) => REPLIES[params.postal_code!],
   }
@@ -45,7 +46,8 @@ function routes() {
 describe('delivery location selector', () => {
   it('checks the PIN code with the backend and shows fast, standard and not-serviceable answers', async () => {
     const api = mockApi({ get: routes() })
-    const { user } = renderRoute('/')
+    // Any page: the selector lives in the header (the homepage repeats the message in its own bar).
+    const { user } = renderRoute('/products')
     await user.click((await screen.findAllByRole('button', { name: /Deliver to\s*Select location/ }))[0]!)
     const input = screen.getByLabelText('Delivery PIN code')
 
@@ -60,6 +62,8 @@ describe('delivery location selector', () => {
     expect(await screen.findByText('⚡ Fast delivery available · Delivery in 24 minutes')).toBeInTheDocument()
     expect(readPincode()).toBe('411038')
     expect(screen.getAllByRole('button', { name: /Deliver to\s*411038/ })).not.toHaveLength(0)
+    // The header shows the engine's time for the chosen PIN under it.
+    expect(screen.getByTestId('pin-summary')).toHaveTextContent('⚡ Delivery in 24 minutes')
 
     await user.clear(input)
     await user.type(input, '411001')

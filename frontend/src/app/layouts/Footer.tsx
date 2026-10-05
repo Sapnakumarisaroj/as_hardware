@@ -18,7 +18,7 @@ export function Footer() {
         <nav aria-label="Shop">
           <h2 className="text-sm font-bold uppercase tracking-wide text-steel-400">Shop</h2>
           <ul className="mt-3 space-y-2">
-            {categories.data?.slice(0, 6).map((category) => (
+            {categories.data?.filter((c) => c.product_count !== 0).slice(0, 6).map((category) => (
               <li key={category.id}>
                 <Link to={`/c/${category.slug}`} className={link}>
                   {category.name}
@@ -28,6 +28,11 @@ export function Footer() {
             <li>
               <Link to="/products" className={link}>
                 All products
+              </Link>
+            </li>
+            <li>
+              <Link to="/brands" className={link}>
+                Brands
               </Link>
             </li>
           </ul>
@@ -73,7 +78,22 @@ export function Footer() {
                 </a>
               </li>
             )}
-            <li>Delivery times are confirmed at checkout for your address.</li>
+            <li>
+              <Link to="/ai-assistant" className="hover:text-amber-500">
+                Ask the AI assistant
+              </Link>
+            </li>
+            <li>
+              <Link to="/image-search" className="hover:text-amber-500">
+                Search with a photo
+              </Link>
+            </li>
+            <li>
+              <Link to="/account/returns" className="hover:text-amber-500">
+                Returns
+              </Link>
+            </li>
+            <li>Delivery times are calculated for your PIN code and confirmed at checkout for your address.</li>
           </ul>
         </div>
       </div>

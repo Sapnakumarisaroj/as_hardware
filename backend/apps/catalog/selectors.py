@@ -66,6 +66,22 @@ def _fast_delivery_inventory():
     return _fulfillment_inventory().filter(store_id__in=fast_stores, available_quantity__gt=0)
 
 
+def annotate_pin(qs: QuerySet[Product], context) -> QuerySet[Product]:
+    """Phase 16: stock at the stores serving the shopper's PIN (`pin_stock`) and at the stores that can
+    deliver fast there now (`pin_fast_stock`). `context` is `apps.delivery.pin.PinContext` (or None)."""
+    if context is None:
+        return qs
+    inventory = _fulfillment_inventory().filter(available_quantity__gt=0)
+    return qs.annotate(
+        pin_stock=_product_stock(inventory.filter(store_id__in=list(context.serving_store_ids))),
+        pin_fast_stock=_product_stock(inventory.filter(store_id__in=list(context.fast_store_ids))),
+    )
+
+
+def _has_pin(qs: QuerySet[Product]) -> bool:
+    return "pin_fast_stock" in qs.query.annotations
+
+
 def _product_stock(inventory_qs):
     return Coalesce(
         Subquery(
@@ -181,14 +197,19 @@ def filter_products(
     if "availability" not in skip:
         if params.get("in_stock") in TRUE_VALUES or params.get("availability") == "in_stock":
             qs = qs.filter(stock_total__gt=0)
+        # With a PIN (Phase 16) "fast delivery" means fast to that PIN; without one, the Phase 4 meaning.
         if params.get("fast_delivery") in TRUE_VALUES:
-            qs = qs.filter(fast_stock__gt=0)
+            qs = qs.filter(pin_fast_stock__gt=0) if _has_pin(qs) else qs.filter(fast_stock__gt=0)
+        if params.get("deliverable") in TRUE_VALUES and _has_pin(qs):
+            qs = qs.filter(pin_stock__gt=0)
     if params.get("featured") in TRUE_VALUES:
         qs = qs.filter(is_featured=True)
     if params.get("bestseller") in TRUE_VALUES:
         qs = qs.filter(sold_count__gt=0)
     if params.get("bulk_pricing") in TRUE_VALUES:
         qs = qs.filter(bulk_min_price__isnull=False)
+    if only := _csv(params.get("slugs")):  # Phase 16: recently viewed (max 20 slugs)
+        qs = qs.filter(slug__in=only)
     if excluded := _csv(params.get("exclude")):
         qs = qs.exclude(slug__in=excluded)
     if "spec" not in skip:
@@ -299,7 +320,9 @@ def product_facets(base: QuerySet[Product], params) -> dict:
         ],
         "availability": {
             "in_stock": availability_base.filter(stock_total__gt=0).count(),
-            "fast_delivery": availability_base.filter(fast_stock__gt=0).count(),
+            "fast_delivery": availability_base.filter(
+                **({"pin_fast_stock__gt": 0} if _has_pin(availability_base) else {"fast_stock__gt": 0})
+            ).count(),
         },
         "specifications": _spec_facets(ids_without("spec"), total_for_coverage=total, selected=spec_filters(params)),
         "options": _option_facets(ids_without("option"), selected=option_filters(params)),
@@ -416,8 +439,21 @@ def variant_stock_map(variant_ids) -> dict[int, int]:
     return {row["variant_id"]: row["total"] or 0 for row in rows}
 
 
-def variant_fast_delivery_ids(variant_ids) -> set[int]:
-    return set(_fast_delivery_inventory().filter(variant_id__in=list(variant_ids)).values_list("variant_id", flat=True))
+def variant_fast_delivery_ids(variant_ids, pin=None) -> set[int]:
+    """Variants in stock at a fast-delivery store; with a PIN context, at a store fast to that PIN."""
+    if pin is not None:
+        inventory = _fulfillment_inventory().filter(store_id__in=list(pin.fast_store_ids), available_quantity__gt=0)
+    else:
+        inventory = _fast_delivery_inventory()
+    return set(inventory.filter(variant_id__in=list(variant_ids)).values_list("variant_id", flat=True))
+
+
+def variant_ids_at_stores(variant_ids, store_ids) -> set[int]:
+    """Variants in stock at any of `store_ids` (the stores serving a PIN)."""
+    rows = _fulfillment_inventory().filter(
+        variant_id__in=list(variant_ids), store_id__in=list(store_ids), available_quantity__gt=0
+    )
+    return set(rows.values_list("variant_id", flat=True))
 
 
 def stock_status(total: int) -> str:

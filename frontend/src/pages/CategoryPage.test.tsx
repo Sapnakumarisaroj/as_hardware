@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { categories, facets, productPage, productSummary } from '@/test/fixtures'
-import { httpError, mockApi, paramsSent } from '@/test/mockApi'
+import { httpError, mockApi, paramsSent, type RequestInfo } from '@/test/mockApi'
 import { currentUrl, renderRoute } from '@/test/utils'
 
 const electrical = categories[0]!
@@ -24,17 +24,28 @@ function lastParams(spy: ReturnType<typeof mockApi>['get'], url = '/products/') 
 }
 
 describe('category page and product listing', () => {
-  it('loads the category by slug with subcategory navigation, counts and products', async () => {
+  it('loads the category by slug with subcategory tiles, counts and products', async () => {
     const api = mockApi({ get: routes() })
     renderRoute('/c/electrical')
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Electrical' })).toBeInTheDocument()
-    const subnav = screen.getByRole('navigation', { name: 'Electrical subcategories' })
-    expect(within(subnav).getByRole('link', { name: /Wires & Cables\s*\(5\)/ })).toHaveAttribute('href', '/c/wires-cables')
+    const subnav = screen.getByRole('navigation', { name: 'Categories in Electrical' })
+    expect(within(subnav).getByRole('link', { name: /Wires & Cables\s*5 products/ })).toHaveAttribute('href', '/c/wires-cables')
     expect(await screen.findByRole('link', { name: 'FR Copper Wire' })).toBeInTheDocument()
     expect(screen.getByText('2 products')).toBeInTheDocument()
-    expect(lastParams(api.get)).toMatchObject({ category: 'electrical', page: '1', page_size: '24' })
+    expect(paramsSent(api.get, '/products/')).toContainEqual(
+      expect.objectContaining({ category: 'electrical', page: '1', page_size: '24' }),
+    )
+    // Featured products of this category, from the same listing API (hidden when there are none).
+    expect(paramsSent(api.get, '/products/')).toContainEqual(expect.objectContaining({ category: 'electrical', featured: 'true' }))
     expect(document.title).toContain('Electrical')
+    expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toMatch(/\/c\/electrical$/)
+  })
+
+  it('shows the category description when the shop wrote one', async () => {
+    mockApi({ get: routes({ '/categories/electrical/': { ...electrical, description: 'Wires, switches and more.' } }) })
+    renderRoute('/c/electrical')
+    expect(await screen.findByTestId('category-description')).toHaveTextContent('Wires, switches and more.')
   })
 
   it('filters by brand, availability and specification through backend params', async () => {
@@ -108,7 +119,9 @@ describe('category page and product listing', () => {
     let calls = 0
     mockApi({
       get: routes({
-        '/products/': () => (++calls === 1 ? httpError(500, 'Server error.') : productPage([wire])),
+        // The listing fails once; the featured-products rail (its own request) is empty and hidden.
+        '/products/': ({ params }: RequestInfo) =>
+          params.featured ? productPage([]) : ++calls === 1 ? httpError(500, 'Server error.') : productPage([wire]),
       }),
     })
     const { user } = renderRoute('/c/electrical')

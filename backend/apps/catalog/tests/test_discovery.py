@@ -183,7 +183,8 @@ def test_search_matches_expected_products(api_client, catalog, query, expected):
     res = api_client.get("/api/products/", {"q": query})
     assert res.status_code == 200
     assert sorted(_names(res)) == sorted(expected)
-    assert res.json()["search"] == {"query": query, "matched": "all_terms"}
+    search = {k: v for k, v in res.json()["search"].items() if k != "interpreted"}  # Phase 16 addition
+    assert search == {"query": query, "matched": "all_terms"}
 
 
 def test_search_ranks_name_matches_first_and_falls_back_to_any_term(api_client, catalog):

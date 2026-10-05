@@ -93,6 +93,38 @@ describe('bulk prices and options in the product form', () => {
     expect(body.variants[0]?.options).toEqual([{ option_type: 5, value: '53 Grade' }])
   })
 
+  it('saves product-page content and accessories chosen from the shop’s products (Phase 16)', async () => {
+    signIn()
+    const product = adminProduct({ id: 77, name: 'Impact Drill', accessories: [{ id: 80, name: 'Wall Plugs', slug: 'plugs', note: 'For walls' }] })
+    const api = mockApi({
+      get: staffGet('admin', catalogGet({
+        '/admin/products/77/': product,
+        '/admin/products/': ({ params }: RequestInfo) =>
+          page(params.q ? [adminProduct({ id: 81, name: 'Masonry Bits', sku: 'BITS-5' }), adminProduct({ id: 77, name: 'Impact Drill' })] : []),
+      })),
+      patch: { '/admin/products/77/': product },
+    })
+    const { user } = renderRoute('/admin/products/77')
+    await user.type(await screen.findByLabelText('Quick answer'), 'Drills brick')
+    await user.type(screen.getByLabelText('Recommended uses (one per line)'), 'Walls')
+    await user.click(screen.getByRole('button', { name: 'Add a question' }))
+    await user.type(screen.getByLabelText('Question 1'), 'Concrete?')
+    await user.type(screen.getByLabelText('Answer 1'), 'Yes')
+    expect(screen.getByRole('list', { name: 'Chosen accessories' })).toHaveTextContent('Wall Plugs')
+    await user.type(screen.getByLabelText('Find a product to add'), 'bit')
+    // The product itself is never offered as its own accessory.
+    expect(await screen.findByRole('button', { name: /Add Masonry Bits/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Add Impact Drill/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Add Masonry Bits/ }))
+    await user.click(screen.getByRole('button', { name: /^Save/ }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalled())
+    const body = lastBody(api.patch, '/admin/products/77/') as Record<string, unknown>
+    expect(body.quick_answer).toBe('Drills brick')
+    expect(body.uses).toBe('Walls')
+    expect(body.faqs).toEqual([{ question: 'Concrete?', answer: 'Yes' }])
+    expect(body.accessories).toEqual([{ product: 80, note: 'For walls' }, { product: 81, note: '' }])
+  })
+
   it('points out a tier that costs more than the price for fewer units', async () => {
     signIn()
     const product = adminProduct({ id: 77, name: 'OPC Cement' })

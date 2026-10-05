@@ -298,6 +298,14 @@ functions), which keeps the PostgreSQL/MySQL/SQLite portability rules above.
 - **orders**: `OrderItem.base_unit_price`, `price_tier_min_quantity` (null for older rows; `unit_price` stays the
   amount charged); `Order.free_delivery_reason`.
 
+## Storefront ✅ (Phase 16, migration `catalog.0005`, additive)
+- **catalog.Product** gains `quick_answer` (300), `uses` (text, one per line), `installation_steps` (text, one per
+  line), `faqs` (JSON list of `{question, answer}`, validated). All optional; the page shows a section only when filled.
+- **catalog.ProductRelation**: `product` → `related` (both Product, cascade), `kind` (`accessory`), `note` (120),
+  `sort_order`; unique (product, related, kind); check constraint product ≠ related.
+- No other tables: PIN delivery flags are computed per request from inventory + the Phase 9 engine (cached 60 s per
+  PIN), recently viewed lives in the browser, the sitemap is generated from existing rows.
+
 ## Planned tables 🔜
 `accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 14–19) · `django_cache` (prod DB cache, created by `createcachetable`).
 

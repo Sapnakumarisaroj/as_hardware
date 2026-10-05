@@ -324,6 +324,17 @@ export interface AdminProduct extends AdminProductRow {
   launch_date?: string | null
   /** Options that can be set on this product's variants (its category's or shop-wide ones). */
   option_types?: { id: number; name: string; unit: string; values: { id: number; value: string }[] }[]
+  /** Phase 16 product-page content (optional; shown to customers only when filled in). */
+  quick_answer?: string
+  uses?: string
+  installation_steps?: string
+  faqs?: ProductFaq[]
+  accessories?: { id: number; name: string; slug: string; note: string }[]
+}
+
+export interface ProductFaq {
+  question: string
+  answer: string
 }
 
 export interface VariantInput {
@@ -357,6 +368,12 @@ export interface ProductInput {
   variants: VariantInput[]
   specifications: { name: string; value: string }[]
   launch_date?: string | null
+  quick_answer?: string
+  uses?: string
+  installation_steps?: string
+  faqs?: ProductFaq[]
+  /** Replace-all, in order: the products shown as "Goes well with" on the product page. */
+  accessories?: { product: number; note: string }[]
 }
 
 export interface AdminCategory {

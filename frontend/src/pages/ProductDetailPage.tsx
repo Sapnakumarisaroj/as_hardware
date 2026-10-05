@@ -1,24 +1,26 @@
-import { useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
 import { Breadcrumbs } from '@/components/Breadcrumbs'
 import { ErrorState, PageSpinner } from '@/components/feedback'
-import { BoltIcon, ClockIcon, StarIcon } from '@/components/icons'
+import { ChevronDownIcon, ClockIcon, StarIcon } from '@/components/icons'
 import { QuantityStepper } from '@/components/QuantityStepper'
 import { AddToCartButton } from '@/features/cart/AddToCartButton'
 import { useProduct, useProductReviews } from '@/features/catalog/api'
-import { PriceBlock, Rating, StockLabel } from '@/features/catalog/components/badges'
-import { BulkPriceTable, QuantityPriceQuote } from '@/features/catalog/components/BulkPricing'
+import { FastDeliveryBadge, PriceBlock, Rating, StockLabel } from '@/features/catalog/components/badges'
+import { BulkPriceTable, PaymentOptionsNote, QuantityPriceQuote } from '@/features/catalog/components/BulkPricing'
 import { OptionPicker } from '@/features/catalog/components/OptionPicker'
+import { ProductCard } from '@/features/catalog/components/ProductCard'
 import { ProductRail } from '@/features/catalog/components/ProductCollections'
 import { ProductGallery } from '@/features/catalog/components/ProductGallery'
 import { VariantSelector } from '@/features/catalog/components/VariantSelector'
-import { useProductEstimate } from '@/features/delivery/api'
-import { DeliveryEstimate, PincodeForm } from '@/features/delivery/components'
-import { savePincode, usePincode } from '@/features/delivery/location'
-import { ProductOfferCallout } from '@/features/offers/components'
+import { recordView } from '@/features/catalog/recentlyViewed'
 import type { ProductDetail, ProductVariant } from '@/features/catalog/types'
 import { variantLabel } from '@/features/catalog/variants'
+import { useProductEstimate } from '@/features/delivery/api'
+import { DeliveryEstimate, FreeDeliveryNote, PincodeForm } from '@/features/delivery/components'
+import { savePincode, usePincode } from '@/features/delivery/location'
+import { ProductOfferCallout } from '@/features/offers/components'
 import { WishlistButton } from '@/features/wishlist/WishlistButton'
 import { isNotFound } from '@/lib/api/errors'
 import { formatDate, formatPrice } from '@/lib/format'
@@ -32,10 +34,11 @@ function pickVariant(product: ProductDetail, requested: string | null): ProductV
 }
 
 /**
- * With a PIN code: the backend's estimate for this variant and quantity. Without one: only what
- * the catalogue knows (stocked at a store that offers fast delivery or not) and a PIN form.
+ * Delivery for the shopper's PIN, from the Phase 9 engine: fast (with the calculated minutes) or the
+ * standard window, why fast isn't offered, the fee and the free-delivery gap. Nothing is promised
+ * without a PIN — the shopper is asked for one.
  */
-function DeliveryInfo({ variant, quantity }: { variant: ProductVariant; quantity: number }) {
+function DeliveryInfo({ product, variant, quantity }: { product: ProductDetail; variant: ProductVariant; quantity: number }) {
   const pincode = usePincode()
   const outOfStock = variant.stock_status === 'out_of_stock'
   const estimate = useProductEstimate(variant.id, quantity, pincode, !outOfStock)
@@ -47,42 +50,58 @@ function DeliveryInfo({ variant, quantity }: { variant: ProductVariant; quantity
       </p>
     )
   }
+  const freeRule = product.free_delivery && (
+    <p className="text-xs text-ink-600" data-testid="free-delivery-rule">
+      {product.free_delivery.name}
+    </p>
+  )
   if (pincode && estimate.data) {
+    const quote = estimate.data
     return (
-      <div aria-live="polite" aria-busy={estimate.isFetching}>
-        <p className="mb-1 text-xs text-ink-600">
+      <div aria-live="polite" aria-busy={estimate.isFetching} className="space-y-2">
+        <p className="text-xs text-ink-600">
           Delivering to PIN <span className="font-semibold text-ink-900">{pincode}</span>{' '}
           <button type="button" onClick={() => savePincode('')} className="font-semibold text-amber-600 hover:underline">
             Change
           </button>
         </p>
-        <DeliveryEstimate quote={estimate.data} showFee={false} />
+        <DeliveryEstimate quote={quote} showFee={false} />
+        {quote.available && quote.delivery_type && (
+          <>
+            <p className="text-sm text-ink-800">
+              Delivery fee for {quantity}:{' '}
+              {quote.fee === '0.00' ? (
+                <span className="font-semibold text-success-600">Free</span>
+              ) : (
+                <span className="font-semibold">{formatPrice(quote.fee)}</span>
+              )}
+            </p>
+            <FreeDeliveryNote
+              fee={quote.fee}
+              reason={quote.free_delivery_reason}
+              amountToFree={quote.amount_to_free_delivery}
+              hint={quote.free_delivery_hint}
+              threshold={quote.free_delivery_min_order}
+            />
+          </>
+        )}
+        {freeRule}
       </div>
     )
   }
   return (
     <div className="space-y-2 text-sm">
-      {variant.fast_delivery ? (
-        <p className="flex items-start gap-2 font-semibold text-ink-900">
-          <BoltIcon className="mt-0.5 size-4 shrink-0 text-amber-600" />
-          Fast delivery available from a nearby store
-        </p>
-      ) : (
-        <p className="flex items-start gap-2 text-ink-800">
-          <ClockIcon className="mt-0.5 size-4 shrink-0 text-ink-600" />
-          Standard delivery from our stores
-        </p>
-      )}
       {pincode && estimate.isPending ? (
-        <p className="pl-6 text-ink-600">Checking delivery to {pincode}…</p>
+        <p className="text-ink-600">Checking delivery to {pincode}…</p>
       ) : (
-        <div className="pl-6">
+        <>
           {pincode && estimate.isError && (
-            <p className="mb-1 text-ink-600">Couldn’t check delivery to {pincode} right now. The time is confirmed at checkout.</p>
+            <p className="text-ink-600">Couldn’t check delivery to {pincode} right now. The time is confirmed at checkout.</p>
           )}
-          <PincodeForm current={pincode} label="Enter your PIN code to see the delivery time" />
-        </div>
+          <PincodeForm current={pincode} label="Enter your PIN code to see delivery time, fee and fast delivery" />
+        </>
       )}
+      {freeRule}
     </div>
   )
 }
@@ -103,6 +122,7 @@ function SpecTable({ product, variant }: { product: ProductDetail; variant: Prod
   if (product.brand) rows.push({ label: 'Brand', value: product.brand.name })
   rows.push({ label: 'SKU', value: variant.sku })
   if (product.hsn_code) rows.push({ label: 'HSN code', value: product.hsn_code })
+  rows.push({ label: 'GST', value: `${Number(product.gst_rate)}% (included in the price)` })
 
   return (
     <table className="w-full text-sm">
@@ -124,7 +144,7 @@ function SpecTable({ product, variant }: { product: ProductDetail; variant: Prod
 function Reviews({ product }: { product: ProductDetail }) {
   const reviews = useProductReviews(product.slug)
   return (
-    <section aria-labelledby="reviews-heading" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+    <section id="reviews" aria-labelledby="reviews-heading" className="scroll-mt-32 rounded-lg bg-white p-5 ring-1 ring-steel-200">
       <h2 id="reviews-heading" className="text-lg font-bold">
         Ratings & reviews
       </h2>
@@ -161,6 +181,106 @@ function Reviews({ product }: { product: ProductDetail }) {
   )
 }
 
+function Panel({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <section aria-labelledby={id} className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+      <h2 id={id} className="mb-2 text-lg font-bold">
+        {title}
+      </h2>
+      {children}
+    </section>
+  )
+}
+
+/** Uses, installation steps and FAQ written by the shop; each block only when filled in. */
+function ProductGuide({ product }: { product: ProductDetail }) {
+  const uses = product.uses ?? []
+  const steps = product.installation_steps ?? []
+  const faqs = product.faqs ?? []
+  return (
+    <>
+      {uses.length > 0 && (
+        <Panel id="uses-heading" title="Recommended uses">
+          <ul className="list-disc space-y-1 pl-5 text-sm text-ink-800">
+            {uses.map((use) => (
+              <li key={use}>{use}</li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+      {steps.length > 0 && (
+        <Panel id="steps-heading" title="How to install / use">
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-ink-800">
+            {steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </Panel>
+      )}
+      {faqs.length > 0 && (
+        <Panel id="faq-heading" title="Questions & answers">
+          <div className="divide-y divide-steel-100">
+            {faqs.map((faq) => (
+              <details key={faq.question} className="group py-2">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-ink-900 [&::-webkit-details-marker]:hidden">
+                  {faq.question}
+                  <ChevronDownIcon className="size-4 shrink-0 transition group-open:rotate-180" />
+                </summary>
+                <p className="mt-1 text-sm text-ink-800">{faq.answer}</p>
+              </details>
+            ))}
+          </div>
+        </Panel>
+      )}
+    </>
+  )
+}
+
+function Accessories({ product }: { product: ProductDetail }) {
+  const items = product.accessories ?? []
+  if (!items.length) return null
+  return (
+    <section aria-labelledby="accessories-heading" className="py-6">
+      <h2 id="accessories-heading" className="mb-4 text-xl font-bold text-ink-950">
+        Goes well with
+      </h2>
+      <ul role="list" className="scrollbar-none -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 sm:gap-4">
+        {items.map((item) => (
+          <li key={item.id} className="flex w-44 shrink-0 snap-start flex-col sm:w-56">
+            {item.relation_note && <p className="mb-1 text-xs font-medium text-ink-600">{item.relation_note}</p>}
+            <div className="w-full flex-1">
+              <ProductCard product={item} />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function productJsonLd(product: ProductDetail, variant: ProductVariant) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.name,
+    sku: variant.sku,
+    description: product.short_description || product.description.slice(0, 300) || undefined,
+    image: product.images.map((image) => image.image),
+    brand: product.brand ? { '@type': 'Brand', name: product.brand.name } : undefined,
+    offers: {
+      '@type': 'Offer',
+      priceCurrency: 'INR',
+      price: variant.price,
+      availability:
+        variant.stock_status === 'out_of_stock' ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock',
+      url: window.location.href,
+    },
+    aggregateRating: product.rating_count
+      ? { '@type': 'AggregateRating', ratingValue: product.rating_avg, reviewCount: product.rating_count }
+      : undefined,
+  }
+}
+
 export function ProductDetailPage() {
   const { slug = '' } = useParams()
   const product = useProduct(slug)
@@ -169,7 +289,14 @@ export function ProductDetailPage() {
 
   const data = product.data
   const variant = data ? pickVariant(data, params.get('variant')) : undefined
-  usePageMeta(data?.name, data ? data.short_description || `${data.name} — price, specifications and availability.` : undefined)
+  usePageMeta(
+    data?.name,
+    data ? data.short_description || `${data.name} — price, specifications and availability.` : undefined,
+    { type: 'product', image: data?.image ?? null, jsonLd: data && variant ? productJsonLd(data, variant) : null },
+  )
+  useEffect(() => {
+    if (data?.slug) recordView(data.slug)
+  }, [data?.slug])
 
   if (product.isPending) return <PageSpinner label="Loading product…" />
   if (product.isError || !data || !variant) {
@@ -185,6 +312,7 @@ export function ProductDetailPage() {
   const maxQuantity = Math.max(1, Math.min(data.max_order_quantity, variant.available_quantity ?? data.max_order_quantity))
   const safeQuantity = Math.min(quantity, maxQuantity)
   const subcategory = data.subcategory ?? data.category
+  const hasTiers = (variant.price_tiers?.length ?? 0) > 1
   const selectVariant = (id: number) => {
     setQuantity(1)
     setParams(
@@ -196,19 +324,29 @@ export function ProductDetailPage() {
       { replace: true, preventScrollReset: true },
     )
   }
-  const buyButton = (
+  const productName = variant.name ? `${data.name} (${variant.name})` : data.name
+  const addButton = (
     <AddToCartButton
       variantId={variant.id}
-      productName={variant.name ? `${data.name} (${variant.name})` : data.name}
+      productName={productName}
       quantity={safeQuantity}
       disabled={outOfStock}
       label={outOfStock ? 'Out of stock' : 'Add to cart'}
+      className="btn-secondary flex-1 py-3 text-base"
+    />
+  )
+  const buyNowButton = !outOfStock && (
+    <AddToCartButton
+      buyNow
+      variantId={variant.id}
+      productName={productName}
+      quantity={safeQuantity}
       className="btn-primary flex-1 py-3 text-base"
     />
   )
 
   return (
-    <div className="pb-24 lg:pb-0">
+    <div className="pb-28 lg:pb-0">
       <div className="border-b border-steel-200 bg-white">
         <div className="container-page py-3">
           <Breadcrumbs
@@ -227,13 +365,15 @@ export function ProductDetailPage() {
       </div>
 
       <div className="container-page grid gap-8 py-6 lg:grid-cols-2">
-        <ProductGallery images={data.images} productName={data.name} variantId={variant.id} />
+        <div className="lg:sticky lg:top-32 lg:self-start">
+          <ProductGallery images={data.images} productName={data.name} variantId={variant.id} />
+        </div>
 
         <div className="space-y-5">
           <div>
             {data.brand && (
               <Link
-                to={`/search?brand=${encodeURIComponent(data.brand.slug)}`}
+                to={`/brand/${encodeURIComponent(data.brand.slug)}`}
                 className="text-sm font-semibold uppercase tracking-wide text-amber-600 hover:underline"
               >
                 {data.brand.name}
@@ -241,11 +381,23 @@ export function ProductDetailPage() {
             )}
             <h1 className="mt-1 text-2xl font-bold leading-tight text-ink-950 sm:text-3xl">{data.name}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-ink-600">
-              <Rating average={data.rating_avg} count={data.rating_count} />
+              {data.rating_count > 0 ? (
+                <a href="#reviews" className="hover:underline">
+                  <Rating average={data.rating_avg} count={data.rating_count} />
+                </a>
+              ) : (
+                <Rating average={data.rating_avg} count={data.rating_count} />
+              )}
               <span>
                 SKU: <span className="font-mono text-ink-800">{variant.sku}</span>
               </span>
+              {data.delivery?.fast && !outOfStock && <FastDeliveryBadge pincode={data.delivery.postal_code} />}
             </div>
+            {data.quick_answer && (
+              <p className="mt-3 rounded-md bg-steel-100 px-3 py-2 text-sm text-ink-900" data-testid="quick-answer">
+                {data.quick_answer}
+              </p>
+            )}
           </div>
 
           <PriceBlock
@@ -255,6 +407,7 @@ export function ProductDetailPage() {
             discountPercent={variant.discount_percent}
             discountAmount={variant.discount_amount}
           />
+          <p className="-mt-3 text-xs text-ink-600">Price includes {Number(data.gst_rate)}% GST. Delivery fee is shown below.</p>
 
           {data.offer && !outOfStock && <ProductOfferCallout offer={data.offer} />}
 
@@ -264,13 +417,30 @@ export function ProductDetailPage() {
             <VariantSelector variants={data.variants} selectedId={variant.id} onSelect={selectVariant} />
           )}
 
-          {(variant.price_tiers?.length ?? 0) > 1 && !outOfStock && (
+          {hasTiers && !outOfStock && (
             <section aria-label="Bulk pricing" className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
               <BulkPriceTable tiers={variant.price_tiers ?? []} quantity={safeQuantity} />
             </section>
           )}
 
-          <div className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
+          <div className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-steel-200">
+            <div className="flex flex-wrap items-center gap-3">
+              <QuantityStepper value={safeQuantity} max={maxQuantity} onChange={setQuantity} disabled={outOfStock} />
+              <span className="text-xs text-ink-600">Max {data.max_order_quantity} per order</span>
+            </div>
+            {!outOfStock && <QuantityPriceQuote slug={data.slug} variantId={variant.id} quantity={safeQuantity} />}
+            {/* On small screens the sticky bar at the bottom holds the buttons. */}
+            <div className="hidden items-center gap-3 lg:flex">
+              {addButton}
+              {buyNowButton}
+              <WishlistButton productId={data.id} productName={data.name} variant="button" />
+            </div>
+            <div className="lg:hidden">
+              <WishlistButton productId={data.id} productName={data.name} variant="button" />
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-steel-200">
             <p aria-live="polite">
               <StockLabel status={variant.stock_status} lowQuantity={variant.available_quantity} />
               {data.variants.length > 1 && (
@@ -279,25 +449,23 @@ export function ProductDetailPage() {
                 </span>
               )}
             </p>
-            <div className="mt-3">
-              <DeliveryInfo variant={variant} quantity={safeQuantity} />
+            <DeliveryInfo product={data} variant={variant} quantity={safeQuantity} />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {!outOfStock && (
+              <div className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
+                <h2 className="mb-1 text-sm font-bold text-ink-950">Payment</h2>
+                <PaymentOptionsNote slug={data.slug} variantId={variant.id} quantity={safeQuantity} />
+              </div>
+            )}
+            <div className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
+              <h2 className="mb-1 text-sm font-bold text-ink-950">Returns</h2>
+              <p className="text-sm text-ink-800" data-testid="return-policy">
+                {data.return_policy?.text ?? (data.is_returnable ? 'Returnable' : 'Not returnable')}
+              </p>
             </div>
           </div>
-
-          {!outOfStock && ((variant.price_tiers?.length ?? 0) > 1 || data.offer) && (
-            <QuantityPriceQuote slug={data.slug} variantId={variant.id} quantity={safeQuantity} />
-          )}
-
-          <div className="flex flex-wrap items-center gap-3">
-            <QuantityStepper value={safeQuantity} max={maxQuantity} onChange={setQuantity} disabled={outOfStock} />
-            {/* On small screens the sticky bar at the bottom holds the add-to-cart button. */}
-            <div className="hidden flex-1 lg:flex">{buyButton}</div>
-            <WishlistButton productId={data.id} productName={data.name} variant="button" />
-          </div>
-          <p className="text-xs text-ink-600">
-            Max {data.max_order_quantity} per order · {data.is_returnable ? 'Returnable' : 'Not returnable'} · Price
-            includes {Number(data.gst_rate)}% GST
-          </p>
 
           {data.short_description && <p className="text-ink-800">{data.short_description}</p>}
         </div>
@@ -305,25 +473,21 @@ export function ProductDetailPage() {
 
       <div className="container-page grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <div className="space-y-6">
-          <section aria-labelledby="specs-heading" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
-            <h2 id="specs-heading" className="mb-2 text-lg font-bold">
-              Specifications
-            </h2>
+          <Panel id="specs-heading" title="Specifications">
             <SpecTable product={data} variant={variant} />
-          </section>
+          </Panel>
           {data.description && (
-            <section aria-labelledby="description-heading" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
-              <h2 id="description-heading" className="mb-2 text-lg font-bold">
-                Description
-              </h2>
+            <Panel id="description-heading" title="Description">
               <p className="whitespace-pre-line text-sm leading-relaxed text-ink-800">{data.description}</p>
-            </section>
+            </Panel>
           )}
+          <ProductGuide product={data} />
         </div>
         <Reviews product={data} />
       </div>
 
       <div className="container-page">
+        <Accessories product={data} />
         <ProductRail
           title={`More in ${subcategory.name}`}
           params={{ category: subcategory.slug, exclude: data.slug }}
@@ -333,12 +497,15 @@ export function ProductDetailPage() {
 
       {/* Mobile sticky purchase bar */}
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-steel-200 bg-white p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] lg:hidden">
-        <div className="flex items-center gap-3">
-          <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 shrink">
             <p className="text-lg font-bold leading-tight">{formatPrice(variant.price)}</p>
-            <p className="truncate text-xs text-ink-600">{variant.name || data.name}</p>
+            <p className="truncate text-xs text-ink-600">
+              {safeQuantity > 1 ? `Qty ${safeQuantity}` : variant.name || data.name}
+            </p>
           </div>
-          {buyButton}
+          {addButton}
+          {buyNowButton}
         </div>
       </div>
     </div>

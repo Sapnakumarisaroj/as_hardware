@@ -666,6 +666,23 @@ display components. The browser never calculates a time or a fee; it shows what 
 - **Not built (see TASKS.md):** live push (lists refresh every 60 s while open), a map editor for zone polygons,
   bulk product import, settlement reports, and a change log screen for the audit trail.
 
+### Storefront (Phase 16)
+- **One source for every number.** Prices, tiers, offers, free delivery and COD come from the Phase 15 engine
+  (`quote`, cart, checkout); delivery from the Phase 9 engine. The browser formats and never computes a price.
+- **PIN-aware browsing.** `apps/delivery/pin.py` turns a PIN into a `PinContext` (serving stores, stores that can
+  deliver fast *now*, the best zone, the engine's message), computed like `/delivery/check/` and cached 60 s per PIN.
+  `catalog.selectors.annotate_pin` adds `pin_stock`/`pin_fast_stock` subqueries to the listing query, so a page of
+  cards stays one query. The frontend adds the saved PIN to every catalogue request (`usePinParams`), so cards, rails,
+  facets, product pages, quotes and curated lists all change together when the PIN changes.
+- **Search understanding.** `catalog/interpret.py` matches the query against the catalogue's own vocabulary (option
+  values, spec values with units, category names; cached 5 min) and the listing applies the matches as normal filters
+  only when results remain. The search backend (Phase 13) still ranks the results.
+- **Pages.** Home (eager, sections from categories, collections, listing rails, offers, recently viewed); product,
+  category, search and brand pages are lazy chunks. `ProductBrowser` (URL-backed filters, facets, chips, drawer,
+  pagination) serves search, all products, categories and brands. `usePageMeta` sets title, description, canonical,
+  Open Graph and JSON-LD.
+- **Recently viewed** is a `useSyncExternalStore` over localStorage (slugs only); products are fetched fresh.
+
 ## 9. Environments
 | | Local (Windows) | Production (existing hosting) |
 |---|---|---|

@@ -3,7 +3,13 @@
 AI-powered hardware marketplace with fast delivery from nearby stores: a Django REST API and a React SPA. Delivery
 times are calculated per order (store, distance, preparation, riders, workload), never a fixed promise.
 
-> Status: **Phase 14 complete** (adds **search by photo** at `/image-search`, also from the camera button in the
+> Status: **Phase 16 complete** — the full storefront: a home page built from live data (departments, curated
+> lists, department rails, bulk buying, offers, AI entry points, recently viewed), PIN-aware delivery (the fast badge
+> appears only where the delivery engine can deliver fast to your PIN), product pages with bulk prices per quantity,
+> offers, COD rules, delivery fee and free-delivery progress, uses/steps/FAQ and accessories, brand pages, category
+> landing pages and search that understands "53 grade cement" or "50 kg cement". **Phase 15** added the commerce
+> core (bulk prices, options, collections, offer types, free-delivery and COD rules).
+> **Phase 14** added **search by photo** at `/image-search`, also from the camera button in the
 > search bar: take or upload a photo of a tool or part and get what it most likely is, how sure we are, and the real
 > catalogue products that match, with Add to Cart. When it isn't sure it says so and shows possible matches; photos are
 > never stored. Off by default; for development set `VISION_PROVIDER=clip`, see [docs/FREE_TOOLS.md](docs/FREE_TOOLS.md)).

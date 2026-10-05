@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import { StarIcon } from '@/components/icons'
+import { isValidPincode, usePincode } from '@/features/delivery/location'
 import { formatPrice } from '@/lib/format'
 
 import { csv, type ListingState } from '../listingState'
@@ -49,6 +50,7 @@ function Option({
 
 export function FilterPanel({ facets, state, categoryLinks }: Props) {
   const { filters, setParam, toggleValue } = state
+  const pincode = usePincode()
   const brands = csv(filters.brand)
   const showRatings = facets.ratings.some((r) => r.count > 0) || Boolean(filters.rating)
   const discounts = facets.discounts.filter((d) => d.count > 0 || filters.discount === String(d.min))
@@ -103,6 +105,28 @@ export function FilterPanel({ facets, state, categoryLinks }: Props) {
         </Section>
       )}
 
+      {/* Product options (Grade, Bag size, Cross-section…) come from the catalogue's option types, so
+          only the options of the products listed appear (no cement grades on a wire page). */}
+      {facets.options?.map((option) => {
+        const key = `opt_${option.slug}`
+        const selected = csv(filters[key])
+        return (
+          <Section key={key} title={option.name}>
+            {option.values.map((value) => (
+              <Option
+                key={value.slug}
+                type="checkbox"
+                name={key}
+                checked={selected.includes(value.slug)}
+                onChange={() => toggleValue(key, value.slug)}
+                label={value.value}
+                count={value.count}
+              />
+            ))}
+          </Section>
+        )
+      })}
+
       {facets.price.min !== null && (
         <Section title="Price">
           <PriceRange
@@ -125,13 +149,14 @@ export function FilterPanel({ facets, state, categoryLinks }: Props) {
           label="In stock only"
           count={facets.availability.in_stock}
         />
-        {(facets.availability.fast_delivery > 0 || filters.fast_delivery) && (
+        {/* Fast delivery depends on the address, so the filter is offered only for a chosen PIN. */}
+        {isValidPincode(pincode) && (facets.availability.fast_delivery > 0 || filters.fast_delivery) && (
           <Option
             type="checkbox"
             name="fast_delivery"
             checked={filters.fast_delivery === 'true'}
             onChange={() => setParam('fast_delivery', filters.fast_delivery === 'true' ? null : 'true')}
-            label="Fast delivery eligible"
+            label={`Fast delivery to ${pincode}`}
             count={facets.availability.fast_delivery}
           />
         )}

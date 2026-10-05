@@ -46,6 +46,19 @@ def normalize_sku(value: str) -> str:
     return (value or "").strip().upper()
 
 
+def valid_faqs(value) -> bool:
+    """[{"question": str, "answer": str}, …] with both texts filled."""
+    if not isinstance(value, list):
+        return False
+    for item in value:
+        if not isinstance(item, dict) or set(item) - {"question", "answer"}:
+            return False
+        question, answer = item.get("question"), item.get("answer")
+        if not isinstance(question, str) or not isinstance(answer, str) or not question.strip() or not answer.strip():
+            return False
+    return True
+
+
 def unique_slug(instance, max_length: int) -> str:
     """A slug from the name that no other row (deleted ones included) uses: "drill", "drill-2", …"""
     base = slugify(instance.name)[: max_length - 4] or "item"
@@ -199,6 +212,17 @@ class Product(SoftDeleteModel):
     launch_date = models.DateField(
         null=True, blank=True, help_text="When the product was launched; drives the automatic 'New launches' list."
     )
+    # Phase 16 product-page content, written by the shop (all optional; a section is shown only when filled).
+    quick_answer = models.CharField(
+        max_length=300,
+        blank=True,
+        help_text='One-line answer shown near the price, e.g. "Use for RCC slabs and columns".',
+    )
+    uses = models.TextField(blank=True, help_text="Recommended uses, one per line.")
+    installation_steps = models.TextField(blank=True, help_text="Installation / usage steps, one per line, in order.")
+    faqs = models.JSONField(
+        default=list, blank=True, help_text='Questions and answers: [{"question": "…", "answer": "…"}].'
+    )
     # Denormalised from approved reviews (maintained by reviews.services).
     rating_avg = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal("0.00"))
     rating_count = models.PositiveIntegerField(default=0)
@@ -224,6 +248,8 @@ class Product(SoftDeleteModel):
             raise ValidationError({"subcategory": "Subcategory must belong to the selected category."})
         if not isinstance(self.tags, list) or not all(isinstance(t, str) for t in self.tags):
             raise ValidationError({"tags": "Tags must be a list of strings."})
+        if not valid_faqs(self.faqs):
+            raise ValidationError({"faqs": 'FAQs must be a list of {"question": "…", "answer": "…"} with both filled.'})
         self.sku = normalize_sku(self.sku)
 
     def save(self, *args, **kwargs):
@@ -548,3 +574,33 @@ class CollectionItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.collection_id}: {self.product_id}"
+
+
+class ProductRelation(models.Model):
+    """A product the shop links to another (Phase 16): "Recommended accessories" on the product page.
+    Chosen by staff; the page shows only published, active, in-catalogue products."""
+
+    class Kind(models.TextChoices):
+        ACCESSORY = "accessory", "Accessory / goes with"
+
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="relations")
+    related = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="related_from")
+    kind = models.CharField(max_length=20, choices=Kind.choices, default=Kind.ACCESSORY)
+    note = models.CharField(
+        max_length=120, blank=True, help_text='Why it goes with the product, e.g. "Needed to fix it".'
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["product", "related", "kind"], name="uniq_product_relation"),
+            models.CheckConstraint(condition=~Q(product=F("related")), name="product_relation_not_self"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.product_id} → {self.related_id} ({self.kind})"
+
+    def clean(self):
+        if self.product_id and self.product_id == self.related_id:
+            raise ValidationError({"related": "A product can't be its own accessory."})

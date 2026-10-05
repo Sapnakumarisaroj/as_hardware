@@ -139,12 +139,14 @@ describe('bulk prices and options on the product page', () => {
       ['30+ units', '₹405', '10%'],
     ])
     expect(rows[0]).toHaveAttribute('aria-current', 'true')
-    expect(await screen.findByTestId('price-quote')).toHaveTextContent('1 × ₹450 = ₹450')
-    expect(screen.getByTestId('price-quote')).toHaveTextContent('Add 9 more to pay ₹415 per unit.')
+    expect(await screen.findByTestId('price-quote')).toHaveTextContent('Quantity 1 → ₹450/unit')
+    expect(screen.getByTestId('price-quote')).toHaveTextContent('1 × ₹450 = ₹450')
+    expect(screen.getByTestId('next-tier')).toHaveTextContent('Add 9 more to unlock ₹415/unit')
 
     const more = screen.getByRole('button', { name: 'Increase quantity' })
     for (let i = 0; i < 9; i += 1) await user.click(more)
-    await waitFor(() => expect(screen.getByTestId('price-quote')).toHaveTextContent('10 × ₹415 = ₹4,150'))
+    await waitFor(() => expect(screen.getByTestId('price-quote')).toHaveTextContent('Quantity 10 → ₹415/unit'))
+    expect(screen.getByTestId('price-quote')).toHaveTextContent('10 × ₹415 = ₹4,150')
     expect(screen.getByTestId('price-quote')).toHaveTextContent('Bulk price applied')
     expect(screen.getByTestId('price-quote')).toHaveTextContent('You save ₹350 with the 10+ price')
     expect(within(table).getAllByRole('row')[2]).toHaveAttribute('aria-current', 'true')

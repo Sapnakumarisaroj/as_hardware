@@ -103,7 +103,9 @@ function CategoryNav() {
             All products
           </NavLink>
         </li>
-        {categories.data.map((category) => (
+        {categories.data
+          .filter((category) => category.product_count !== 0)
+          .map((category) => (
           <li key={category.id} className="group relative">
             <NavLink
               to={`/c/${category.slug}`}
@@ -130,6 +132,14 @@ function CategoryNav() {
             )}
           </li>
         ))}
+        <li className="ml-auto">
+          <NavLink
+            to="/brands"
+            className={({ isActive }) => `rounded px-3 py-2 hover:text-amber-500 ${isActive ? 'text-amber-500' : ''}`}
+          >
+            Brands
+          </NavLink>
+        </li>
       </ul>
     </nav>
   )
@@ -149,6 +159,15 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
           <h3 className="px-2 text-xs font-bold uppercase tracking-wide text-ink-600">Shop by category</h3>
           <Link to="/products" onClick={onClose} className={link}>
             All products
+          </Link>
+          <Link to="/brands" onClick={onClose} className={link}>
+            Brands
+          </Link>
+          <Link to="/ai-assistant" onClick={onClose} className={link}>
+            AI assistant
+          </Link>
+          <Link to="/image-search" onClick={onClose} className={link}>
+            Search with a photo
           </Link>
           {categories.data?.map((category) => (
             <details key={category.id} className="group">
@@ -217,6 +236,7 @@ export function Header() {
   const [params] = useSearchParams()
   const urlQuery = location.pathname === '/search' ? (params.get('q') ?? '') : ''
 
+  const { status } = useAuth()
   const aiButton = (
     <Link
       to="/ai-assistant"
@@ -243,6 +263,11 @@ export function Header() {
         </div>
         {aiButton}
         <div className="ml-auto flex items-center gap-4 sm:gap-5 md:ml-0">
+          {status === 'authenticated' && (
+            <Link to="/account/orders" className="hidden text-sm font-semibold hover:text-amber-500 lg:block">
+              Orders
+            </Link>
+          )}
           <Link to="/wishlist" className="relative hidden hover:text-amber-500 sm:block" aria-label="Wishlist">
             <HeartIcon className="size-6" />
             <CountBadge count={wishlistCount} label="saved items" />

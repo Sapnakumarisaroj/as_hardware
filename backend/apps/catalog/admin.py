@@ -9,6 +9,7 @@ from .models import (
     OptionValue,
     Product,
     ProductImage,
+    ProductRelation,
     ProductSpecification,
     ProductVariant,
     RecentSearch,
@@ -85,6 +86,15 @@ class ImageInline(admin.TabularInline):
     extra = 0
 
 
+class AccessoryInline(admin.TabularInline):
+    model = ProductRelation
+    fk_name = "product"
+    fields = ("related", "note", "sort_order")
+    autocomplete_fields = ("related",)
+    extra = 0
+    verbose_name = "Recommended accessory"
+
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = ("name", "sku", "brand", "category", "subcategory", "is_published", "is_active", "is_featured")
@@ -95,11 +105,12 @@ class ProductAdmin(admin.ModelAdmin):
     autocomplete_fields = ("brand",)
     readonly_fields = ("rating_avg", "rating_count", "created_at", "updated_at")
     list_select_related = ("brand", "category", "subcategory")
-    inlines = [VariantInline, SpecificationInline, ImageInline]
+    inlines = [VariantInline, SpecificationInline, ImageInline, AccessoryInline]
     actions = ["update_search_index"]
     fieldsets = (
         (None, {"fields": ("name", "slug", "sku", "brand", "category", "subcategory", "unit")}),
         ("Content", {"fields": ("short_description", "description", "tags")}),
+        ("Product page", {"fields": ("quick_answer", "uses", "installation_steps", "faqs")}),
         ("Tax & limits", {"fields": ("gst_rate", "hsn_code", "max_order_quantity", "is_returnable")}),
         ("Visibility", {"fields": ("is_active", "is_published", "is_featured", "launch_date")}),
         ("Ratings", {"fields": ("rating_avg", "rating_count", "created_at", "updated_at")}),

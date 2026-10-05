@@ -26,7 +26,7 @@ from apps.catalog.models import (
     ProductVariant,
     normalize_sku,
 )
-from apps.catalog.services import set_price_tiers, set_variant_options
+from apps.catalog.services import set_accessories, set_price_tiers, set_variant_options
 from apps.catalog.tree import breadcrumb
 from apps.delivery.models import DeliveryZone, FreeDeliveryRule, PinCode
 from apps.inventory.models import Inventory, StockMovement
@@ -35,6 +35,7 @@ from apps.offers.models import Coupon, Offer
 from apps.stores.models import Store
 
 from ..demo_data import (
+    ACCESSORIES,
     BRANDS,
     CATEGORIES,
     COLLECTIONS,
@@ -46,6 +47,7 @@ from ..demo_data import (
     OPTION_TYPES,
     PIN_CODES,
     PRICE_TIERS,
+    PRODUCT_PAGE_CONTENT,
     PRODUCTS,
     STORE_DELIVERY,
     STORES,
@@ -110,6 +112,7 @@ class Command(BaseCommand):
             self._coupons()
             self._offers()
             self._commerce(products)
+            self._product_pages()
             if with_rider:
                 self._demo_rider()
         created_images = 0 if no_images else self._images(products)
@@ -307,6 +310,22 @@ class Command(BaseCommand):
                 },
             )
             offer.categories.set(Category.objects.filter(slug__in=category_slugs))
+
+    def _product_pages(self) -> None:
+        """Phase 16 demo data: product-page content (uses, steps, FAQ) and linked accessories."""
+        variants = {v.sku: v for v in ProductVariant.objects.filter(sku__startswith="DEMO-")}
+
+        def product_id(suffix):
+            variant = variants.get(normalize_sku(f"DEMO-{suffix}"))
+            return variant.product_id if variant else None
+
+        for suffix, content in PRODUCT_PAGE_CONTENT.items():
+            if pk := product_id(suffix):
+                Product.objects.filter(pk=pk).update(**content)
+        for suffix, rows in ACCESSORIES.items():
+            if pk := product_id(suffix):
+                links = [{"product": rid, "note": note} for s, note in rows if (rid := product_id(s))]
+                set_accessories(Product.objects.get(pk=pk), links)
 
     def _commerce(self, products) -> None:
         """Phase 15 demo data: options, bulk prices, launches, curated lists, free-delivery rule, offers."""

@@ -4,8 +4,10 @@ import { Breadcrumbs } from '@/components/Breadcrumbs'
 import { ErrorState, PageSpinner } from '@/components/feedback'
 import { useCategories, useCategory } from '@/features/catalog/api'
 import { ProductBrowser } from '@/features/catalog/components/ProductBrowser'
+import { ProductRail } from '@/features/catalog/components/ProductCollections'
 import type { SubCategory } from '@/features/catalog/types'
 import { isNotFound } from '@/lib/api/errors'
+import { pluralize } from '@/lib/format'
 import { usePageMeta } from '@/lib/usePageMeta'
 
 import { NotFoundPage } from './NotFoundPage'
@@ -55,6 +57,7 @@ export function CategoryPage() {
     )
   }
 
+  const tiles = showingSiblings ? [] : ownChildren.filter((child) => (child.product_count ?? 0) > 0)
   return (
     <>
       <div className="border-b border-steel-200 bg-white">
@@ -69,7 +72,38 @@ export function CategoryPage() {
               { label: category.data.name },
             ]}
           />
-          {siblings.length > 0 && (
+          {category.data.description && (
+            <p className="mt-2 max-w-3xl text-sm text-ink-800" data-testid="category-description">
+              {category.data.description}
+            </p>
+          )}
+          {tiles.length > 0 && (
+            <nav aria-label={`Categories in ${category.data.name}`} className="mt-4">
+              <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                {tiles.map((child) => (
+                  <li key={child.id} className="flex">
+                    <Link
+                      to={`/c/${child.slug}`}
+                      className="flex w-full items-center gap-2 rounded-lg bg-steel-50 p-2 ring-1 ring-steel-200 hover:ring-amber-500 focus-visible:ring-amber-500"
+                    >
+                      {child.image ? (
+                        <img src={child.image} alt="" loading="lazy" className="size-10 shrink-0 rounded object-cover" />
+                      ) : (
+                        <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded bg-white font-bold text-ink-600">
+                          {child.name.charAt(0)}
+                        </span>
+                      )}
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-ink-950">{child.name}</span>
+                        <span className="text-xs text-ink-600">{pluralize(child.product_count ?? 0, 'product')}</span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+          {showingSiblings && siblings.length > 0 && (
             <nav aria-label={`${parent?.name ?? category.data.name} subcategories`} className="mt-3">
               <ul className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4">
                 {showingSiblings && parent && (
@@ -105,6 +139,13 @@ export function CategoryPage() {
             </nav>
           )}
         </div>
+      </div>
+      <div className="container-page">
+        <ProductRail
+          key={`featured-${slug}`}
+          title={`Featured in ${category.data.name}`}
+          params={{ category: slug, featured: 'true' }}
+        />
       </div>
       <ProductBrowser
         key={slug}

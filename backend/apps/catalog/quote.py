@@ -58,6 +58,7 @@ def quote_product(product, params, *, user=None) -> dict:
             "reachable": min_quantity <= product.max_order_quantity,
         }
     stock = selectors.variant_stock_map([variant.pk]).get(variant.pk, 0)
+    total = totals.subtotal - totals.offer_discount
     return {
         "product_id": product.pk,
         "variant_id": variant.pk,
@@ -74,10 +75,39 @@ def quote_product(product, params, *, user=None) -> dict:
         "bulk_saving": _money(line.bulk_saving),
         "offer_discount": _money(totals.offer_discount),
         "offers": [{"name": a.offer.name, "badge": a.offer.badge} for a in offers.applied],
-        "total": _money(totals.subtotal - totals.offer_discount),
+        "total": _money(total),
         "savings_vs_mrp": _money(totals.savings_vs_mrp),
         "stock_status": selectors.stock_status(stock),
         "within_stock": stock >= quantity,
         "max_order_quantity": product.max_order_quantity,
+        "payment_options": payment_options(total, params.get("postal_code")),
         "note": "Preview. The cart and checkout confirm the final price, delivery fee and offers.",
+    }
+
+
+def payment_options(total, postal_code=None) -> dict:
+    """Phase 16 product page: can this amount be paid by cash on delivery? The same rule function as
+    checkout (`payments.cod_rules`); with a PIN, the store and zone that would deliver are checked too.
+    Checkout decides again for the whole order and address."""
+    from types import SimpleNamespace
+
+    from apps.delivery.models import DeliveryZone
+    from apps.delivery.pin import pin_context
+    from apps.payments.cod_rules import cod_eligibility
+
+    plan = None
+    pin = pin_context(postal_code)
+    if pin is not None and pin.zone_id is not None:
+        zone = DeliveryZone.objects.select_related("store").filter(pk=pin.zone_id).first()
+        if zone is not None:
+            plan = SimpleNamespace(shipments=[SimpleNamespace(store=zone.store, zone=zone)])
+    cod = cod_eligibility(grand_total=total, plan=plan)
+    return {
+        "online": True,
+        "cod": {
+            "available": cod.available,
+            "reason_code": cod.reason_code,
+            "message": cod.message,
+            "max_order_value": _money(cod.max_order_value) if cod.max_order_value is not None else None,
+        },
     }

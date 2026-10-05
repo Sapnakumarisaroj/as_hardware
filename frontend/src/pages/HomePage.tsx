@@ -1,179 +1,360 @@
 import { Link } from 'react-router'
 
 import { ErrorState } from '@/components/feedback'
-import { BoltIcon, ChevronRightIcon, SearchIcon } from '@/components/icons'
+import { BoltIcon, CameraIcon, ChevronRightIcon, PinIcon, SparkIcon } from '@/components/icons'
 import { useAuth } from '@/features/auth/context'
-import { useCategories } from '@/features/catalog/api'
-import { ProductRail } from '@/features/catalog/components/ProductCollections'
-import type { Category } from '@/features/catalog/types'
+import { useCategories, useCollections, useProducts } from '@/features/catalog/api'
+import { ProductRail, ProductStrip } from '@/features/catalog/components/ProductCollections'
+import { useRecentlyViewed } from '@/features/catalog/recentlyViewed'
+import type { Category, Collection, ProductSummary } from '@/features/catalog/types'
+import { useServiceability } from '@/features/delivery/api'
+import { isValidPincode, usePincode } from '@/features/delivery/location'
+import { LocationSelector } from '@/features/location/LocationSelector'
 import { LiveOffersStrip } from '@/features/offers/components'
+import { SearchBar } from '@/features/search/SearchBar'
 import { useWishlist } from '@/features/wishlist/api'
 import { env } from '@/lib/env'
 import { pluralize } from '@/lib/format'
 import { usePageMeta } from '@/lib/usePageMeta'
 
-const CATEGORY_ACCENTS = ['bg-amber-100', 'bg-steel-100', 'bg-white', 'bg-amber-100', 'bg-steel-100', 'bg-white']
+/*
+ * The storefront home (Phase 16). Every section comes from the API and is left out when it has
+ * nothing to show: departments and their rails are the shop's categories, curated lists are the shop's
+ * collections (in the shop's order and with its names), delivery messages are the Phase 9 engine's for
+ * the chosen PIN. No product, category or number is written into this page.
+ */
 
-function Hero() {
+/** 1. Deliver to — the PIN and what the delivery engine says about it right now. */
+function DeliverToBar() {
+  const pincode = usePincode()
+  const check = useServiceability(pincode)
+  let message = 'Choose your PIN code to see delivery times, fees and fast delivery near you.'
+  let tone = 'text-steel-200'
+  if (isValidPincode(pincode)) {
+    if (check.isPending) message = `Checking delivery to ${pincode}…`
+    else if (check.isError) message = 'Couldn’t check delivery right now. The time is confirmed at checkout.'
+    else if (check.data) {
+      message = check.data.message
+      tone = check.data.serviceable ? 'text-white' : 'text-amber-500'
+    }
+  }
   return (
-    <section className="bg-ink-900 text-white">
-      <div className="container-page grid items-center gap-8 py-10 md:grid-cols-[1.3fr_1fr] md:py-14">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-widest text-amber-500">
-            Electrical · Plumbing · Tools · Construction · Safety
-          </p>
-          <h1 className="mt-3 text-3xl font-extrabold leading-tight sm:text-5xl">
-            The right part for the job, from stores near you.
-          </h1>
-          <p className="mt-4 max-w-xl text-base text-steel-200 sm:text-lg">
-            Browse by category or search by size, brand or specification. Every price and stock status comes
-            straight from our stores.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link to="/products" className="btn-primary px-5 py-3 text-base">
-              Shop all products
-            </Link>
-            <a href="#categories" className="btn-secondary px-5 py-3 text-base">
-              Browse categories
-            </a>
-          </div>
+    <section aria-label="Delivery location" className="border-b border-ink-700 bg-ink-800 text-white">
+      <div className="container-page flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-sm">
+        <div className="md:hidden">
+          <LocationSelector />
         </div>
-        <div className="rounded-xl bg-ink-800 p-5 ring-1 ring-ink-600">
-          <p className="flex items-center gap-2 font-semibold">
-            <SearchIcon className="size-5 text-amber-500" />
-            Try searching for
-          </p>
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {['impact drill', '1.5 sq mm wire', 'PVC pipe', 'water tap', 'safety gloves', 'MCB'].map((term) => (
-              <li key={term}>
-                <Link
-                  to={`/search?q=${encodeURIComponent(term)}`}
-                  className="inline-block rounded-full bg-ink-900 px-3 py-1.5 text-sm text-steel-200 ring-1 ring-ink-600 hover:text-amber-500"
-                >
-                  {term}
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-4 flex items-start gap-2 text-sm text-steel-200">
-            <BoltIcon className="mt-0.5 size-4 shrink-0 text-amber-500" />
-            Items stocked at a store with fast delivery are marked. Delivery time is confirmed for your address at
-            checkout.
-          </p>
-        </div>
+        <p className={`flex items-center gap-1.5 ${tone}`} role="status" data-testid="deliver-to-message">
+          <PinIcon className="hidden size-4 shrink-0 text-amber-500 md:block" />
+          {message}
+        </p>
       </div>
     </section>
   )
 }
 
-function CategoryTile({ category, index }: { category: Category; index: number }) {
+/** 2. Search + AI search + photo search. */
+function SearchHero() {
   return (
-    <li className={`rounded-lg p-4 ring-1 ring-steel-200 ${CATEGORY_ACCENTS[index % CATEGORY_ACCENTS.length]}`}>
-      <Link to={`/c/${category.slug}`} className="group flex items-center justify-between">
-        <span>
-          <span className="block text-base font-bold text-ink-950 group-hover:text-amber-600">{category.name}</span>
-          {category.product_count !== null && (
-            <span className="text-xs text-ink-600">{pluralize(category.product_count, 'product')}</span>
-          )}
-        </span>
-        <ChevronRightIcon className="size-5 text-ink-600" />
-      </Link>
-      {category.children.length > 0 && (
-        <ul className="mt-3 flex flex-wrap gap-1.5">
-          {category.children.slice(0, 5).map((child) => (
-            <li key={child.id}>
-              <Link
-                to={`/c/${child.slug}`}
-                className="inline-block rounded-full bg-white px-2.5 py-1 text-xs text-ink-800 ring-1 ring-steel-200 hover:text-amber-600"
-              >
-                {child.name}
-              </Link>
-            </li>
-          ))}
+    <section className="bg-ink-900 text-white">
+      <div className="container-page py-8 md:py-12">
+        <h1 className="max-w-3xl text-2xl font-extrabold leading-tight sm:text-4xl">
+          Building, wiring, plumbing or fixing? Find the right material and get it delivered.
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm text-steel-200 sm:text-base">
+          Search by name, size, grade or job. Prices, stock and delivery times come straight from our stores.
+        </p>
+        <div className="mt-5 max-w-2xl">
+          <SearchBar />
+        </div>
+        <ul className="mt-4 flex flex-wrap gap-2 text-sm" aria-label="Other ways to find products">
+          <li>
+            <Link
+              to="/ai-assistant"
+              className="inline-flex items-center gap-1.5 rounded-full bg-ink-800 px-3 py-1.5 ring-1 ring-ink-600 hover:text-amber-500"
+            >
+              <SparkIcon className="size-4 text-amber-500" />
+              Ask the AI assistant
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/image-search"
+              className="inline-flex items-center gap-1.5 rounded-full bg-ink-800 px-3 py-1.5 ring-1 ring-ink-600 hover:text-amber-500"
+            >
+              <CameraIcon className="size-4 text-amber-500" />
+              Search with a photo
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/brands"
+              className="inline-flex items-center gap-1.5 rounded-full bg-ink-800 px-3 py-1.5 ring-1 ring-ink-600 hover:text-amber-500"
+            >
+              Shop by brand
+            </Link>
+          </li>
         </ul>
-      )}
-    </li>
-  )
-}
-
-function PopularCategories() {
-  const categories = useCategories()
-  return (
-    <section id="categories" aria-labelledby="categories-heading" className="scroll-mt-32 py-6">
-      <h2 id="categories-heading" className="mb-4 text-xl font-bold text-ink-950">
-        Shop by category
-      </h2>
-      {categories.isPending ? (
-        <ul aria-label="Loading categories" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }, (_, i) => (
-            <li key={i} className="h-28 animate-pulse rounded-lg bg-white ring-1 ring-steel-200" />
-          ))}
-        </ul>
-      ) : categories.isError ? (
-        <ErrorState error={categories.error} onRetry={() => categories.refetch()} title="Couldn’t load categories" />
-      ) : (
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[...categories.data]
-            .sort((a, b) => (b.product_count ?? 0) - (a.product_count ?? 0))
-            .map((category, index) => (
-              <CategoryTile key={category.id} category={category} index={index} />
-            ))}
-        </ul>
-      )}
+      </div>
     </section>
   )
 }
 
-/** "Based on your wishlist": more from the subcategory of the latest saved item. */
-function RecommendedForYou() {
+function departmentsWithProducts(categories: Category[] | undefined): Category[] {
+  return (categories ?? []).filter((c) => (c.product_count ?? 0) > 0)
+}
+
+/** 3. Main categories — the shop's departments with their categories. */
+function Departments() {
+  const categories = useCategories()
+  if (categories.isError) {
+    return <ErrorState error={categories.error} onRetry={() => categories.refetch()} title="Couldn’t load categories" />
+  }
+  if (categories.isPending) {
+    return (
+      <ul aria-label="Loading categories" className="grid grid-cols-2 gap-3 py-6 sm:grid-cols-3 lg:grid-cols-6">
+        {Array.from({ length: 6 }, (_, i) => (
+          <li key={i} className="h-24 animate-pulse rounded-lg bg-white ring-1 ring-steel-200" />
+        ))}
+      </ul>
+    )
+  }
+  const departments = departmentsWithProducts(categories.data)
+  if (!departments.length) return null
+  return (
+    <section id="categories" aria-labelledby="departments-heading" className="scroll-mt-32 py-6">
+      <h2 id="departments-heading" className="mb-4 text-xl font-bold text-ink-950">
+        Shop by department
+      </h2>
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        {departments.map((department) => (
+          <li key={department.id} className="flex">
+            <Link
+              to={`/c/${department.slug}`}
+              className="group flex w-full flex-col rounded-lg bg-white p-3 ring-1 ring-steel-200 hover:ring-amber-500 focus-visible:ring-amber-500"
+            >
+              {department.image ? (
+                <img src={department.image} alt="" loading="lazy" className="mb-2 aspect-[4/3] w-full rounded object-cover" />
+              ) : (
+                <span aria-hidden className="mb-2 grid aspect-[4/3] w-full place-items-center rounded bg-steel-100 text-2xl font-extrabold text-ink-600">
+                  {department.name.charAt(0)}
+                </span>
+              )}
+              <span className="font-bold text-ink-950 group-hover:text-amber-600">{department.name}</span>
+              <span className="text-xs text-ink-600">{pluralize(department.product_count ?? 0, 'product')}</span>
+              {department.children.length > 0 && (
+                <span className="mt-1 line-clamp-2 text-xs text-ink-600">
+                  {department.children
+                    .filter((c) => (c.product_count ?? 0) > 0)
+                    .map((c) => c.name)
+                    .join(' · ')}
+                </span>
+              )}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/** 4. Fast delivery — only for a PIN the engine can deliver fast to right now. */
+function FastDeliveryRail() {
+  const pincode = usePincode()
+  const check = useServiceability(pincode)
+  const fast = isValidPincode(pincode) && check.data?.fast_delivery_available
+  return (
+    <ProductRail
+      title="Fast delivery to you"
+      subtitle={fast ? `${check.data?.label} to ${pincode} · from stores near you` : undefined}
+      icon={<BoltIcon className="size-5 text-amber-500" />}
+      params={{ fast_delivery: 'true', ordering: 'popular' }}
+      viewAllHref="/products?fast_delivery=true"
+      enabled={Boolean(fast)}
+    />
+  )
+}
+
+const RULE_LINKS: Partial<Record<Collection['rule'], string>> = {
+  best_sellers: '/products?ordering=popular',
+  new_launches: '/products?ordering=newest',
+  bulk_pricing: '/products?bulk_pricing=true',
+}
+
+/** 5–8. The shop's curated lists (deals of the week, best sellers, new launches, essentials…), in its order. */
+function CollectionSections({ collections }: { collections: Collection[] }) {
+  return (
+    <>
+      {collections
+        .filter((collection) => collection.rule !== 'bulk_pricing')
+        .map((collection) => (
+        <ProductStrip
+          key={collection.id}
+          title={collection.name}
+          subtitle={collection.description || undefined}
+          products={collection.products}
+          viewAllHref={RULE_LINKS[collection.rule]}
+        />
+        ))}
+    </>
+  )
+}
+
+/** Lists the shop hasn't curated still appear from live data (sold units, newest, bulk prices). */
+function FallbackRails({ collections }: { collections: Collection[] }) {
+  const rules = new Set(collections.map((c) => c.rule))
+  return (
+    <>
+      {!rules.has('best_sellers') && (
+        <ProductRail title="Best sellers" params={{ bestseller: 'true', ordering: 'popular' }} viewAllHref="/products?ordering=popular" />
+      )}
+      {!rules.has('new_launches') && (
+        <ProductRail title="New arrivals" params={{ ordering: 'newest' }} viewAllHref="/products?ordering=newest" />
+      )}
+    </>
+  )
+}
+
+/** 9–12. One rail per department, named and ordered as in the catalogue. */
+function DepartmentRails() {
+  const categories = useCategories()
+  return (
+    <>
+      {departmentsWithProducts(categories.data).map((department) => (
+        <ProductRail
+          key={department.id}
+          title={department.name}
+          params={{ category: department.slug, ordering: 'popular', in_stock: 'true' }}
+          viewAllHref={`/c/${department.slug}`}
+        />
+      ))}
+    </>
+  )
+}
+
+/** 13. Bulk buying — the shop's bulk list if it has one, else every product with bulk prices. */
+function BulkBuyingRail({ collections }: { collections: Collection[] }) {
+  const own = collections.filter((c) => c.rule === 'bulk_pricing')
+  if (own.length) {
+    return (
+      <>
+        {own.map((collection) => (
+          <ProductStrip
+            key={collection.id}
+            title={collection.name}
+            subtitle={collection.description || undefined}
+            products={collection.products}
+            viewAllHref={RULE_LINKS.bulk_pricing}
+          />
+        ))}
+      </>
+    )
+  }
+  return (
+    <ProductRail
+      title="Bulk buying"
+      subtitle="Lower prices per unit when you buy more"
+      params={{ bulk_pricing: 'true' }}
+      viewAllHref="/products?bulk_pricing=true"
+    />
+  )
+}
+
+/** 15–16. The AI entry points. */
+function AiEntryPoints() {
+  const cards = [
+    {
+      to: '/ai-assistant',
+      title: 'AI hardware assistant',
+      text: 'Describe the job in English, Hindi or Hinglish and get products from our catalogue.',
+      icon: <SparkIcon className="size-6 text-amber-500" />,
+    },
+    {
+      to: `/ai-assistant?ask=${encodeURIComponent('I am planning a project. Help me list the materials I need.')}`,
+      title: 'Plan a project',
+      text: 'Tell the assistant what you are building or repairing and get a list of materials to check.',
+      icon: <ChevronRightIcon className="size-6 text-amber-500" />,
+    },
+    {
+      to: '/image-search',
+      title: 'Search with a photo',
+      text: 'Take a photo of a part and find it in our catalogue.',
+      icon: <CameraIcon className="size-6 text-amber-500" />,
+    },
+  ]
+  return (
+    <section aria-labelledby="ai-heading" className="py-6">
+      <h2 id="ai-heading" className="mb-4 text-xl font-bold text-ink-950">
+        Not sure what you need?
+      </h2>
+      <ul className="grid gap-3 sm:grid-cols-3">
+        {cards.map((card) => (
+          <li key={card.title} className="flex">
+            <Link
+              to={card.to}
+              className="flex w-full items-start gap-3 rounded-lg bg-ink-900 p-4 text-white ring-1 ring-ink-700 hover:ring-amber-500 focus-visible:ring-amber-500"
+            >
+              {card.icon}
+              <span>
+                <span className="block font-bold">{card.title}</span>
+                <span className="mt-1 block text-sm text-steel-200">{card.text}</span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/** 17. Recently viewed — slugs from this browser, products always loaded fresh. */
+function useRecentProducts() {
+  const slugs = useRecentlyViewed()
+  const query = useProducts({ slugs: slugs.join(','), page_size: String(slugs.length || 1) }, { enabled: slugs.length > 0 })
+  const bySlug = new Map((query.data?.results ?? []).map((p) => [p.slug, p]))
+  return slugs.map((slug) => bySlug.get(slug)).filter((p): p is ProductSummary => Boolean(p))
+}
+
+/** 18. Recommended — more from the category of a saved item, or of the last product viewed. */
+function RecommendedForYou({ recent }: { recent: ProductSummary[] }) {
   const { status } = useAuth()
   const wishlist = useWishlist()
-  const latest = wishlist.data?.[0]?.product
-  const basis = latest?.subcategory ?? latest?.category
-  const exclude = wishlist.data?.map((item) => item.product.slug).join(',') ?? ''
+  const saved = status === 'authenticated' ? wishlist.data?.[0]?.product : undefined
+  const fromSaved = saved?.subcategory ?? saved?.category
+  const lastViewed = recent[0]
+  const fromViewed = lastViewed?.subcategory ?? lastViewed?.category
+  const basis = fromSaved ?? fromViewed
+  const exclude = [...(wishlist.data?.map((item) => item.product.slug) ?? []), ...recent.map((p) => p.slug)].join(',')
   return (
     <ProductRail
       title="Recommended for you"
-      subtitle={basis ? `Because you saved items in ${basis.name}` : undefined}
+      subtitle={basis ? `Because you ${fromSaved ? 'saved' : 'looked at'} items in ${basis.name}` : undefined}
       params={{ category: basis?.slug ?? '', exclude, in_stock: 'true' }}
-      enabled={status === 'authenticated' && Boolean(basis)}
+      enabled={Boolean(basis)}
     />
   )
 }
 
 export function HomePage() {
-  usePageMeta(null, `${env.appName}: hardware, tools, electrical and plumbing supplies with live prices and stock.`)
+  usePageMeta(null, `${env.appName}: construction materials, hardware, electrical, plumbing and tools with live prices, stock and delivery times.`)
+  const collections = useCollections()
+  const lists = collections.data ?? []
+  const recent = useRecentProducts()
   return (
     <>
-      <Hero />
+      <DeliverToBar />
+      <SearchHero />
       <div className="container-page">
-        <PopularCategories />
+        <Departments />
+        <FastDeliveryRail />
+        {collections.isSuccess && <CollectionSections collections={lists} />}
+        {!collections.isPending && <FallbackRails collections={lists} />}
+        <DepartmentRails />
+        {!collections.isPending && <BulkBuyingRail collections={lists} />}
         <LiveOffersStrip />
-        <RecommendedForYou />
-        <ProductRail
-          title="Today’s offers"
-          subtitle="Biggest discounts on MRP right now"
-          params={{ discount: '10', ordering: 'discount', in_stock: 'true' }}
-          viewAllHref="/products?discount=10&ordering=discount"
-        />
-        <ProductRail
-          title="Best sellers"
-          params={{ bestseller: 'true', ordering: 'popular' }}
-          viewAllHref="/products?ordering=popular"
-        />
-        <ProductRail title="Featured products" params={{ featured: 'true' }} viewAllHref="/products" />
-        <ProductRail
-          title="Fast delivery"
-          subtitle="Stocked at stores with fast delivery — timing confirmed for your address at checkout"
-          icon={<BoltIcon className="size-5 text-amber-500" />}
-          params={{ fast_delivery: 'true', ordering: 'popular' }}
-          viewAllHref="/products?fast_delivery=true"
-        />
-        <ProductRail
-          title="Recently added"
-          params={{ ordering: 'newest' }}
-          viewAllHref="/products?ordering=newest"
-        />
+        <AiEntryPoints />
+        <ProductStrip title="Recently viewed" products={recent} />
+        <RecommendedForYou recent={recent} />
       </div>
     </>
   )

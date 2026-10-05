@@ -43,9 +43,9 @@ describe('product detail page', () => {
     expect(area).toHaveTextContent('Price: ₹400')
     expect(area).toHaveTextContent('You save ₹100')
     expect(screen.getByRole('radio', { name: /1\.5 sq mm × 10 m/ })).toHaveAttribute('aria-checked', 'true')
-    expect(screen.getByText('Fast delivery available from a nearby store')).toBeInTheDocument()
-    // No location yet: nothing is promised, the shopper is asked for a PIN code.
-    expect(screen.getByLabelText('Enter your PIN code to see the delivery time')).toBeInTheDocument()
+    // No location yet: nothing is promised (no fast badge), the shopper is asked for a PIN code.
+    expect(screen.queryByTestId('fast-badge')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Enter your PIN code to see delivery time, fee and fast delivery')).toBeInTheDocument()
     expect(screen.queryByText(/Estimated delivery/)).not.toBeInTheDocument()
     expect(screen.queryByText(/60 min/i)).not.toBeInTheDocument()
 
@@ -68,7 +68,7 @@ describe('product detail page', () => {
     expect(area).toHaveTextContent('MRP: ₹2,400')
     expect(area).toHaveTextContent('You save ₹501')
     expect(screen.getByText('Only 3 left')).toBeInTheDocument()
-    expect(screen.getByText('Standard delivery from our stores')).toBeInTheDocument()
+    expect(screen.queryByTestId('fast-badge')).not.toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByRole('cell', { name: '50 m' })).toBeInTheDocument()
     // The choice is kept in the URL so it can be shared/bookmarked.
     expect(currentUrl(router)).toBe('/p/fr-pvc-copper-wire?variant=202')
@@ -83,7 +83,7 @@ describe('product detail page', () => {
     const { user } = renderRoute('/p/fr-pvc-copper-wire')
     await screen.findByRole('heading', { level: 1 })
 
-    const pin = screen.getByLabelText('Enter your PIN code to see the delivery time')
+    const pin = screen.getByLabelText('Enter your PIN code to see delivery time, fee and fast delivery')
     await user.type(pin, '4110')
     await user.click(screen.getByRole('button', { name: 'Check' }))
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a valid 6-digit PIN code.')
@@ -121,7 +121,7 @@ describe('product detail page', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('We don’t deliver to PIN 411014 yet.')
     expect(screen.queryByText(/Estimated delivery/)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Change' }))
-    expect(await screen.findByLabelText('Enter your PIN code to see the delivery time')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Enter your PIN code to see delivery time, fee and fast delivery')).toBeInTheDocument()
   })
 
   it('falls back to the PIN form when the estimate cannot be loaded', async () => {

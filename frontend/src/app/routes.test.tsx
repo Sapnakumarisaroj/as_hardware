@@ -13,36 +13,81 @@ function catalogRoutes(products = [drill, tap]) {
 }
 
 describe('homepage', () => {
-  it('shows the hero, categories from the API and product sections fed by the listing API', async () => {
+  it('shows search, departments from the API and sections fed by the listing API', async () => {
     const api = mockApi({ get: catalogRoutes() })
     renderRoute('/')
 
-    expect(screen.getByRole('heading', { level: 1, name: /right part for the job/i })).toBeInTheDocument()
-    const categorySection = await screen.findByRole('region', { name: 'Shop by category' })
-    expect(await within(categorySection).findByRole('link', { name: /Electrical\s*14 products/ })).toHaveAttribute(
+    expect(screen.getByRole('heading', { level: 1, name: /find the right material/i })).toBeInTheDocument()
+    expect(screen.getByTestId('deliver-to-message')).toHaveTextContent('Choose your PIN code')
+    const departments = await screen.findByRole('region', { name: 'Shop by department' })
+    expect(await within(departments).findByRole('link', { name: /Electrical\s*14 products/ })).toHaveAttribute(
       'href',
       '/c/electrical',
     )
-    expect(within(categorySection).getByRole('link', { name: 'Wires & Cables' })).toHaveAttribute('href', '/c/wires-cables')
+    expect(within(departments).getByRole('link', { name: /Tools/ })).toHaveTextContent('Drills')
 
-    for (const title of ['Today’s offers', 'Best sellers', 'Featured products', 'Fast delivery', 'Recently added']) {
+    // Department rails are the catalogue's departments; curated-list fallbacks use live data.
+    for (const title of ['Electrical', 'Tools', 'Best sellers', 'New arrivals', 'Bulk buying']) {
       expect(await screen.findByRole('region', { name: title })).toBeInTheDocument()
     }
-    // Each section asks the backend for its own slice; nothing is filtered in the browser.
+    expect(screen.getByRole('region', { name: 'Not sure what you need?' })).toBeInTheDocument()
     const sent = paramsSent(api.get, '/products/')
-    expect(sent).toContainEqual(expect.objectContaining({ discount: '10', ordering: 'discount' }))
+    expect(sent).toContainEqual(expect.objectContaining({ category: 'electrical', ordering: 'popular' }))
     expect(sent).toContainEqual(expect.objectContaining({ bestseller: 'true', ordering: 'popular' }))
-    expect(sent).toContainEqual(expect.objectContaining({ fast_delivery: 'true' }))
-    expect(sent).toContainEqual(expect.objectContaining({ ordering: 'newest' }))
-    // "Recommended" needs a signed-in shopper with a wishlist.
+    expect(sent).toContainEqual(expect.objectContaining({ bulk_pricing: 'true' }))
+    // No PIN: no fast-delivery section and no PIN sent; no history: no recently viewed / recommended.
+    expect(sent.some((params) => 'fast_delivery' in params || 'postal_code' in params)).toBe(false)
+    expect(screen.queryByRole('region', { name: 'Fast delivery to you' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Recently viewed' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Recommended for you' })).not.toBeInTheDocument()
+  })
+
+  it('shows the shop’s curated lists with their own names and the fast rail for a fast PIN', async () => {
+    window.localStorage.setItem('boltrun.delivery-pincode', '411038')
+    const api = mockApi({
+      get: {
+        ...catalogRoutes(),
+        '/collections/': [
+          { id: 1, name: 'Deals of the week', slug: 'deals', description: 'This week', rule: 'manual', starts_at: null, ends_at: null, products: [tap] },
+          { id: 2, name: 'Bulk savings', slug: 'bulk', description: '', rule: 'bulk_pricing', starts_at: null, ends_at: null, products: [drill] },
+        ],
+        '/delivery/check/': {
+          serviceable: true, postal_code: '411038', location_precision: 'pin', fast_delivery_available: true,
+          label: 'Delivery in 18 minutes', fast_unavailable_reason: '', message: '⚡ Fast delivery available · Delivery in 18 minutes', stores: [],
+        },
+      },
+    })
+    renderRoute('/')
+    expect(await screen.findByRole('region', { name: 'Deals of the week' })).toHaveTextContent('Brass Pillar Tap')
+    expect(await screen.findByRole('region', { name: 'Bulk savings' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Bulk buying' })).not.toBeInTheDocument() // the shop's list replaces it
+    expect(await screen.findByTestId('deliver-to-message')).toHaveTextContent('Delivery in 18 minutes')
+    expect(await screen.findByRole('region', { name: 'Fast delivery to you' })).toHaveTextContent('Delivery in 18 minutes to 411038')
+    expect(paramsSent(api.get, '/products/')).toContainEqual(
+      expect.objectContaining({ fast_delivery: 'true', postal_code: '411038' }),
+    )
+    expect(paramsSent(api.get, '/collections/')).toContainEqual({ postal_code: '411038' })
+  })
+
+  it('shows recently viewed products, in viewing order, and recommends from them', async () => {
+    window.localStorage.setItem('boltrun.recently-viewed', JSON.stringify(['brass-pillar-tap', 'impact-drill-650w']))
+    const api = mockApi({ get: catalogRoutes() })
+    renderRoute('/')
+    const recent = await screen.findByRole('region', { name: 'Recently viewed' })
+    const names = within(recent).getAllByRole('article').map((card) => within(card).getByRole('heading').textContent)
+    expect(names).toEqual(['Brass Pillar Tap', 'Impact Drill 650W'])
+    expect(paramsSent(api.get, '/products/')).toContainEqual(
+      expect.objectContaining({ slugs: 'brass-pillar-tap,impact-drill-650w' }),
+    )
+    expect(await screen.findByRole('region', { name: 'Recommended for you' })).toBeInTheDocument()
   })
 
   it('hides product sections that have no products instead of padding them', async () => {
     mockApi({ get: catalogRoutes([]) })
     renderRoute('/')
-    await screen.findByRole('region', { name: 'Shop by category' })
+    await screen.findByRole('region', { name: 'Shop by department' })
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Best sellers' })).not.toBeInTheDocument())
+    expect(screen.queryByRole('region', { name: 'Electrical' })).not.toBeInTheDocument()
   })
 
   it('shows an error with retry when categories cannot load', async () => {

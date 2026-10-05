@@ -42,7 +42,7 @@ describe('search', () => {
 
     // Keyboard: arrow down to the product and press Enter to jump straight to it.
     await user.keyboard('{ArrowDown}{ArrowDown}{Enter}')
-    expect(currentUrl(router)).toBe('/p/impact-drill-650w')
+    await waitFor(() => expect(currentUrl(router)).toBe('/p/impact-drill-650w')) // the page loads on demand
   })
 
   it('submitting runs a backend search with a result count and relevance sort', async () => {
@@ -50,7 +50,7 @@ describe('search', () => {
     const { user, router } = renderRoute('/')
     await user.type(searchBox(), 'bosch drill{Enter}')
 
-    expect(currentUrl(router)).toBe('/search?q=bosch%20drill')
+    await waitFor(() => expect(currentUrl(router)).toBe('/search?q=bosch%20drill'))
     expect(await screen.findByRole('heading', { level: 1, name: 'Results for “bosch drill”' })).toBeInTheDocument()
     expect(await screen.findByText('1 product')).toBeInTheDocument()
     expect(paramsSent(api.get, '/products/').at(-1)).toMatchObject({ q: 'bosch drill' })

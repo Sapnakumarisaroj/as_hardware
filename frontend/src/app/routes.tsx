@@ -1,11 +1,8 @@
 import type { RouteObject } from 'react-router'
 
-import { CategoryPage } from '@/pages/CategoryPage'
 import { HomePage } from '@/pages/HomePage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
-import { ProductDetailPage } from '@/pages/ProductDetailPage'
 import { RouteErrorPage } from '@/pages/RouteErrorPage'
-import { SearchPage } from '@/pages/SearchPage'
 
 import { AppProviders } from './AppProviders'
 import { CustomerLayout } from './layouts/CustomerLayout'
@@ -24,9 +21,12 @@ const customers = () => import('@/pages/admin/CustomerPages')
 const returns = () => import('@/pages/admin/ReturnRefundPages')
 const support = () => import('@/pages/admin/SupportPages')
 const commerce = () => import('@/pages/admin/CommercePages')
+const brands = () => import('@/pages/BrandPages')
+// Listing and product pages are split from the home page bundle (Phase 16); each loads on first visit.
+const search = () => import('@/pages/SearchPage')
 
 /**
- * Route table. Readable slug URLs: /c/<category-slug>, /p/<product-slug>.
+ * Route table. Readable slug URLs: /c/<category-slug>, /p/<product-slug>, /brand/<brand-slug>.
  * /rider/* is the delivery partner app, /admin/* the business dashboard.
  */
 export const routes: RouteObject[] = [
@@ -38,10 +38,24 @@ export const routes: RouteObject[] = [
         errorElement: <RouteErrorPage />,
         children: [
           { index: true, element: <HomePage /> },
-          { path: 'products', element: <SearchPage mode="all" /> },
-          { path: 'search', element: <SearchPage mode="search" /> },
-          { path: 'c/:slug', element: <CategoryPage /> },
-          { path: 'p/:slug', element: <ProductDetailPage /> },
+          {
+            path: 'products',
+            lazy: async () => {
+              const { SearchPage } = await search()
+              return { Component: () => <SearchPage mode="all" /> }
+            },
+          },
+          {
+            path: 'search',
+            lazy: async () => {
+              const { SearchPage } = await search()
+              return { Component: () => <SearchPage mode="search" /> }
+            },
+          },
+          { path: 'c/:slug', lazy: async () => ({ Component: (await import('@/pages/CategoryPage')).CategoryPage }) },
+          { path: 'p/:slug', lazy: async () => ({ Component: (await import('@/pages/ProductDetailPage')).ProductDetailPage }) },
+          { path: 'brands', lazy: async () => ({ Component: (await brands()).BrandsPage }) },
+          { path: 'brand/:slug', lazy: async () => ({ Component: (await brands()).BrandPage }) },
           { path: 'cart', lazy: async () => ({ Component: (await import('@/pages/CartPage')).CartPage }) },
           { path: 'checkout', lazy: async () => ({ Component: (await import('@/pages/CheckoutPage')).CheckoutPage }) },
           { path: 'orders/:number/pay', lazy: async () => ({ Component: (await import('@/pages/PaymentPage')).PaymentPage }) },

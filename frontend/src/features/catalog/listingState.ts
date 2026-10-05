@@ -14,6 +14,8 @@ export const FILTER_KEYS = [
   'discount',
   'availability',
   'fast_delivery',
+  'bulk_pricing',
+  'interpret',
 ] as const
 export const PAGE_SIZE = 24
 
@@ -29,7 +31,12 @@ export const SORT_OPTIONS: { value: string; label: string; searchOnly?: boolean 
 ]
 
 function isListingKey(key: string) {
-  return (FILTER_KEYS as readonly string[]).includes(key) || key.startsWith('spec_') || key === 'ordering'
+  return (
+    (FILTER_KEYS as readonly string[]).includes(key) ||
+    key.startsWith('spec_') ||
+    key.startsWith('opt_') ||
+    key === 'ordering'
+  )
 }
 
 export function csv(value: string | null | undefined): string[] {

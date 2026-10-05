@@ -644,11 +644,11 @@ LAUNCHES = {"CEM-PPC-50": 3}
 # Curated lists: (name, rule, description, days valid or None, [first-variant sku suffixes for manual lists])
 COLLECTIONS = [
     ("Demo: Deals of the week", "manual", "Demo list: this week's picks.", 7, ["CEM-OPC53", "WIRE-1.5", "CEM-PPC-50"]),
+    ("Demo: Best sellers", "best_sellers", "Demo list: most units sold in the last 30 days.", None, []),
+    ("Demo: New launches", "new_launches", "Demo list: launched in the last 60 days.", None, []),
     ("Demo: Construction essentials", "manual", "Demo list: basics for a site.", None,
      ["CEM-PPC-50", "TILEADH-20", "WOODADH-1"]),
     ("Demo: Bulk buying", "bulk_pricing", "Demo list: products with bulk prices.", None, []),
-    ("Demo: New launches", "new_launches", "Demo list: launched in the last 60 days.", None, []),
-    ("Demo: Best sellers", "best_sellers", "Demo list: most units sold in the last 30 days.", None, []),
 ]  # fmt: skip
 
 # Free-delivery rules: (name, threshold, category slugs)
@@ -685,3 +685,72 @@ OFFERS_PHASE15 = [
         "categories": ["led-lighting"],
     },
 ]
+
+
+# --- Phase 16 demo product-page content and accessories --------------------------------------------------
+# General product guidance for the demo catalogue (no ratings, counts or claims about sales).
+
+# first-variant sku suffix → {quick_answer, uses, installation_steps, faqs}
+PRODUCT_PAGE_CONTENT = {
+    "CEM-OPC53": {
+        "quick_answer": "High-strength cement for RCC work: slabs, beams and columns.",
+        "uses": "RCC slabs, beams and columns\nPrecast blocks and pavers\nWork that needs early strength",
+        "installation_steps": (
+            "Store bags off the floor, away from moisture\n"
+            "Mix with sand and aggregate in the ratio your engineer specifies\n"
+            "Add clean water gradually and mix until uniform\n"
+            "Place the mix before it starts to set\n"
+            "Keep the concrete wet (cure) for at least 7 days"
+        ),
+        "faqs": [
+            {
+                "question": "Is 53 grade cement good for plastering?",
+                "answer": "It can be used, but PPC is usually preferred for plastering because it sets more "
+                "slowly and gives fewer shrinkage cracks.",
+            },
+            {
+                "question": "How many bags do I need?",
+                "answer": "It depends on the area, thickness and mix. Ask the AI assistant or your engineer for an "
+                "estimate before ordering.",
+            },
+        ],
+    },
+    "DRILL-650": {
+        "quick_answer": "Corded impact drill for holes in brick, concrete, wood and metal.",
+        "uses": "Drilling brick and concrete walls (impact mode)\nWood and metal (normal mode)\nFixing wall plugs",
+        "installation_steps": (
+            "Choose the right bit: masonry for walls, HSS for metal\n"
+            "Mark the spot and wear safety glasses\n"
+            "Switch impact mode on only for brick and concrete\n"
+            "Start slowly, then increase speed while keeping the drill straight"
+        ),
+        "faqs": [
+            {
+                "question": "Can it drill into concrete?",
+                "answer": "Yes, with a masonry bit and impact mode switched on.",
+            }
+        ],
+    },
+    "TAP-PILLAR": {
+        "quick_answer": "Brass pillar tap for wash basins.",
+        "uses": "Wash basins\nKitchen and utility sinks with a deck hole",
+        "installation_steps": (
+            "Turn off the water supply\n"
+            "Wrap PTFE tape on the inlet thread\n"
+            "Fix the tap through the basin hole and tighten the back nut\n"
+            "Connect the supply pipe and check for leaks"
+        ),
+        "faqs": [],
+    },
+}
+
+# first-variant sku suffix → [(accessory first-variant sku suffix, note)]
+ACCESSORIES = {
+    "DRILL-650": [
+        ("BIT-MAS-5", "For brick and concrete"),
+        ("BIT-HSS-13", "For metal"),
+        ("PLUG-6-100", "To fix screws in walls"),
+    ],
+    "DRILL-12V": [("BIT-HSS-13", "For metal and wood"), ("PLUG-6-100", "To fix screws in walls")],
+    "TAP-PILLAR": [("PTFE-5", "Seals the inlet thread")],
+}

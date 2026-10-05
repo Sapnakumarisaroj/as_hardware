@@ -14,7 +14,8 @@ export function isValidPincode(value: string): boolean {
 
 export function readPincode(): string {
   try {
-    return window.localStorage.getItem(KEY) ?? memory
+    // Storage works: it is the truth (cleared storage = no PIN). `memory` only covers private mode.
+    return window.localStorage.getItem(KEY) ?? ''
   } catch {
     return memory
   }

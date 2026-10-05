@@ -41,7 +41,7 @@ semantic, image and voice search, Project Builder, quantity, compatibility, smar
 | Free delivery (5, 9) | Global `FREE_DELIVERY_MIN_ORDER` + per-zone `free_delivery_min_order`; checkout returns `amount_to_free_delivery` | No date-bound rules, no product/category eligibility | 15 |
 | Cash on delivery (5, 8, 10) | COD is a first-class method; cash collected by the rider, handover, manual COD refunds | No COD eligibility rules or order-value limit (decided: ₹10,000 maximum, admin-configurable, no exclusions initially) | 15 |
 | Loyalty (—) | `Payment.Method.WALLET` enum value only | No ledger, rules or wallet | 17 |
-| Fast delivery (9) | Zone cutoff, ETA engine, fast-store stock filter, PIN check in the header | Listing/card fast badge is based on stock at fast stores, not on the selected PIN | 16 |
+| Fast delivery (9) | Zone cutoff, ETA engine, fast-store stock filter, PIN check in the header | Listing/card fast badge is based on stock at fast stores, not on the selected PIN | 16 ✅ (badge and filter only for the chosen PIN) |
 | Product card / page (4, 6, 9) | Image, name, brand, rating, MRP/price/discount, offer badge, stock, delivery estimate, specs, reviews, related | Bulk table/indicator, options count, quantity stepper on card, free-delivery message, payment options, GST note, return-policy text, accessories, Buy Now | 16 |
 | Homepage (4, 6) | Hero, categories, offers, best sellers, featured, fast delivery, recently added, recommended; empty sections hidden | Deals of the week, department rails, bulk buying, AI entry points, recently viewed | 16 |
 | Search (4, 13) | Hybrid keyword + related words + embeddings, Hindi/Hinglish, spec filters | Query words that mean a spec or a use ("for plastering", "53 grade", "50 kg") are not turned into filters | 16 |
@@ -118,3 +118,30 @@ The AI never prices anything itself. It calls the same cart, checkout-preview an
   formula, picks real products via Phase 13/16 search, then reads tier, offers and delivery from the server.
 - Smart Cart (Phase 22) reads `next_tier`, `offers.missed`, `amount_to_free_delivery` and compatibility results from
   the server; it adds nothing the customer did not accept.
+
+## Parity checklist (after Phase 16, 2026-10-05)
+Tested = automated tests (backend/frontend) and the live HTTP checks of Phase 16 (TASKS.md). ⏳ = later phase.
+
+| Feature (benchmark) | Status | How it's done here |
+|---|---|---|
+| Delivery to my PIN / location, shown in the header | ✅ tested | PIN selector + live engine answer; delivery bar on the home page |
+| Fast-delivery promise only where it's true | ✅ tested | Badge/filter only for the chosen PIN, from the Phase 9 engine; never a fixed "60 minutes" |
+| Calculated ETA, standard fallback with a window | ✅ tested | "⚡ Delivery in 14 minutes" or "Tomorrow, 10:30 AM – 12:30 PM" with the reason fast isn't possible |
+| Delivery slot choice | ⏳ | The engine has no bookable slots yet (one answer per address) |
+| Departments › categories › subcategories | ✅ tested | Three levels from the database, landing pages with tiles and counts |
+| Search by name, size, grade, use; Hindi/Hinglish | ✅ tested | Hybrid search (13) + understood filters (16) |
+| Search with a photo | ✅ (14) | `/image-search`, camera button in the search bar |
+| Deals of the week, best sellers, new launches, essentials | ✅ tested | Curated lists (15) on the home page in the shop's order |
+| Bulk / quantity prices with live price per quantity | ✅ tested | Server quote "Quantity 10 → ₹415/unit", next tier, cart charges the same |
+| Product options (grade, bag size, size, length…) | ✅ tested | Option picker, option filters |
+| Offers incl. quantity, first order, festival, free delivery | ✅ tested | Badges and conditions on cards and product page; applied in the cart |
+| Free-delivery threshold and "Add ₹X more" | ✅ tested | Product page (for the PIN and quantity), cart, checkout |
+| Pay on delivery with limit and reason | ✅ tested | Product page payment block, checkout |
+| Product page trust info (MRP, GST, returns, stock, specs) | ✅ tested | All from the API |
+| Uses, installation steps, FAQ, accessories | ✅ tested | Shop-written content, accessories linked in the dashboard |
+| Buy now, wishlist, sticky add on phones | ✅ tested | |
+| Brand pages | ✅ tested | `/brands`, `/brand/:slug` |
+| Recently viewed, recommendations | ✅ tested | Browser history + wishlist/last viewed category |
+| Cashback / wallet / referral | ⏳ 17 | |
+| Voice shopping | ⏳ 18 | |
+| Project builder, quantity estimates, compatibility, smart cart | ⏳ 19–22 | Entry point links to the assistant today |

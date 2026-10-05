@@ -282,6 +282,13 @@ Options -Indexes
 - Webhook URLs to register later: `https://api.yourdomain.com/api/payments/webhooks/razorpay/`,
   `https://api.yourdomain.com/api/support/webhooks/whatsapp/`.
 
+### Sitemap and robots (Phase 16)
+- The API serves the sitemap at `https://api.yourdomain.com/api/seo/sitemap.xml` with absolute URLs on `FRONTEND_URL`
+  (set `FRONTEND_URL=https://yourdomain.com`). Make it available as `https://yourdomain.com/sitemap.xml` with a
+  rewrite in `public_html/.htaccess` (`RewriteRule ^sitemap\.xml$ https://api.yourdomain.com/api/seo/sitemap.xml [P,L]`
+  where proxying is allowed, otherwise `[R=302,L]`), and add `Sitemap: https://yourdomain.com/sitemap.xml` to
+  `public_html/robots.txt`. Submit it in Google Search Console (free).
+
 ## 10. HTTPS / SSL
 
 - Enable **AutoSSL / Let's Encrypt** in the panel for `yourdomain.com`, `www.yourdomain.com` and `api.yourdomain.com`

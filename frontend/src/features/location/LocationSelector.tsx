@@ -15,7 +15,15 @@ export function LocationSelector({ tone = 'dark' }: { tone?: 'dark' | 'light' })
   const [error, setError] = useState('')
   const panelId = useId()
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const check = useServiceability(open ? pincode : '')
+  // Cached for a minute and shared with the homepage, so showing it in the header costs nothing extra.
+  const check = useServiceability(pincode)
+  const summary = !pincode || !check.data
+    ? ''
+    : !check.data.serviceable
+      ? 'Not delivering here yet'
+      : check.data.fast_delivery_available
+        ? `⚡ ${check.data.label}`
+        : check.data.label
 
   useEffect(() => {
     if (!open) return
@@ -61,6 +69,11 @@ export function LocationSelector({ tone = 'dark' }: { tone?: 'dark' | 'light' })
         <span>
           <span className="block opacity-80">Deliver to</span>
           <span className="block font-semibold">{pincode || 'Select location'}</span>
+          {summary && (
+            <span className="block max-w-36 truncate text-[11px] opacity-80" data-testid="pin-summary">
+              {summary}
+            </span>
+          )}
         </span>
         <ChevronDownIcon className="size-3.5" />
       </button>

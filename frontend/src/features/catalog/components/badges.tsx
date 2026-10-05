@@ -57,11 +57,16 @@ export function StockLabel({ status, lowQuantity }: { status: StockStatus; lowQu
   return <span className="text-sm font-semibold text-success-600">In stock</span>
 }
 
-export function FastDeliveryBadge() {
+/** Only rendered when the server said fast delivery is possible to the shopper's PIN (Phase 16). */
+export function FastDeliveryBadge({ pincode }: { pincode?: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-ink-900">
+    <span
+      className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-ink-900"
+      data-testid="fast-badge"
+    >
       <BoltIcon className="size-3.5 text-amber-600" />
       Fast delivery
+      {pincode && <span className="sr-only"> to {pincode}</span>}
     </span>
   )
 }

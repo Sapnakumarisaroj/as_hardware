@@ -35,9 +35,29 @@ export interface ProductSummary {
   offer: ProductOffer | null
   /** Bulk (quantity) prices exist for this product: from how many units, and the lowest unit price. */
   bulk_pricing?: BulkPricingSummary | null
+  /** Phase 16, only when a PIN was sent (`postal_code`): can a store serving it supply this, and fast? */
+  delivery?: ProductDelivery | null
+  /** A live free-delivery rule aimed at this product or its category. */
+  free_delivery?: { name: string; threshold: string } | null
   /** Search results only: why this product is here when the words alone do not explain it. */
   match_reason?: string
   match_type?: 'keyword' | 'related' | 'semantic'
+}
+
+export interface ProductDelivery {
+  postal_code: string
+  deliverable: boolean
+  fast: boolean
+}
+
+/** `delivery_context` of a listing with a PIN: what the Phase 9 engine says for that PIN right now. */
+export interface DeliveryContext {
+  postal_code: string
+  serviceable: boolean
+  fast_delivery_available: boolean
+  label: string
+  message: string
+  fast_unavailable_reason: string
 }
 
 export interface ProductOffer {
@@ -131,6 +151,14 @@ export interface ProductDetail extends ProductSummary {
   options?: ProductOption[]
   /** From the department down to the product's most specific category. */
   breadcrumb?: NamedRef[]
+  /** Phase 16 product-page content written by the shop; empty when not filled in. */
+  quick_answer?: string
+  uses?: string[]
+  installation_steps?: string[]
+  faqs?: { question: string; answer: string }[]
+  return_policy?: { returnable: boolean; window_days: number | null; text: string }
+  /** Accessories linked by the shop (published products only), with why they go together. */
+  accessories?: (ProductSummary & { relation_note: string })[]
 }
 
 /** GET /products/{slug}/quote/: what a quantity costs, from the shop's pricing engine (preview). */
@@ -155,6 +183,11 @@ export interface PriceQuote {
   stock_status: StockStatus
   within_stock: boolean
   max_order_quantity: number
+  /** Can this amount be paid on delivery (same rules as checkout; checkout decides again). */
+  payment_options?: {
+    online: boolean
+    cod: { available: boolean; reason_code: string; message: string; max_order_value: string | null }
+  }
   note: string
 }
 
@@ -183,7 +216,10 @@ export interface ProductPage extends Paginated<ProductSummary> {
     /** `hybrid` when related words / meaning were used; absent for plain keyword search. */
     mode?: 'hybrid'
     related_terms?: string[]
+    /** Filters the search words named ("53 grade cement" → Cement, Grade 53), already applied. */
+    interpreted?: { param: string; value: string; label: string }[]
   }
+  delivery_context?: DeliveryContext
 }
 
 export interface SubCategory {
@@ -214,6 +250,8 @@ export interface Brand {
   slug: string
   logo: string | null
   description: string
+  /** Products customers can see. */
+  product_count?: number | null
 }
 
 export interface FacetOption {
