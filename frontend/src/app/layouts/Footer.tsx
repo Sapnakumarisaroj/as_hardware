@@ -104,6 +104,16 @@ export function Footer() {
               </Link>
             </li>
             <li>
+              <Link to="/bundles" className="hover:text-amber-500">
+                Kits and bundles
+              </Link>
+            </li>
+            <li>
+              <Link to="/budget" className="hover:text-amber-500">
+                Shop within a budget
+              </Link>
+            </li>
+            <li>
               <Link to="/account/returns" className="hover:text-amber-500">
                 Returns
               </Link>

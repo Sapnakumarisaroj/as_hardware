@@ -263,6 +263,14 @@ suggestion, how the amount was worked out). `ai_project.inputs` holds `{descript
 from_description, custom_title}`. Prices are never stored: the kit is priced again on every read. `quantity` on an item
 is the number of packs to buy.
 
+**Shopping (Phase 22)**, migration `shopping.0001_initial`: `shopping_bundle` (name, unique slug, kind diy_repair /
+plumbing / electrical / painting / drilling / tiling / construction / custom, description, promo_label, is_active,
+starts_at, ends_at, priority, created_by; index (is_active, priority)), `shopping_bundleitem` (bundle, product, optional
+variant, quantity 1–999, note, is_optional, sort_order; unique (bundle, product)) and `shopping_recommendationrule`
+(source_category, target_category, label, priority, is_active; unique pair, check source ≠ target). Bundles store
+products, never prices: a bundle is priced on every read. "Frequently bought together" is computed from order items
+(cached 10 minutes), not stored.
+
 **Compatibility (Phase 21)**, migration `catalog.0006_relation_kinds` (choices only): `catalog_productrelation.kind`
 gains `compatible`, `required`, `alternative`, `incompatible` next to Phase 16's `accessory`. A product is linked to
 another once (one kind); saving the links replaces them in one transaction with the product row locked, and the audit

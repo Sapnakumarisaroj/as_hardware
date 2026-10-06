@@ -79,6 +79,20 @@ class CompatibilityService:
                 raise CompatibilityError("Choose one of this product's variants.", code="invalid_variant")
         return product, variant
 
+    @staticmethod
+    def load_many(product_ids) -> dict:
+        """Published products with everything a check reads, in one go (one product checked against many)."""
+        return {p.pk: p for p in _products().filter(pk__in=list(product_ids))}
+
+    @staticmethod
+    def links_between(product_id: int, other_ids) -> dict:
+        """The shop's links between one product and several others, keyed (product_id, related_id), for `check`."""
+        other_ids = list(other_ids)
+        rows = ProductRelation.objects.filter(
+            Q(product_id=product_id, related_id__in=other_ids) | Q(product_id__in=other_ids, related_id=product_id)
+        )
+        return {(r.product_id, r.related_id): r for r in rows}
+
     # --- One pair ------------------------------------------------------------------------------------------
 
     def check_ids(
@@ -90,12 +104,14 @@ class CompatibilityService:
         b, vb = self.load(product_b, variant_b)
         return self.check(a, b, va, vb)
 
-    def check(self, a, b, variant_a=None, variant_b=None) -> Result:
+    def check(self, a, b, variant_a=None, variant_b=None, relations: dict | None = None) -> Result:
+        """`relations` (from `links_between`) saves the link query when one product is checked against many."""
         pa, pb = profiles.build(a, variant_a), profiles.build(b, variant_b)
-        relations = {
-            (r.product_id, r.related_id): r
-            for r in ProductRelation.objects.filter(Q(product=a, related=b) | Q(product=b, related=a))
-        }
+        if relations is None:
+            relations = {
+                (r.product_id, r.related_id): r
+                for r in ProductRelation.objects.filter(Q(product=a, related=b) | Q(product=b, related=a))
+            }
         link = relations.get((a.pk, b.pk)) or relations.get((b.pk, a.pk))
         found = self._rule_finding(pa, pb)
         result = Result(UNKNOWN, NO_INFO, a, b, variant_a, variant_b, kinds=(pa.kind, pb.kind))
@@ -186,8 +202,10 @@ class CompatibilityService:
             )
         # products the rules confirm (published, in categories the rules pair this kind with)
         profile = profiles.build(product, variant)
-        for candidate in self._candidates(profile.kind, exclude=seen | incompatible):
-            result = self.check(product, candidate, variant, None)
+        candidates = self._candidates(profile.kind, exclude=seen | incompatible)
+        relations = self.links_between(product.pk, [c.pk for c in candidates])  # one query for all candidates
+        for candidate in candidates:
+            result = self.check(product, candidate, variant, None, relations=relations)
             if result.verdict in (COMPATIBLE, POSSIBLY) and len(groups["compatible"]) < RECOMMEND_LIMIT:
                 seen.add(candidate.pk)
                 groups["compatible"].append({"product_id": candidate.pk, "note": "", "source": "rules", "verdict": result.verdict, "reason": result.reason,
@@ -195,17 +213,17 @@ class CompatibilityService:
         groups["compatible"].sort(key=lambda row: (row["source"] != "shop", ORDER.get(row["verdict"] or COMPATIBLE, 0)))
         return {"product_id": product.pk, "kind": profile.kind, "groups": groups}
 
-    @staticmethod
-    def _candidates(kind: str | None, *, exclude: set[int]) -> list:
+    def _candidates(self, kind: str | None, *, exclude: set[int]) -> list:
         if kind is None:
             return []
         wanted = set(rules.related_kinds(kind))
         if not wanted:
             return []
-        rows = []
-        for candidate in _products().exclude(pk__in=exclude).order_by("name")[:500]:
-            if profiles.kind_of(candidate) in wanted:
-                rows.append(candidate)
+        # loaded once per service instance and kind: a kit with several problems doesn't reload the catalogue
+        pool = self.__dict__.setdefault("_candidate_pool", {})
+        if kind not in pool:
+            pool[kind] = [c for c in _products().order_by("name")[:500] if profiles.kind_of(c) in wanted]
+        rows = [c for c in pool[kind] if c.pk not in exclude]
         return rows[: CANDIDATES_PER_KIND * len(wanted)]
 
     def compatible_options(
@@ -213,10 +231,14 @@ class CompatibilityService:
     ) -> list[dict]:
         """Products of `replace_kind` that work with `anchor` ("View compatible options"), best first."""
         out = []
-        for candidate in self._candidates(profiles.kind_of(anchor), exclude={anchor.pk, *exclude}):
-            if replace_kind and profiles.kind_of(candidate) != replace_kind:
-                continue
-            result = self.check(anchor, candidate, anchor_variant, None)
+        candidates = [
+            c
+            for c in self._candidates(profiles.kind_of(anchor), exclude={anchor.pk, *exclude})
+            if not replace_kind or profiles.kind_of(c) == replace_kind
+        ]
+        relations = self.links_between(anchor.pk, [c.pk for c in candidates])  # one query for all candidates
+        for candidate in candidates:
+            result = self.check(anchor, candidate, anchor_variant, None, relations=relations)
             if result.verdict == COMPATIBLE or (result.verdict == POSSIBLY and result.matching_variants):
                 variant_id = next(
                     (m["b"] for m in result.matching_variants if m["a"] in (None, getattr(anchor_variant, "pk", None))),
@@ -248,12 +270,13 @@ class CompatibilityService:
                 pk__in=[line["variant"].pk for line in lines if line.get("variant")]
             ).prefetch_related("option_values__option_type", "option_values__value")
         }
+        # every link between the lines, loaded once for all pairs
+        links = {
+            (r.product_id, r.related_id): r
+            for r in ProductRelation.objects.filter(product_id__in=product_ids, related_id__in=product_ids)
+        }
         # without a rule, only an "incompatible" link is worth a warning ("goes with" isn't a fit claim)
-        marked = set(
-            ProductRelation.objects.filter(
-                product_id__in=product_ids, related_id__in=product_ids, kind=ProductRelation.Kind.INCOMPATIBLE
-            ).values_list("product_id", "related_id")
-        )
+        marked = {key for key, r in links.items() if r.kind == ProductRelation.Kind.INCOMPATIBLE}
         out = []
         usable = [line for line in lines if line.get("variant") is not None and line["variant"].product_id in products]
         for i, first in enumerate(usable):
@@ -265,7 +288,9 @@ class CompatibilityService:
                 has_rule = rules.find_rule(kind_a, kind_b)[0] is not None
                 if not has_rule and (a.pk, b.pk) not in marked and (b.pk, a.pk) not in marked:
                     continue
-                result = self.check(a, b, variants.get(first["variant"].pk), variants.get(second["variant"].pk))
+                result = self.check(
+                    a, b, variants.get(first["variant"].pk), variants.get(second["variant"].pk), relations=links
+                )
                 if result.verdict == COMPATIBLE:
                     continue
                 out.append({

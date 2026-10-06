@@ -816,5 +816,23 @@ material key, with `options[]`); assistant messages have `compatibility` (the en
 the model reworded the reason), and `POST /api/ai/conversations/…` accepts `product_id` (the product being viewed:
 "will **this** work with…"); voice answers compatibility questions with intent `compatibility`.
 
+## Smart cart, recommendations, budget and bundles ✅ (Phase 22)
+Every price, stock figure, compatibility verdict and discount comes from the existing engines (pricing tiers, offers,
+delivery, `CompatibilityService`, Quantity AI); nothing here stores a price. Only published, purchasable products are
+returned, out-of-stock ones only where a row says so, and none linked or ruled incompatible.
+
+| Method | Path | Who | Body / response |
+|---|---|---|---|
+| GET | `/api/shopping/recommendations/?product=&variant=&budget=` | public | With `product`: `{product_id, groups {needed_with, works_with, frequently_bought_together, better_alternatives, complete_the_project, best_value, popular_in_category, best_for_budget?}, titles, bundles[]}`; a product appears in one group only; rows `{product_id, reason, variant_id, verdict, orders?, saving_each?, product (card)}`. Without: home groups `{personal, groups {buy_again, recommended_for_you, complete_your_project (signed-in customers with orders only), best_value, popular_now}}`. 404 unknown/unpublished product |
+| GET | `/api/shopping/cart/?postal_code=&address_id=&budget=` | customer | `{empty, summary, sections[{key, title, items[]}], top_actions[], titles}`; section keys `warnings`, `needed_with`, `bulk`, `free_delivery`, `alternatives`, `works_with`, `bundles`, `offers`, `budget`; items `{type, message, action add|replace|remove|set_quantity|apply_bundle|view, priority, product_id?, variant_id?, quantity?, cart_item_id?, saving?, price?, options?, bundle?, product?}`. Read-only: actions use the cart endpoints |
+| POST | `/api/shopping/budget/` | public, throttled `ai` | `{text, budget?, answers?, calculator?, language?, postal_code?, address_id?}` → `{budget, complete, questions?, kit, total, remaining, within_budget, message, swapped[], dropped[], full_kit_total, full_kit_over_budget, savings, unavailable[], cheaper_options[], premium_options[], best_for_budget[]}`. The budget may be in the text ("under ₹1500", "2000 ke andar") |
+| GET | `/api/shopping/bundles/?product=` | public | `{results[]}` live bundles (active, within dates) with `total`, `savings`, `valid`, `item_count`, `product_ids` |
+| POST | `/api/shopping/bundles/{slug}/price/` | public | `{overrides {item_id: {variant_id?, quantity?, included?}}, postal_code?, address_id?}` → `{…, kit, savings, valid}`; 400 `invalid_variant` (a variant of another product), 404 inactive/unknown |
+| POST | `/api/shopping/bundles/{slug}/add-to-cart/` | customer | `{overrides?, only_missing?}` → `{added_lines, added_units}`; all lines or none (stock, limits) |
+| CRUD | `/api/admin/bundles/` (+ `GET {id}/preview/`) | admin (catalogue) | `{name, kind, description, promo_label, is_active, starts_at, ends_at, priority, item_rows[{product, variant?, quantity, note, is_optional}]}`; reads add `items[]`, `state` live/scheduled/expired/inactive; duplicate products and foreign variants refused; audited `bundle.create/update/delete` (items before/after) |
+| CRUD | `/api/admin/recommendation-rules/` | admin (catalogue) | `{source_category, target_category, label, priority, is_active}` ("complete the project": Wall Paints → Painting Tools); audited `recommendation_rule.*` |
+
+`GET /api/offers/coupons/available/` now shares `offers.services.available_coupons` with the smart cart.
+
 ## Planned 🔜
-- **AI** more endpoints in Phase 22 (smart cart, recommendations, budget, bundles). **Notifications/support channels** (Phase 23).
+- **Notifications/support channels** (Phase 23).

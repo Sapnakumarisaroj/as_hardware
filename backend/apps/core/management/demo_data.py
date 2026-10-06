@@ -945,3 +945,77 @@ ACCESSORIES = {
     "DRILL-12V": [("BIT-HSS-13", "For metal and wood"), ("PLUG-6-100", "To fix screws in walls")],
     "TAP-PILLAR": [("PTFE-5", "Seals the inlet thread")],
 }
+
+# Phase 22 smart shopping: bundles (name, kind, description, promo label, [(sku suffix, quantity, optional, note)])
+BUNDLES = [
+    (
+        "Demo: Wall drilling kit",
+        "drilling",
+        "Demo kit: drill concrete or brick and fix shelves.",
+        "Starter kit",
+        [
+            ("DRILL-650", 1, False, ""),
+            ("BIT-MAS-5", 1, False, "Carbide bits for walls"),
+            ("PLUG-6-100", 1, False, ""),
+            ("SCR-8X25", 1, False, "Fits the 6 mm plugs"),
+            ("GOG-AF", 1, True, "Protect your eyes"),
+        ],
+    ),
+    (
+        "Demo: Room painting kit",
+        "painting",
+        "Demo kit: repaint a 10x12 room.",
+        "",
+        [
+            ("INTEMUL-4", 2, False, ""),
+            ("PRIMER-4", 1, False, ""),
+            ("PUTTY-5", 2, False, "For cracks"),
+            ("ROLLER-9", 1, False, ""),
+            ("BRUSH-SET-3", 1, False, ""),
+            ("TAPE-MASK-20", 2, False, ""),
+            ("SAND-10", 1, True, ""),
+        ],
+    ),
+    (
+        "Demo: Tap replacement kit",
+        "plumbing",
+        "Demo kit: replace a basin tap.",
+        "",
+        [
+            ("TAP-PILLAR", 1, False, ""),
+            ("CONN-SS-18", 1, False, "1/2 inch, fits the tap"),
+            ("PTFE-5", 1, False, ""),
+            ("PW-14", 1, True, ""),
+        ],
+    ),
+    (
+        "Demo: Switchboard refresh",
+        "electrical",
+        "Demo kit: new switches with safe testing.",
+        "",
+        [("SW6A-10", 1, False, ""), ("TESTER-NEON", 1, False, "Check the power is off"), ("INSTAPE-5", 1, False, "")],
+    ),
+    (
+        "Demo: Tiling kit",
+        "tiling",
+        "Demo kit: fix and grout about 100 sq ft of tiles.",
+        "",
+        [
+            ("TILEADH-20", 3, False, ""),
+            ("GROUT-1", 4, False, ""),
+            ("SPACER-3-100", 3, False, ""),
+            ("GLV-CUT-L", 1, True, ""),
+        ],
+    ),
+]
+
+# "Complete the project" rules: (source category slug, target category slug, label, priority)
+RECOMMENDATION_RULES = [
+    ("wall-paints", "painting-tools", "Tools for painting", 10),
+    ("primers-putty", "painting-tools", "Tools for painting", 20),
+    ("waterproofing", "painting-tools", "Rollers and brushes for coating", 20),
+    ("cement", "safety", "Protect yourself on site", 30),
+    ("tiling", "safety", "Gloves for adhesive and grout", 30),
+    ("drills", "drill-bits", "Bits for your drill", 10),
+    ("taps", "sealants", "Seal the joints", 20),
+]

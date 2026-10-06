@@ -1,4 +1,3 @@
-from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
 from rest_framework.permissions import AllowAny
@@ -6,12 +5,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.catalog.models import Category, Product
-from apps.core.exceptions import ServiceError
-from apps.orders.pricing import price_lines
 
 from .engine import load_active_offers
 from .models import Coupon, DiscountType
-from .services import get_valid_coupon
 
 
 class _TargetSerializer(serializers.Serializer):
@@ -103,37 +99,7 @@ class AvailableCouponsView(APIView):
     def get(self, request):
         from apps.carts.services import summarize_cart
 
-        now = timezone.now()
-        coupons = (
-            Coupon.objects.filter(is_active=True, show_in_checkout=True, starts_at__lte=now)
-            .exclude(ends_at__isnull=False, ends_at__lte=now)
-            .order_by("min_order_value", "code")
-        )
-        lines = summarize_cart(request.user).priced_lines
-        rows = []
-        for coupon in coupons:
-            try:
-                get_valid_coupon(coupon.code, request.user)  # usage limits etc. for this customer
-            except ServiceError:
-                continue  # not usable by this customer at all: don't advertise it
-            row = {
-                "code": coupon.code,
-                "description": coupon.description,
-                "badge": _coupon_badge(coupon),
-                "min_order_value": coupon.min_order_value,
-                "ends_at": coupon.ends_at,
-                "applicable": False,
-                "discount": None,
-                "message": "",
-            }
-            if not lines:
-                row["message"] = "Add items to your cart to use this coupon."
-            else:
-                try:
-                    row["discount"] = price_lines(lines, coupon=coupon, user=request.user).totals.coupon_discount
-                    row["applicable"] = True
-                except ServiceError as exc:
-                    row["message"] = str(exc.detail)
-            rows.append(row)
-        rows.sort(key=lambda r: (not r["applicable"], -(r["discount"] or 0)))
+        from .services import available_coupons
+
+        rows = available_coupons(request.user, summarize_cart(request.user).priced_lines, badge=_coupon_badge)
         return Response(AvailableCouponSerializer(rows, many=True).data)

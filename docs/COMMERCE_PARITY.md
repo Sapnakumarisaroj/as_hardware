@@ -66,7 +66,7 @@ semantic, image and voice search, Project Builder, quantity, compatibility, smar
 | Product card, product page, category landing, filters | 16 |
 | Homepage sections (19 listed) | 16 (AI entry points link to 12/14 now and 19/22 when built) |
 | Recently viewed | 16 |
-| Recommended accessories | 16 (admin links) · 21 (rule-based compatibility) |
+| Recommended accessories | 16 (admin links) · 21 (rule-based compatibility) · 22 (recommendation groups, smart cart) |
 | Search: keyword + synonyms + Hindi/Hinglish + meaning | 13 ✅ |
 | Search: specification/category/brand/availability understanding | 16 |
 | Voice shopping | 18 ✅ |
@@ -147,4 +147,7 @@ Tested = automated tests (backend/frontend) and the live HTTP checks of Phase 16
 | Project builder | ✅ tested (19) | `/projects`: guided questions, kit of real catalogue products with pack sizes, tiers, offers, stock and delivery checked, one-step add to cart |
 | Quantity calculators | ✅ tested (20) | `/quantity`: 8 calculators, units, assumptions, breakdown, real packs, tiers, offers, stock, delivery, add all / save |
 | Compatibility checker | ✅ tested (21) | Product page checker, grouped accessories (required, works with it, goes well with, alternatives), assistant/voice questions, kit and cart warnings with replacements |
-| Smart cart | ⏳ 22 | Cart compatibility problems and one-step replace are ready for it |
+| Smart cart | ✅ tested (22) | Warnings, needed with it, works with it, bulk price, free-delivery gap, cheaper alternatives, offers/coupons in reach, kits, budget; Add/Replace/Remove/Apply bundle, replace and remove confirmed |
+| Recommendations | ✅ tested (22) | Product page (needed with, buy together, compatible, alternatives, complete the project, kits) and home (buy again / based on your orders only with history, best value, popular) |
+| Budget mode | ✅ tested (22) | `/budget` and the cart budget box; never above the stated budget |
+| Bundles / kits | ✅ tested (22) | `/bundles`, editable kits priced live; admin CRUD with audit |

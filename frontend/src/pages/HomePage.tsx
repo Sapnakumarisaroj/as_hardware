@@ -15,6 +15,7 @@ import { SearchBar } from '@/features/search/SearchBar'
 import { useWishlist } from '@/features/wishlist/api'
 import { env } from '@/lib/env'
 import { pluralize } from '@/lib/format'
+import { HomeRecommendations } from '@/features/shopping/ProductRecommendations'
 import { usePageMeta } from '@/lib/usePageMeta'
 
 /*
@@ -291,6 +292,12 @@ function AiEntryPoints() {
       icon: <SparkIcon className="size-6 text-amber-500" />,
     },
     {
+      to: '/budget',
+      title: 'Shop within a budget',
+      text: 'Tell us the job and your budget; we build a cart from real products that stays within it.',
+      icon: <SparkIcon className="size-6 text-amber-500" />,
+    },
+    {
       to: '/image-search',
       title: 'Search with a photo',
       text: 'Take a photo of a part and find it in our catalogue.',
@@ -374,6 +381,7 @@ export function HomePage() {
         {!collections.isPending && <BulkBuyingRail collections={lists} />}
         <LiveOffersStrip />
         <AiEntryPoints />
+        <HomeRecommendations />
         <ProductStrip title="Recently viewed" products={recent} />
         <RecommendedForYou recent={recent} />
       </div>

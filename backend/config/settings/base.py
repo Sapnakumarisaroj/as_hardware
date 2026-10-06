@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "apps.ai",
     "apps.dashboard",
     "apps.loyalty",
+    "apps.shopping",
 ]
 
 MIDDLEWARE = [

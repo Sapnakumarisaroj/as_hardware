@@ -235,6 +235,10 @@ Recordings are never stored. Throttles: `THROTTLE_VOICE` (30/min), `THROTTLE_VOI
 - The optional local model (Ollama + `qwen2.5:3b`) may reword an explanation (a few seconds on CPU); without it the
   engine's own reason is shown. `THROTTLE_COMPATIBILITY` (60/min) limits the public check endpoint.
 
+## Smart cart, recommendations, budget and bundles (Phase 22): no new dependencies
+- Recommendations are SQL over the shop's own orders, links and categories plus Django's cache (DB cache in
+  production); no recommendation service, no paid AI API, no tracking of other customers' browsing.
+
 ## Deliberately NOT used
 Redis, Celery, RabbitMQ, Elasticsearch/OpenSearch, pgvector-only features, paid vector databases, AWS/Azure/GCP services,
 Sentry SaaS, and any paid AI API. They are replaced by DB-backed queues + cron, DB cache, portable SQL search, and in-Python vector math.

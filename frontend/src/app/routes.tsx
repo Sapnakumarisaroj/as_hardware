@@ -21,8 +21,10 @@ const customers = () => import('@/pages/admin/CustomerPages')
 const returns = () => import('@/pages/admin/ReturnRefundPages')
 const support = () => import('@/pages/admin/SupportPages')
 const commerce = () => import('@/pages/admin/CommercePages')
+const shoppingAdmin = () => import('@/pages/admin/ShoppingAdminPages')
 const brands = () => import('@/pages/BrandPages')
 const projects = () => import('@/pages/ProjectPages')
+const shopping = () => import('@/pages/ShoppingPages')
 // Listing and product pages are split from the home page bundle (Phase 16); each loads on first visit.
 const search = () => import('@/pages/SearchPage')
 
@@ -70,6 +72,9 @@ export const routes: RouteObject[] = [
             path: 'image-search',
             lazy: async () => ({ Component: (await import('@/pages/ImageSearchPage')).ImageSearchPage }),
           },
+          { path: 'budget', lazy: async () => ({ Component: (await shopping()).BudgetPage }) },
+          { path: 'bundles', lazy: async () => ({ Component: (await shopping()).BundlesPage }) },
+          { path: 'bundles/:slug', lazy: async () => ({ Component: (await shopping()).BundlePage }) },
           { path: 'quantity', lazy: async () => ({ Component: (await import('@/pages/QuantityPage')).QuantityPage }) },
           { path: 'projects', lazy: async () => ({ Component: (await projects()).ProjectsPage }) },
           { path: 'projects/:id', lazy: async () => ({ Component: (await projects()).ProjectPage }) },
@@ -128,6 +133,8 @@ export const routes: RouteObject[] = [
           { path: 'coupons', lazy: async () => ({ Component: (await offers()).AdminCouponsPage }) },
           { path: 'options', lazy: async () => ({ Component: (await commerce()).AdminOptionTypesPage }) },
           { path: 'collections', lazy: async () => ({ Component: (await commerce()).AdminCollectionsPage }) },
+          { path: 'bundles', lazy: async () => ({ Component: (await shoppingAdmin()).AdminBundlesPage }) },
+          { path: 'recommendations', lazy: async () => ({ Component: (await shoppingAdmin()).AdminRecommendationRulesPage }) },
           { path: 'free-delivery', lazy: async () => ({ Component: (await commerce()).AdminFreeDeliveryPage }) },
           { path: 'payment-settings', lazy: async () => ({ Component: (await commerce()).AdminPaymentSettingsPage }) },
           {

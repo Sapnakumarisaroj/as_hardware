@@ -15,12 +15,18 @@ import { api } from '@/lib/api/client'
 import type {
   AdminBrand,
   AdminCategory,
+  AdminCreditEntry,
   AdminOrderDetail,
   AdminOrderRow,
   AdminProduct,
   AdminProductRow,
+  AdminReferral,
   AdminSession,
   Analytics,
+  BundleInput,
+  BundleRow,
+  CashbackRuleInput,
+  CashbackRuleRow,
   CodRow,
   CollectionInput,
   CollectionPreview,
@@ -33,17 +39,15 @@ import type {
   FreeDeliveryRuleRow,
   InventoryRow,
   JobRow,
+  LoyaltySettings,
   ManualMovement,
   Offer,
   OptionTypeInput,
   OptionTypeRow,
   PaymentSettings,
-  LoyaltySettings,
-  CashbackRuleRow,
-  CashbackRuleInput,
-  AdminCreditEntry,
-  AdminReferral,
   ProductInput,
+  RecommendationRuleInput,
+  RecommendationRuleRow,
   Rider,
   Role,
   RuleInput,
@@ -564,3 +568,11 @@ export function useGivePromoCredit() {
     ['loyalty'],
   )
 }
+
+// --- Smart shopping (Phase 22) -----------------------------------------------------------------------
+
+export const useAdminBundles = () => useAll<BundleRow>('bundles', '/admin/bundles/')
+export const useBundleCrud = () => useCrud<BundleInput, BundleRow>('/admin/bundles/', ['bundles'])
+export const useRecommendationRules = () => useAll<RecommendationRuleRow>('recommendation-rules', '/admin/recommendation-rules/')
+export const useRecommendationRuleCrud = () =>
+  useCrud<RecommendationRuleInput, RecommendationRuleRow>('/admin/recommendation-rules/', ['recommendation-rules'])

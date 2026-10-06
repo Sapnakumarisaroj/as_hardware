@@ -76,3 +76,46 @@ def coupon_discount(coupon: Coupon, lines: Iterable, subtotal: Decimal) -> Decim
     else:
         discount = coupon.value
     return q(min(discount, eligible))
+
+
+def available_coupons(user, lines, *, badge) -> list[dict]:
+    """Advertised coupons (`show_in_checkout`) this customer can still use, each checked against `lines`
+    (priced cart lines): applicable now with its discount, or why not yet. Private codes are never listed.
+    Shared by the coupon list (Phase 6) and the smart cart (Phase 22)."""
+    from django.utils import timezone
+
+    from apps.orders.pricing import price_lines
+
+    now = timezone.now()
+    coupons = (
+        Coupon.objects.filter(is_active=True, show_in_checkout=True, starts_at__lte=now)
+        .exclude(ends_at__isnull=False, ends_at__lte=now)
+        .order_by("min_order_value", "code")
+    )
+    rows = []
+    for coupon in coupons:
+        try:
+            get_valid_coupon(coupon.code, user)  # usage limits etc. for this customer
+        except ServiceError:
+            continue  # not usable by this customer at all: don't advertise it
+        row = {
+            "code": coupon.code,
+            "description": coupon.description,
+            "badge": badge(coupon),
+            "min_order_value": coupon.min_order_value,
+            "ends_at": coupon.ends_at,
+            "applicable": False,
+            "discount": None,
+            "message": "",
+        }
+        if not lines:
+            row["message"] = "Add items to your cart to use this coupon."
+        else:
+            try:
+                row["discount"] = price_lines(lines, coupon=coupon, user=user).totals.coupon_discount
+                row["applicable"] = True
+            except ServiceError as exc:
+                row["message"] = str(exc.detail)
+        rows.append(row)
+    rows.sort(key=lambda r: (not r["applicable"], -(r["discount"] or 0)))
+    return rows

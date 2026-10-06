@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
 import { EmptyState, ErrorState, PageSpinner, SignInPrompt } from '@/components/feedback'
@@ -6,8 +7,8 @@ import { QuantityStepper } from '@/components/QuantityStepper'
 import { useToast } from '@/components/toast'
 import { useAuth } from '@/features/auth/context'
 import { useCart, useRemoveCartItem, useUpdateCartItem, type CartLine } from '@/features/cart/api'
-import { optionVariant, useCartCompatibility, useReplaceCartItem } from '@/features/compatibility/api'
-import { CompatibilityProblems } from '@/features/compatibility/components'
+import { useSmartCart } from '@/features/shopping/api'
+import { SmartCartPanel } from '@/features/shopping/components'
 import { useAddresses } from '@/features/addresses/api'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { useCartEstimate } from '@/features/delivery/api'
@@ -193,30 +194,34 @@ function CartDelivery({ cartVersion }: { cartVersion: string }) {
   )
 }
 
-/** Phase 21 (Smart Cart preparation): cart lines that may not work together, with a one-step replace. */
-function CartCompatibility({ lines, count }: { lines: string; count: number }) {
-  const toast = useToast()
-  const problems = useCartCompatibility(lines, count >= 2)
-  const replace = useReplaceCartItem()
-  if (!problems.data?.length) return null
+/**
+ * Phase 22 smart cart: warnings (incompatible parts, duplicates, stock), needed accessories, bulk-price and
+ * free-delivery opportunities, cheaper equivalents, add-ons, bundles, coupons and an optional budget. Read-only:
+ * every action is a button the customer presses (replace and remove ask first), checked again by the cart API.
+ */
+function SmartCartSection({ lines }: { lines: string }) {
+  const pin = usePincode()
+  const [budget, setBudget] = useState('')
+  const [applied, setApplied] = useState('')
+  const smart = useSmartCart(lines, { ...(pin ? { postal_code: pin } : {}), ...(applied ? { budget: applied } : {}) })
   return (
     <div className="mt-4">
-      <CompatibilityProblems
-        problems={problems.data}
-        replaceLabel="Replace with this"
-        onReplace={(problem, option) => {
-          const itemId = problem.cart_item_ids?.[1]
-          const variantId = optionVariant(option)
-          if (!itemId || !variantId) return
-          replace.mutate(
-            { itemId, variantId },
-            {
-              onSuccess: () => toast.show(`Replaced with ${option.product?.name ?? 'a compatible product'}.`),
-              onError: (error) => toast.show(error instanceof ApiError ? error.message : 'Could not replace it.', { tone: 'error' }),
-            },
-          )
+      <form
+        className="flex flex-wrap items-end gap-2 text-sm"
+        onSubmit={(e) => {
+          e.preventDefault()
+          setApplied(budget.trim())
         }}
-      />
+      >
+        <label htmlFor="cart-budget" className="label mb-0">
+          My budget (₹)
+        </label>
+        <input id="cart-budget" className="input w-32" inputMode="numeric" value={budget} onChange={(e) => setBudget(e.target.value.replace(/[^\d]/g, ''))} />
+        <button type="submit" className="btn-secondary px-3 py-1.5" disabled={!budget.trim()}>
+          Check
+        </button>
+      </form>
+      {smart.data && <SmartCartPanel data={smart.data} />}
     </div>
   )
 }
@@ -294,7 +299,7 @@ export function CartPage() {
             </ul>
           </div>
         )}
-        <CartCompatibility lines={items.map((line) => `${line.id}:${line.variant_id}`).join(',')} count={items.length} />
+        <SmartCartSection lines={items.map((line) => `${line.id}:${line.variant_id}:${line.quantity}`).join(',')} />
         <ul className="divide-y divide-steel-100">
           {items.map((line) => (
             <Line key={line.id} line={line} />

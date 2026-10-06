@@ -21,8 +21,10 @@ from .serializers import ProductListSerializer
 
 def cards(product_ids, request) -> dict[int, dict]:
     """Product cards from live catalogue rows (published, active), keyed by id."""
-    rows = selectors.product_queryset().filter(pk__in=list(product_ids))
-    return {p.pk: ProductListSerializer(p, context={"request": request}).data for p in rows}
+    rows = list(selectors.product_queryset().filter(pk__in=list(product_ids)))
+    # One serializer for all rows, so active offers and delivery rules are loaded once, not per card.
+    data = ProductListSerializer(rows, many=True, context={"request": request}).data
+    return {p.pk: card for p, card in zip(rows, data, strict=True)}
 
 
 def with_cards(result: dict, request) -> dict:

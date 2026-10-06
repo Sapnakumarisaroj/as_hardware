@@ -170,17 +170,43 @@ function problem(overrides: Partial<CompatibilityProblem> = {}): CompatibilityPr
 }
 
 describe('Compatibility in the cart and in kits', () => {
-  it('warns about cart lines that don’t fit and replaces one in a step', async () => {
+  it('warns about cart lines that don’t fit and replaces one only after the customer confirms', async () => {
     signIn()
     const lines = [cartLine({ id: 1, variant_id: 11, product_name: 'Cordless Drill 12V' }), cartLine({ id: 2, variant_id: 12, product_name: 'Core Drill Bit Set' })]
+    const smart = {
+      empty: false,
+      summary: null,
+      titles: {},
+      top_actions: [],
+      sections: [
+        {
+          key: 'warnings',
+          title: 'Cart warnings',
+          items: [
+            {
+              type: 'compatibility',
+              message: 'Core Drill Bit Set won’t work with Cordless Drill 12V. Masonry Drill Bit 6mm fits.',
+              action: 'replace',
+              priority: 100,
+              cart_item_id: 2,
+              product_id: 7,
+              variant_id: 77,
+              product: productSummary({ id: 7, name: 'Masonry Drill Bit 6mm', slug: 'masonry-bit' }),
+            },
+          ],
+        },
+      ],
+    }
     const api = mockApi({
-      get: { ...shopGet, '/auth/me/': customer, '/cart/': cart({ items: lines }), '/cart/compatibility/': { problems: [problem({ cart_item_ids: [1, 2] })] }, '/addresses/': [] },
+      get: { ...shopGet, '/auth/me/': customer, '/cart/': cart({ items: lines }), '/shopping/cart/': smart, '/addresses/': [] },
       post: { '/cart/items/2/replace/': ({ body }: RequestInfo) => cart({ items: [lines[0]!, cartLine({ id: 3, variant_id: (body as { variant_id: number }).variant_id })] }) },
     })
     const { user } = renderRoute('/cart')
     expect(await screen.findByText(/won’t work with Cordless Drill 12V/)).toBeInTheDocument()
-    await user.click(screen.getByText('View compatible options'))
-    await user.click(screen.getByRole('button', { name: 'Replace with this' }))
+    await user.click(screen.getByRole('button', { name: 'Replace' }))
+    expect(api.post).not.toHaveBeenCalledWith('/cart/items/2/replace/', expect.anything())
+    expect(screen.getByText('Replace with Masonry Drill Bit 6mm?')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Yes, replace' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/cart/items/2/replace/', { variant_id: 77 }))
   })
 

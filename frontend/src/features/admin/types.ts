@@ -4,6 +4,8 @@
 import type { OrderDetail, OrderStatus, PaymentMethod, PaymentStatus } from '@/features/orders/types'
 
 export type Section =
+  | 'bundles'
+  | 'recommendations'
   | 'dashboard'
   | 'orders'
   | 'products'
@@ -930,3 +932,49 @@ export interface AdminReferral {
 
 /** What a product link means (Phase 21): "accessory" is "goes with"; the others are facts the compatibility checker uses. */
 export type RelationKind = 'accessory' | 'compatible' | 'required' | 'alternative' | 'incompatible'
+
+// --- Smart shopping (Phase 22) -----------------------------------------------------------------------
+
+export type BundleKind = 'diy_repair' | 'plumbing' | 'electrical' | 'painting' | 'drilling' | 'tiling' | 'construction' | 'custom'
+
+export interface BundleRow {
+  id: number
+  name: string
+  slug: string
+  kind: BundleKind
+  description: string
+  promo_label: string
+  is_active: boolean
+  starts_at: string | null
+  ends_at: string | null
+  priority: number
+  state: 'inactive' | 'scheduled' | 'expired' | 'live'
+  items: { id: number; product: number; name: string; variant: number | null; variant_name: string; quantity: number; note: string; is_optional: boolean; live: boolean }[]
+  created_at: string
+  updated_at: string
+}
+
+export interface BundleInput {
+  name: string
+  kind: BundleKind
+  description?: string
+  promo_label?: string
+  is_active?: boolean
+  starts_at?: string | null
+  ends_at?: string | null
+  priority?: number
+  item_rows?: { product: number; variant?: number | null; quantity: number; note?: string; is_optional?: boolean }[]
+}
+
+export interface RecommendationRuleRow {
+  id: number
+  source_category: number
+  source_name: string
+  target_category: number
+  target_name: string
+  label: string
+  priority: number
+  is_active: boolean
+}
+
+export type RecommendationRuleInput = Pick<RecommendationRuleRow, 'source_category' | 'target_category' | 'label' | 'priority' | 'is_active'>

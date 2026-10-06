@@ -553,6 +553,27 @@ Voice (Phase 18): "500 sq ft plastering ka saman" → VoiceShoppingService._quan
   packs and reasons, product/quantity/tick changes (sent back as `overrides`), PIN, coupon, totals, Add all to cart,
   Save as a project. Links from the home page, menu, footer, the assistant's paint estimate and voice answers.
 
+### Smart cart, recommendations, budget and bundles (Phase 22)
+```
+apps/shopping/services/
+  recommendations.py  RecommendationService.for_product / for_home: product links (required, accessory, alternative),
+                      CompatibilityService accessories and kinds, co-purchases from OrderItem (cached 600 s),
+                      RecommendationRule category pairs, selectors.product_queryset() annotations (price, stock,
+                      sold count, bulk price) — one query per group, bounded, each product in one group only
+  smart_cart.py       SmartCartService.analyze(user): prices the cart once through ai.projects.kit.price_rows (tiers,
+                      offers, delivery, stock, compatibility), then builds sections; nothing is written
+  budget.py           BudgetPlanner.plan: budget from the text → Quantity AI / project calculator → priced kit →
+                      cheaper same-kind swaps → drop optional/last lines until total ≤ budget (max 20 rounds)
+  bundles.py          live bundles (prefetched items, variants), rows → kit.price_rows, add_to_cart (all or nothing)
+```
+- **No invented facts:** groups only contain catalogue products with their engine price and stock; reasons are
+  built from data (orders count, compatibility reason, price difference). The optional model is not used here.
+- **Never silently changes the cart:** the smart cart is a GET; the page's buttons call the existing cart endpoints,
+  and replace/remove ask "Replace with …?" / "Remove this line?" first.
+- **Frontend:** `features/shopping/` (api, types, `components.tsx` rails/bundle card/smart cart panel,
+  `ProductRecommendations.tsx`), `pages/ShoppingPages.tsx` (`/budget`, `/bundles`, `/bundles/:slug`), cart page smart
+  section with budget, product page and home rails, `pages/admin/ShoppingAdminPages.tsx`.
+
 ### Compatibility checker (Phase 21)
 ```
 POST /api/compatibility/check/  ·  product page  ·  assistant / voice ("will this work with that?")  ·  kits  ·  cart

@@ -72,7 +72,7 @@ describe('product page (Phase 16)', () => {
     expect(steps.map((li) => li.textContent)).toEqual(['Switch off the mains', 'Strip 10 mm of insulation'])
     expect(screen.getByText('Is it fire retardant?')).toBeInTheDocument()
     expect(screen.getByTestId('return-policy')).toHaveTextContent('Returnable within 7 days of delivery.')
-    const accessories = screen.getByRole('region', { name: 'Goes well with' })
+    const accessories = await screen.findByRole('region', { name: 'Goes well with' })
     expect(within(accessories).getByRole('link', { name: 'Masonry Drill Bits' })).toHaveAttribute('href', '/p/masonry-bits')
     expect(accessories).toHaveTextContent('To fix the clamps')
     expect(screen.getByTestId('free-delivery-rule')).toHaveTextContent('Wires from ₹2,000')

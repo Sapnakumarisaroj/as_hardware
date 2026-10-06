@@ -37,6 +37,7 @@ from apps.stores.models import Store
 from ..demo_data import (
     ACCESSORIES,
     BRANDS,
+    BUNDLES,
     CATEGORIES,
     COLLECTIONS,
     COUPONS,
@@ -49,6 +50,7 @@ from ..demo_data import (
     PRICE_TIERS,
     PRODUCT_PAGE_CONTENT,
     PRODUCTS,
+    RECOMMENDATION_RULES,
     STORE_DELIVERY,
     STORES,
     VARIANT_OPTIONS,
@@ -114,6 +116,7 @@ class Command(BaseCommand):
             self._commerce(products)
             self._product_pages()
             self._loyalty()
+            self._shopping()
             if with_rider:
                 self._demo_rider()
         created_images = 0 if no_images else self._images(products)
@@ -123,6 +126,7 @@ class Command(BaseCommand):
                 f"{len(products)} products, {ProductVariant.objects.filter(sku__startswith='DEMO-').count()} variants, "
                 f"{len(stores)} stores, {created_stock} new stock records, {len(COUPONS)} coupons, "
                 f"{len(OFFERS) + len(OFFERS_PHASE15)} offers, {len(COLLECTIONS)} curated lists, "
+                f"{len(BUNDLES)} bundles, "
                 f"{created_images} new demo images."
             )
         )
@@ -346,6 +350,43 @@ class Command(BaseCommand):
             if pk := product_id(suffix):
                 links = [{"product": rid, "note": note} for s, note in rows if (rid := product_id(s))]
                 set_accessories(Product.objects.get(pk=pk), links)
+
+    def _shopping(self) -> None:
+        """Phase 22 demo bundles and "complete the project" rules (idempotent)."""
+        from apps.shopping.models import Bundle, RecommendationRule
+
+        variants = {v.sku: v for v in ProductVariant.objects.filter(sku__startswith="DEMO-").select_related("product")}
+        for position, (name, kind, description, promo, rows) in enumerate(BUNDLES):
+            bundle, _ = Bundle.objects.update_or_create(
+                slug=slugify(name),
+                defaults={
+                    "name": name,
+                    "kind": kind,
+                    "description": description,
+                    "promo_label": promo,
+                    "is_active": True,
+                    "priority": (position + 1) * 10,
+                },
+            )
+            bundle.items.all().delete()
+            for item_pos, (suffix, quantity, optional, note) in enumerate(rows):
+                if variant := variants.get(normalize_sku(f"DEMO-{suffix}")):
+                    bundle.items.create(
+                        product_id=variant.product_id,
+                        variant=variant,
+                        quantity=quantity,
+                        is_optional=optional,
+                        note=note,
+                        sort_order=item_pos,
+                    )
+        by_slug = {c.slug: c for c in Category.objects.all()}
+        for source, target, label, priority in RECOMMENDATION_RULES:
+            if source in by_slug and target in by_slug:
+                RecommendationRule.objects.update_or_create(
+                    source_category=by_slug[source],
+                    target_category=by_slug[target],
+                    defaults={"label": label, "priority": priority, "is_active": True},
+                )
 
     def _commerce(self, products) -> None:
         """Phase 15 demo data: options, bulk prices, launches, curated lists, free-delivery rule, offers."""
