@@ -49,6 +49,14 @@ def _validate_quantity(variant: ProductVariant, quantity: int) -> None:
         )
 
 
+def check_item(user, variant_id: int, quantity: int) -> None:
+    """The checks `add_item` would make, without writing (Phase 19: a project kit is validated as a whole
+    before anything is added). Raises CartError / InsufficientStock like `add_item`."""
+    variant = _purchasable_variant(variant_id)
+    in_cart = CartItem.objects.filter(cart__user=user, variant=variant).values_list("quantity", flat=True).first()
+    _validate_quantity(variant, (in_cart or 0) + quantity)
+
+
 @transaction.atomic
 def add_item(user, variant_id: int, quantity: int = 1) -> CartItem:
     """Add to cart, or increase the quantity if the variant is already in it."""

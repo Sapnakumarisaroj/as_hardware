@@ -144,4 +144,5 @@ Tested = automated tests (backend/frontend) and the live HTTP checks of Phase 16
 | Recently viewed, recommendations | ✅ tested | Browser history + wishlist/last viewed category |
 | Cashback / wallet / referral | ✅ tested (17) | Ledger-only balance, pending until the return window, 20 % cap, 90-day expiry, wallet page, referral codes |
 | Voice shopping | ✅ tested (18) | `/voice`: browser speech in English/Hindi/Hinglish, spoken quantities priced with bulk tiers, add only after “yes”; optional local Whisper |
-| Project builder, quantity estimates, compatibility, smart cart | ⏳ 19–22 | Entry point links to the assistant today |
+| Project builder | ✅ tested (19) | `/projects`: guided questions, kit of real catalogue products with pack sizes, tiers, offers, stock and delivery checked, one-step add to cart |
+| Quantity calculators, compatibility, smart cart | ⏳ 20–22 | The project builder's rules of thumb cover its own jobs; standalone calculators come in 20 |

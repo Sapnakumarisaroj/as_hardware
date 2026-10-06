@@ -144,6 +144,10 @@ def test_the_assistant_has_no_way_to_change_prices_stock_or_orders(auth_client, 
         "ai/image-searches",
         "ai/voice/",  # Phase 18: voice (status, command, transcribe, speak) and its history
         "ai/voice-sessions",
+        # Phase 19: project builder. Its add-to-cart writes only the customer's own cart, through the cart
+        # service (which checks and prices every line again); prices, stock and orders stay untouched.
+        "ai/projects",
+        "ai/project-types/",
     )
     assert ai_routes and all(any(part in p for part in allowed) for p in ai_routes)
     assert patterns  # sanity

@@ -94,6 +94,11 @@ export function Footer() {
               </Link>
             </li>
             <li>
+              <Link to="/projects" className="hover:text-amber-500">
+                Project builder
+              </Link>
+            </li>
+            <li>
               <Link to="/account/returns" className="hover:text-amber-500">
                 Returns
               </Link>

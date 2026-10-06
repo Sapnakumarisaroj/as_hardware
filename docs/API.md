@@ -721,5 +721,43 @@ variant_id, product_name, unit, filters[{param, value, label}], quote, product (
 ("1.5 bags"). `quote` is the Phase 15 quote for that quantity (`unit_price` with the bulk tier, `applied_tier`,
 `next_tier {min_quantity, unit_price, units_more, reachable}`, `offer_discount`, `offers`, `total`, `within_stock`, …).
 
+## Project builder ✅ (Phase 19)
+A customer's own projects: a described job → questions → a kit of real catalogue lines priced as one cart. Every read
+prices the kit again from the database (bulk tiers, automatic offers across the kit, free-delivery rules, the zone fee)
+and checks stock and delivery; nothing about prices is stored. Someone else's project id gives 404.
+
+| Method | Path | Who | Body / response |
+|---|---|---|---|
+| GET | `/api/ai/project-types/?language=en|hi|hinglish` | public | `{results[{key, name, summary, first_question}]}` |
+| GET | `/api/ai/projects/` | customer | Own projects, newest first: `{id, title, project_type, type_name, status draft|ready|ordered, item_count (ticked), created_at, updated_at}` |
+| POST | `/api/ai/projects/` | customer, throttled `ai` | `{description? ≤ 500, project_type?, answers?{key: value}, language?}` (one of description/type) → 201 plan. 400 `project_type_unknown` (`details.choices`), `invalid_answers` (`details` by key) |
+| GET | `/api/ai/projects/{id}/?postal_code=|address_id=` | owner | The plan. Delivery is checked for the PIN, else the address, else the customer's default address, else not checked |
+| PATCH | `/api/ai/projects/{id}/` | owner, throttled `ai` | `{answers?, language?, title?}` → plan (the kit is worked out again; lines the customer changed stay) |
+| DELETE | `/api/ai/projects/{id}/` | owner | 204 |
+| POST | `/api/ai/projects/{id}/items/` | owner | `{variant_id, quantity}` → 201 plan with the customer's own product added |
+| PATCH | `/api/ai/projects/{id}/items/{item_id}/` | owner | `{variant_id?, quantity? 1–9999, included?}` → plan. A new variant without a quantity gets enough packs for the same need |
+| DELETE | `/api/ai/projects/{id}/items/{item_id}/` | owner | Only products the customer added (400 `suggested_item` otherwise: untick instead) |
+| POST | `/api/ai/projects/{id}/reset/` | owner, throttled `ai` | Back to the suggested lines (own products stay) |
+| POST | `/api/ai/projects/{id}/add-to-cart/` | owner | Every ticked line into the cart through the cart service, or nothing: 400 `project_not_addable` with `details.items[{variant_id, code, message}]`, 400 `project_empty`. → plan + `added {added_lines, added_units}`; status becomes `ordered` |
+
+The location (`postal_code`, `address_id`) may also be sent in the body of the writes, so the returned plan is priced for it.
+
+Plan: `{id, title, project_type, type_name, status, description, language, summary, answers, from_description[] (keys
+read from the description), questions[] (that apply: {key, kind number|choice, text, unit, min, max, choices[], default}),
+missing[] (keys still to answer), assumptions[{key, value, text}], complete, safety[], professional (text or ""),
+not_sold, estimate_notice, kit | null}`.
+
+Kit: `items[]`, `postal_code`, `totals {item_count, mrp_total, subtotal, bulk_savings, offer_discount, delivery_fee,
+tax_included, grand_total, savings_vs_mrp}`, `offers[{name, discount}]`, `offers_in_reach[]`, `delivery {checked,
+available, message, label, delivery_type, eta_minutes, fee, free_delivery_reason, amount_to_free_delivery,
+free_delivery_hint, shipments[]}`, `issues[{item_id, code not_found|unavailable|too_many|short_stock|not_deliverable,
+message}]` (ticked lines only), `can_add_to_cart`, `not_found_count`, `included_count`.
+
+Item: `{id, material_key, label, rationale, note, status found|not_found, need {amount, unit l|kg|m|pcs}, pack_amount,
+size_known, suggested {variant_id, quantity}, alternatives[] (product cards), added_by_customer, is_optional,
+is_estimate, included, customer_set, quantity, unit, product_id, product (card), variant {id, sku, name, options[],
+price, mrp}, problem, stock_available, price {unit_price, base_unit_price, applied_tier, next_tier {min_quantity,
+unit_price, units_more}, line_total, bulk_saving, offer_discount} | null}`.
+
 ## Planned 🔜
-- **AI** more endpoints in Phases 19–22 (projects, calculators, compatibility, smart cart). **Notifications/support channels** (Phase 23).
+- **AI** more endpoints in Phases 20–22 (calculators, compatibility, smart cart). **Notifications/support channels** (Phase 23).

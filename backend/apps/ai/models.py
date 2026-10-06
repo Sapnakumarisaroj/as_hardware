@@ -75,9 +75,11 @@ class Project(TimeStampedModel):
         PLUMBING = "plumbing", "Plumbing"
         ELECTRICAL = "electrical", "Electrical work"
         WALL_DRILLING = "wall_drilling", "Wall drilling"
-        FURNITURE_REPAIR = "furniture_repair", "Furniture repair"
+        FURNITURE_REPAIR = "furniture_repair", "Furniture installation / repair"
         GARDENING = "gardening", "Gardening"
-        CONSTRUCTION = "construction", "Construction"
+        CONSTRUCTION = "construction", "Basic construction"
+        WATERPROOFING = "waterproofing", "Waterproofing"
+        TILING = "tiling", "Tiling"
         OTHER = "other", "Other"
 
     class Status(models.TextChoices):
@@ -116,6 +118,13 @@ class ProjectItem(models.Model):
     is_estimate = models.BooleanField(default=True, help_text="Calculated quantities are estimates; shown as such.")
     rationale = models.CharField(max_length=300, blank=True)
     sort_order = models.PositiveIntegerField(default=0)
+    # Phase 19 (project builder): which material of the project template this line is, whether it is in
+    # the kit, whether the customer changed it (kept when recommendations are regenerated), and the
+    # estimate behind it (need amount and unit, search words, reasons).
+    material_key = models.CharField(max_length=40, blank=True)
+    included = models.BooleanField(default=True)
+    customer_set = models.BooleanField(default=False)
+    details = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["sort_order", "id"]

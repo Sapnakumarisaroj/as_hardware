@@ -11,6 +11,14 @@ CATEGORIES = {
     ("civil-interiors", "Civil & Interiors"): [
         ("cement", "Cement", [("grey-cement", "Grey Cement")]),
         ("adhesives", "Adhesives"),
+        ("tiling", "Tiling Accessories"),
+    ],
+    # Phase 19: painting, waterproofing (project builder demo kits)
+    ("paints", "Paints & Waterproofing"): [
+        ("wall-paints", "Wall Paints"),
+        ("primers-putty", "Primers & Putty"),
+        ("waterproofing", "Waterproofing"),
+        ("painting-tools", "Painting Tools"),
     ],
     ("electrical", "Electrical"): [
         ("wires-cables", "Wires & Cables", [("copper-wire", "Copper Wire")]),
@@ -53,6 +61,7 @@ CATEGORIES = {
 }
 
 BRANDS = [
+    "ColourCraft (Demo)",
     "VoltLine (Demo)",
     "AquaFlow (Demo)",
     "ForgePro (Demo)",
@@ -522,6 +531,143 @@ PRODUCTS = [
         [("CEM-PPC-50", "50 kg bag", "440", "395", 50000), ("CEM-PPC-25", "25 kg bag", "235", "214", 25000)],
         [("Type", "PPC", ""), ("Use", "Plastering, masonry, foundations", "")],
     ),
+    # Phase 19 additions (project builder demo kits): painting, waterproofing, tiling. Keep at the end.
+    (
+        "paints",
+        "wall-paints",
+        "Interior Emulsion Paint, Smooth Matt",
+        "ColourCraft (Demo)",
+        "piece",
+        "18",
+        ["paint", "emulsion", "interior", "wall paint"],
+        [
+            ("INTEMUL-4", "4 L", "1150", "999", 5200),
+            ("INTEMUL-1", "1 L", "320", "279", 1350),
+            ("INTEMUL-10", "10 L", "2700", "2349", 12800),
+        ],
+        [("Finish", "Matt", ""), ("Coverage", "130-150", "sq ft per litre per coat"), ("Base", "Water", "")],
+    ),
+    (
+        "paints",
+        "wall-paints",
+        "Exterior Emulsion Paint, Weatherproof",
+        "ColourCraft (Demo)",
+        "piece",
+        "18",
+        ["paint", "emulsion", "exterior", "weatherproof"],
+        [("EXTEMUL-4", "4 L", "1650", "1399", 5300), ("EXTEMUL-10", "10 L", "3900", "3299", 13000)],
+        [("Finish", "Low sheen", ""), ("Coverage", "90-110", "sq ft per litre per coat")],
+    ),
+    (
+        "paints",
+        "primers-putty",
+        "Wall Primer, Water-based",
+        "ColourCraft (Demo)",
+        "piece",
+        "18",
+        ["primer", "paint", "sealer"],
+        [("PRIMER-4", "4 L", "780", "649", 5000), ("PRIMER-1", "1 L", "220", "179", 1300)],
+        [("Coverage", "100-120", "sq ft per litre"), ("Base", "Water", "")],
+    ),
+    (
+        "paints",
+        "primers-putty",
+        "Wall Putty, White Cement Based",
+        "ColourCraft (Demo)",
+        "bag",
+        "18",
+        ["putty", "wall putty", "crack"],
+        [("PUTTY-20", "20 kg", "950", "799", 20000), ("PUTTY-5", "5 kg", "280", "229", 5000)],
+        [("Coverage", "10-12", "sq ft per kg (2 coats)")],
+    ),
+    (
+        "paints",
+        "painting-tools",
+        "Paint Roller 9 inch with Tray",
+        "ColourCraft (Demo)",
+        "piece",
+        "18",
+        ["roller", "paint roller", "painting"],
+        [("ROLLER-9", "", "450", "349", 600)],
+        [("Width", "9", "inch")],
+    ),
+    (
+        "paints",
+        "painting-tools",
+        "Paint Brush Set (3 pcs)",
+        "ColourCraft (Demo)",
+        "set",
+        "18",
+        ["brush", "paint brush", "painting"],
+        [("BRUSH-SET-3", "1, 2 and 4 inch", "300", "219", 250)],
+        [("Pack Size", "3", "pcs")],
+    ),
+    (
+        "paints",
+        "painting-tools",
+        "Masking Tape 1 inch, 20 m",
+        "ColourCraft (Demo)",
+        "piece",
+        "18",
+        ["masking tape", "painting", "tape"],
+        [("TAPE-MASK-20", "", "90", "65", 80)],
+        [("Width", "24", "mm"), ("Length", "20", "m")],
+    ),
+    (
+        "paints",
+        "painting-tools",
+        "Sandpaper Sheets (Pack of 10)",
+        "ColourCraft (Demo)",
+        "pack",
+        "18",
+        ["sandpaper", "emery paper", "painting"],
+        [("SAND-10", "Grit 120", "150", "99", 120)],
+        [("Pack Size", "10", "pcs"), ("Grit", "120", "")],
+    ),
+    (
+        "paints",
+        "waterproofing",
+        "Waterproofing Coating, Elastomeric",
+        "ColourCraft (Demo)",
+        "piece",
+        "18",
+        ["waterproofing", "waterproof", "roof", "terrace", "leakage"],
+        [("WPC-4", "4 L", "1650", "1399", 5400), ("WPC-1", "1 L", "450", "379", 1400)],
+        [("Coverage", "20-25", "sq ft per litre (2 coats)")],
+    ),
+    (
+        "paints",
+        "waterproofing",
+        "Crack Filler Paste, 1 kg",
+        "ColourCraft (Demo)",
+        "piece",
+        "18",
+        ["crack filler", "crack", "waterproofing", "putty"],
+        [("CRACK-1", "", "350", "279", 1050)],
+        [("Weight", "1", "kg")],
+    ),
+    (
+        "civil-interiors",
+        "tiling",
+        "Tile Grout, 1 kg",
+        "BuildMax (Demo)",
+        "piece",
+        "18",
+        ["grout", "tile", "tiling"],
+        [("GROUT-1", "Grey", "180", "139", 1000)],
+        [("Weight", "1", "kg"), ("Coverage", "25-30", "sq ft per kg (2-3 mm joints)")],
+    ),
+    (
+        "civil-interiors",
+        "tiling",
+        "Tile Spacers 3 mm (Pack of 100)",
+        "BuildMax (Demo)",
+        "pack",
+        "18",
+        ["tile spacer", "tile", "tiling", "spacer"],
+        [("SPACER-3-100", "", "90", "59", 120)],
+        [("Size", "3", "mm"), ("Pack Size", "100", "pcs")],
+    ),
 ]
 
 # code, name, kind, area, postal code, lat, lng
@@ -617,6 +763,7 @@ OPTION_TYPES = [
     ("Bag size", "kg", ["cement"], ["50 kg", "25 kg"]),
     ("Cross-section", "sq mm", ["wires-cables"], ["1.0 sq mm", "1.5 sq mm", "2.5 sq mm", "4.0 sq mm"]),
     ("Length", "m", ["wires-cables"], ["90 m"]),
+    ("Volume", "L", ["wall-paints", "primers-putty", "waterproofing"], ["1 L", "4 L", "10 L"]),
 ]
 
 # Variant options: sku suffix → {option name: value}
@@ -628,6 +775,11 @@ VARIANT_OPTIONS = {
     "WIRE-1.5": {"Cross-section": "1.5 sq mm", "Length": "90 m"},
     "WIRE-2.5": {"Cross-section": "2.5 sq mm", "Length": "90 m"},
     "WIRE-4.0": {"Cross-section": "4.0 sq mm", "Length": "90 m"},
+    **{
+        f"{code}-{size}": {"Volume": f"{size} L"}
+        for code, sizes in {"INTEMUL": (1, 4, 10), "EXTEMUL": (4, 10), "PRIMER": (1, 4), "WPC": (1, 4)}.items()
+        for size in sizes
+    },
 }
 
 # Bulk prices: sku suffix → [(from quantity, unit price)]
@@ -636,6 +788,9 @@ PRICE_TIERS = {
     "CEM-PPC-50": [(10, "380"), (30, "372")],
     "WIRE-1.5": [(5, "1699"), (10, "1659")],
     "WIRE-2.5": [(5, "2799"), (10, "2749")],
+    "INTEMUL-4": [(3, "969"), (6, "949")],
+    "PUTTY-20": [(5, "769"), (10, "749")],
+    "GROUT-1": [(10, "129")],
 }
 
 # Products launched recently (sku suffix of the first variant → days ago), for "New launches".

@@ -22,6 +22,7 @@ const returns = () => import('@/pages/admin/ReturnRefundPages')
 const support = () => import('@/pages/admin/SupportPages')
 const commerce = () => import('@/pages/admin/CommercePages')
 const brands = () => import('@/pages/BrandPages')
+const projects = () => import('@/pages/ProjectPages')
 // Listing and product pages are split from the home page bundle (Phase 16); each loads on first visit.
 const search = () => import('@/pages/SearchPage')
 
@@ -69,6 +70,8 @@ export const routes: RouteObject[] = [
             path: 'image-search',
             lazy: async () => ({ Component: (await import('@/pages/ImageSearchPage')).ImageSearchPage }),
           },
+          { path: 'projects', lazy: async () => ({ Component: (await projects()).ProjectsPage }) },
+          { path: 'projects/:id', lazy: async () => ({ Component: (await projects()).ProjectPage }) },
           { path: 'voice', lazy: async () => ({ Component: (await import('@/pages/VoicePage')).VoicePage }) },
           { path: 'login', lazy: async () => ({ Component: (await auth()).LoginPage }) },
           { path: 'register', lazy: async () => ({ Component: (await auth()).RegisterPage }) },

@@ -279,9 +279,9 @@ function AiEntryPoints() {
       icon: <SparkIcon className="size-6 text-amber-500" />,
     },
     {
-      to: `/ai-assistant?ask=${encodeURIComponent('I am planning a project. Help me list the materials I need.')}`,
+      to: '/projects',
       title: 'Plan a project',
-      text: 'Tell the assistant what you are building or repairing and get a list of materials to check.',
+      text: 'Describe the job and get a kit of materials from our catalogue, priced and checked for delivery.',
       icon: <ChevronRightIcon className="size-6 text-amber-500" />,
     },
     {

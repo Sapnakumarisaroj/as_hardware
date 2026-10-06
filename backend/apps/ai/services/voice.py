@@ -34,6 +34,7 @@ from integrations.speech import (
 )
 
 from . import spoken
+from .catalog_match import choose_variant, find_products
 from .intent import detect_language
 from .schemas import LANGUAGES
 from .spoken import Command
@@ -547,42 +548,14 @@ class VoiceShoppingService:
 
     # --- Products and prices ----------------------------------------------------------------------
 
-    def _find(self, query: str, *, limit: int = 1 + ALTERNATIVES):
-        """Products for spoken words, best first: the listing's own search understanding and search."""
-        if not query:
-            return [], [], {}, ""
-        base = selectors.product_queryset()
-        params = {"q": query}
-        labels = []
-        found = interpret(query, params)
-        if found:
-            merged = {**params, **found.filters}
-            if selectors.filter_products(base, merged).exists():
-                params, labels = merged, found.labels
-        qs = selectors.filter_products(base, params, search=False)
-        result = selectors.apply_search(qs, params)
-        if result.matched == "none":
-            return [], labels, params, ""
-        rows = [
-            p
-            for p in selectors.order_products(result.queryset, None, searching=bool(result.terms))[: limit * 2]
-            if p.cheapest_variant_id is not None
-        ][:limit]
-        return rows, labels, params, "exact" if result.matched == "all_terms" else "closest"
+    @staticmethod
+    def _find(query: str, *, limit: int = 1 + ALTERNATIVES):
+        match = find_products(query, limit=limit)
+        return match.products, match.labels, match.params, match.quality
 
     @staticmethod
     def _variant(product, params: dict):
-        """The variant the words name ("25 kg", "53 grade"), else the default one."""
-        wanted = {k[len("opt_") :]: v for k, v in params.items() if k.startswith("opt_")}
-        variants = [v for v in product.variants.all() if v.is_active]
-        if not variants:
-            return None
-
-        def options(variant):
-            return {o.option_type.slug: o.value.slug for o in variant.option_values.all()}
-
-        fitting = [v for v in variants if all(options(v).get(t) == value for t, value in wanted.items())] or variants
-        return next((v for v in fitting if v.is_default), min(fitting, key=lambda v: (v.price, v.pk)))
+        return choose_variant(product, params)
 
     def _line(self, heard="", query="", quantity=None) -> dict:
         return {

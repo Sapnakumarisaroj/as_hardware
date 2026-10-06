@@ -253,7 +253,15 @@ and the change of `proof_image` to private storage; no data is changed (no proof
 | `ai_aiconversation` | user FK (nullable), session_key, kind (assistant/voice/image/project/business), language, title, metadata JSON |
 | `ai_aimessage` | conversation FK, role, content, tool_calls JSON, product_refs JSON (catalog IDs actually shown), **payload JSON (Phase 12, migration `0002`: intent, questions, actions, knowledge, safety, estimate, ai_mode, notice, so a conversation reopens exactly as answered)**, provider, model, tokens_in/out |
 | `ai_project` | user FK, conversation FK, project_type (painting/bathroom_repair/…), title, inputs JSON, safety_notes, status |
-| `ai_projectitem` | project FK, variant FK (nullable), label, quantity DECIMAL, unit, is_optional, is_estimate, rationale, sort_order |
+| `ai_projectitem` | project FK, variant FK (nullable), label, quantity DECIMAL, unit, is_optional, is_estimate, rationale, sort_order, material_key, included, customer_set, details JSON |
+
+**Project builder (Phase 19)**, migration `ai.0003_project_builder`: `ai_project.project_type` gains `waterproofing`
+and `tiling`; `ai_projectitem` gains `material_key` (which material of the project template the line is; `extra-N` for
+a product the customer added), `included` (ticked for the cart), `customer_set` (changed by the customer: kept when the
+answers change) and `details` JSON (need amount and unit, pack size, the search used, alternatives, the current
+suggestion, how the amount was worked out). `ai_project.inputs` holds `{description, language, answers,
+from_description, custom_title}`. Prices are never stored: the kit is priced again on every read. `quantity` on an item
+is the number of packs to buy.
 
 **Voice shopping (Phase 18)** needs no new table or migration. A signed-in customer's voice session is an
 `ai_aiconversation` with `kind = voice` (`title` = the first thing said); each request adds a user `ai_aimessage` (the
