@@ -200,6 +200,8 @@ REST_FRAMEWORK = {
         "auth": env("THROTTLE_AUTH", default="10/min"),
         "ai": env("THROTTLE_AI", default="30/min"),
         "image_search": env("THROTTLE_IMAGE_SEARCH", default="10/min"),
+        "voice": env("THROTTLE_VOICE", default="30/min"),
+        "voice_audio": env("THROTTLE_VOICE_AUDIO", default="12/min"),
     },
 }
 
@@ -324,6 +326,23 @@ VISION_TIMEOUT_SECONDS = env.float("VISION_TIMEOUT_SECONDS", default=60)
 IMAGE_SEARCH_MAX_BYTES = env.int("IMAGE_SEARCH_MAX_BYTES", default=8 * 1024 * 1024)
 IMAGE_SEARCH_MAX_PRODUCTS = env.int("IMAGE_SEARCH_MAX_PRODUCTS", default=8)
 IMAGE_SEARCH_CACHE_SECONDS = env.int("IMAGE_SEARCH_CACHE_SECONDS", default=24 * 3600)  # same photo → same analysis
+# Voice shopping (Phase 18). The browser listens and speaks by default (free, nothing installed); a server
+# provider is a fallback for browsers without speech recognition. STT: none | faster_whisper (local open-source
+# Whisper, requirements/speech.txt, VPS) | openai_compatible. TTS: none | openai_compatible.
+SPEECH_STT_PROVIDER = env("SPEECH_STT_PROVIDER", default="none")
+SPEECH_STT_MODEL = env("SPEECH_STT_MODEL", default="")  # faster_whisper: small (default) | base · API: whisper-1
+SPEECH_TTS_PROVIDER = env("SPEECH_TTS_PROVIDER", default="none")
+SPEECH_TTS_MODEL = env("SPEECH_TTS_MODEL", default="")
+SPEECH_TTS_VOICE = env("SPEECH_TTS_VOICE", default="alloy")
+SPEECH_TTS_VOICE_HI = env("SPEECH_TTS_VOICE_HI", default="") or SPEECH_TTS_VOICE
+SPEECH_BASE_URL = env("SPEECH_BASE_URL", default="")  # blank: OPENAI_COMPATIBLE_BASE_URL
+SPEECH_API_KEY = env("SPEECH_API_KEY", default="")  # blank: OPENAI_COMPATIBLE_API_KEY
+SPEECH_MODEL_LOCAL_ONLY = env.bool("SPEECH_MODEL_LOCAL_ONLY", default=False)  # faster_whisper: never download
+SPEECH_TIMEOUT_SECONDS = env.float("SPEECH_TIMEOUT_SECONDS", default=30)
+VOICE_MAX_AUDIO_BYTES = env.int("VOICE_MAX_AUDIO_BYTES", default=2 * 1024 * 1024)
+VOICE_MAX_AUDIO_SECONDS = env.int("VOICE_MAX_AUDIO_SECONDS", default=20)
+VOICE_MAX_SPEAK_CHARS = env.int("VOICE_MAX_SPEAK_CHARS", default=400)
+VOICE_MAX_LINES = env.int("VOICE_MAX_LINES", default=5)  # items in one spoken order ("cement and pipes and …")
 
 # --- Logging --------------------------------------------------------------------
 LOG_LEVEL = env("LOG_LEVEL", default="INFO")

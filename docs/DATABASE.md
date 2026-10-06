@@ -255,6 +255,11 @@ and the change of `proof_image` to private storage; no data is changed (no proof
 | `ai_project` | user FK, conversation FK, project_type (painting/bathroom_repair/…), title, inputs JSON, safety_notes, status |
 | `ai_projectitem` | project FK, variant FK (nullable), label, quantity DECIMAL, unit, is_optional, is_estimate, rationale, sort_order |
 
+**Voice shopping (Phase 18)** needs no new table or migration. A signed-in customer's voice session is an
+`ai_aiconversation` with `kind = voice` (`title` = the first thing said); each request adds a user `ai_aimessage` (the
+words heard) and an assistant one (`content` = the answer, `product_refs` = products shown, `payload` = the command
+result without product cards, `provider` = `voice`). Recordings are never stored.
+
 **Photo search (Phase 14)** needs no new table or migration. A signed-in customer's photo search is an
 `ai_aiconversation` with `kind = image` (`title` "Photo: claw hammer", `metadata` `{status, image: {format, width, height,
 bytes, fingerprint}}`) and one assistant `ai_aimessage` (`content` = the explanation, `product_refs` =

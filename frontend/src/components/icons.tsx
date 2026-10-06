@@ -110,6 +110,18 @@ export const CameraIcon = (p: IconProps) => (
     <circle cx="12" cy="13" r="3.5" />
   </Svg>
 )
+export const MicIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="9" y="3" width="6" height="11" rx="3" />
+    <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
+  </Svg>
+)
+export const SpeakerIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 9h4l5-4v14l-5-4H4z" />
+    <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" />
+  </Svg>
+)
 export const ImageIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="3" y="4" width="18" height="16" rx="2" />

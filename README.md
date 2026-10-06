@@ -3,7 +3,12 @@
 AI-powered hardware marketplace with fast delivery from nearby stores: a Django REST API and a React SPA. Delivery
 times are calculated per order (store, distance, preparation, riders, workload), never a fixed promise.
 
-> Status: **Phase 17 complete** — loyalty and cashback: a credit ledger (balance always added up from entries),
+> Status: **Phase 18 complete** — voice shopping at `/voice` (also the microphone in the search bar): say "10 bags of
+> 53 grade cement", "das bori cement aur paanch pipe" or "दस बोरी सीमेंट कार्ट में डालो" and see the price for that
+> quantity from the bulk tiers ("Add 20 more to pay ₹389 each"); it is added to the cart only after you say "yes" or tap
+> Add. "Make it 30", "open my cart", "show me drills" and questions work too, answers are read aloud in English or
+> Hindi, and typing always works. Uses the browser's own speech recognition (Chrome, Edge, Safari); optional local
+> Whisper for other browsers, see [docs/FREE_TOOLS.md](docs/FREE_TOOLS.md). **Phase 17** — loyalty and cashback: a credit ledger (balance always added up from entries),
 > cashback rules (e.g. 2 % on orders from ₹50,000) that stay pending until the return window after delivery has
 > passed, promotional credit and referral codes, credits paying up to 20 % of an order at checkout (oldest expiry
 > first, 90 days, never cash), automatic reversal and restore on cancellations and returns, a wallet page at
@@ -80,6 +85,7 @@ npm run dev
 - App: http://localhost:5173
 - Rider app (delivery partners): http://localhost:5173/rider
 - Search by photo: http://localhost:5173/image-search (needs `VISION_PROVIDER=clip` or `ollama` in `backend/.env`)
+- Shop by voice: http://localhost:5173/voice (Chrome/Edge/Safari; allow the microphone)
 - Business dashboard (administrators, store managers): http://localhost:5173/admin
 - API health: http://127.0.0.1:8000/api/health/
 - API docs: http://127.0.0.1:8000/api/docs/ (Swagger) · `/api/redoc/` · `/api/schema/`

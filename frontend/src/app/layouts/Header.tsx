@@ -172,6 +172,9 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
           <Link to="/image-search" onClick={onClose} className={link}>
             Search with a photo
           </Link>
+          <Link to="/voice" onClick={onClose} className={link}>
+            Shop by voice
+          </Link>
           {categories.data?.map((category) => (
             <details key={category.id} className="group">
               <summary className="flex cursor-pointer list-none items-center justify-between rounded px-2 py-2 text-sm font-semibold hover:bg-steel-50">

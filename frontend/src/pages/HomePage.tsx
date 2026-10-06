@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 
 import { ErrorState } from '@/components/feedback'
-import { BoltIcon, CameraIcon, ChevronRightIcon, PinIcon, SparkIcon } from '@/components/icons'
+import { BoltIcon, CameraIcon, ChevronRightIcon, MicIcon, PinIcon, SparkIcon } from '@/components/icons'
 import { useAuth } from '@/features/auth/context'
 import { useCategories, useCollections, useProducts } from '@/features/catalog/api'
 import { ProductRail, ProductStrip } from '@/features/catalog/components/ProductCollections'
@@ -84,6 +84,15 @@ function SearchHero() {
             >
               <CameraIcon className="size-4 text-amber-500" />
               Search with a photo
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/voice"
+              className="inline-flex items-center gap-1.5 rounded-full bg-ink-800 px-3 py-1.5 ring-1 ring-ink-600 hover:text-amber-500"
+            >
+              <MicIcon className="size-4 text-amber-500" />
+              Shop by voice
             </Link>
           </li>
           <li>
@@ -281,13 +290,19 @@ function AiEntryPoints() {
       text: 'Take a photo of a part and find it in our catalogue.',
       icon: <CameraIcon className="size-6 text-amber-500" />,
     },
+    {
+      to: '/voice',
+      title: 'Shop by voice',
+      text: 'Say “10 bags of cement” in English, Hindi or Hinglish and see the price for that quantity.',
+      icon: <MicIcon className="size-6 text-amber-500" />,
+    },
   ]
   return (
     <section aria-labelledby="ai-heading" className="py-6">
       <h2 id="ai-heading" className="mb-4 text-xl font-bold text-ink-950">
         Not sure what you need?
       </h2>
-      <ul className="grid gap-3 sm:grid-cols-3">
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => (
           <li key={card.title} className="flex">
             <Link

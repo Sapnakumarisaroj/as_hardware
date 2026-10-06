@@ -205,6 +205,24 @@ or recommendation service was added.
 Ledger, rules, jobs and wallet are our own Django/React code on the existing database and cron; no loyalty or wallet
 service is used.
 
+## Voice shopping (Phase 18)
+| Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
+|---|---|---|---|---|---|
+| Listening (default) | Browser **Web Speech API** (`SpeechRecognition`) | ✅ built into Chrome, Edge, Safari | in the browser | No | `hi-IN` for Hindi/Hinglish, `en-IN` for English. Chrome sends the sound to Google's speech service and returns words; the shop receives only the words (the page says so). Firefox has no speech recognition: typing, or the server fallback below |
+| Speaking (default) | Browser **`speechSynthesis`** | ✅ built in | ✅ | No | Uses a voice for the language when the device has one (most phones have Hindi; Windows desktops often only English, then Hindi answers are shown, not read) |
+| Server recognition, optional | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) running OpenAI's open-source **Whisper** (`small` default, `base` lighter) | ✅ MIT (code and models) | ✅ after one download (`small` ≈ 480 MB, Hugging Face cache) | No | `SPEECH_STT_PROVIDER=faster_whisper`, `requirements/speech.txt` (no PyTorch: CTranslate2, int8 on the CPU). About 3 s per 3-second recording on a laptop CPU, ~1 GB RAM: a VPS, not shared hosting. Decodes WebM/Opus, Ogg, WAV, MP4 and MP3 itself (PyAV) |
+| Server recognition / voice, optional | Any server with the OpenAI audio API (`/audio/transcriptions`, `/audio/speech`): self-hosted (e.g. a Whisper or Piper server) or a paid service | depends | depends | depends | `SPEECH_STT_PROVIDER` / `SPEECH_TTS_PROVIDER=openai_compatible`, `SPEECH_BASE_URL` (+ `SPEECH_API_KEY`). Never enabled automatically |
+| Numbers and units in three languages | our own code (`apps/ai/services/spoken.py`) | ✅ project code | ✅ | No | English words, Hindi 1–100 in Devanagari, सौ/हज़ार, डेढ़/ढाई, common romanised Hindi ("das", "bees", "pachaas"), dozen; counting words (bags, बोरी, नग, packets, coils …) vs sizes (kg, mm, sq mm, grade …) |
+
+Setup (development machine, server recognition):
+```powershell
+cd backend
+.\.venv\Scripts\pip install -r requirements\speech.txt
+# backend/.env:  SPEECH_STT_PROVIDER=faster_whisper   (SPEECH_STT_MODEL=small is the default)
+# the first recording downloads the model once; afterwards SPEECH_MODEL_LOCAL_ONLY=true
+```
+Recordings are never stored. Throttles: `THROTTLE_VOICE` (30/min), `THROTTLE_VOICE_AUDIO` (12/min).
+
 ## Deliberately NOT used
 Redis, Celery, RabbitMQ, Elasticsearch/OpenSearch, pgvector-only features, paid vector databases, AWS/Azure/GCP services,
 Sentry SaaS, and any paid AI API. They are replaced by DB-backed queues + cron, DB cache, portable SQL search, and in-Python vector math.

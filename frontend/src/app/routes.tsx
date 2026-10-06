@@ -69,6 +69,7 @@ export const routes: RouteObject[] = [
             path: 'image-search',
             lazy: async () => ({ Component: (await import('@/pages/ImageSearchPage')).ImageSearchPage }),
           },
+          { path: 'voice', lazy: async () => ({ Component: (await import('@/pages/VoicePage')).VoicePage }) },
           { path: 'login', lazy: async () => ({ Component: (await auth()).LoginPage }) },
           { path: 'register', lazy: async () => ({ Component: (await auth()).RegisterPage }) },
           { path: 'account', lazy: async () => ({ Component: (await account()).AccountPage }) },

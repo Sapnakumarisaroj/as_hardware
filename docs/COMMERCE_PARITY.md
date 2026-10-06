@@ -69,7 +69,7 @@ semantic, image and voice search, Project Builder, quantity, compatibility, smar
 | Recommended accessories | 16 (admin links) · 21 (rule-based compatibility) |
 | Search: keyword + synonyms + Hindi/Hinglish + meaning | 13 ✅ |
 | Search: specification/category/brand/availability understanding | 16 |
-| Voice shopping | 18 |
+| Voice shopping | 18 ✅ |
 | Project-based shopping, Project Builder | 19 |
 | Quantity AI ("cement for 500 sq ft plastering") | 20 |
 | Compatibility AI | 21 |
@@ -143,5 +143,5 @@ Tested = automated tests (backend/frontend) and the live HTTP checks of Phase 16
 | Brand pages | ✅ tested | `/brands`, `/brand/:slug` |
 | Recently viewed, recommendations | ✅ tested | Browser history + wishlist/last viewed category |
 | Cashback / wallet / referral | ✅ tested (17) | Ledger-only balance, pending until the return window, 20 % cap, 90-day expiry, wallet page, referral codes |
-| Voice shopping | ⏳ 18 | |
+| Voice shopping | ✅ tested (18) | `/voice`: browser speech in English/Hindi/Hinglish, spoken quantities priced with bulk tiers, add only after “yes”; optional local Whisper |
 | Project builder, quantity estimates, compatibility, smart cart | ⏳ 19–22 | Entry point links to the assistant today |

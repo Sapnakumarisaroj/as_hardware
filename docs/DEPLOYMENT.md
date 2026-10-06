@@ -104,6 +104,7 @@ All configuration comes from environment variables. See `.env.example` for the f
 | `LLM_PROVIDER` | `none` or `ollama` | `none` unless you choose and approve a provider |
 | `BACKGROUND_JOBS_MODE` | `inline` | `cron` if cron is available |
 | `SEMANTIC_EMBEDDER` | `hashing` | `hashing` on shared hosting; `sentence_transformers` only on a VPS with ~1 GB spare RAM (`requirements/semantic.txt`, `SEMANTIC_MODEL_LOCAL_ONLY=true`). After deploying run `manage.py migrate` then `manage.py rebuild_search_index` once |
+| `SPEECH_STT_PROVIDER` / `SPEECH_TTS_PROVIDER` | `none` | `none` on shared hosting: voice shopping (`/voice`) then uses the browser's own speech recognition and voice. `faster_whisper` only on a VPS with ~1 GB spare RAM (`requirements/speech.txt`, `SPEECH_MODEL_LOCAL_ONLY=true` after the first download), for browsers that can't listen. The upload limit must allow `VOICE_MAX_AUDIO_BYTES` (2 MB) |
 | `VISION_PROVIDER` | `none` | `none` on shared hosting (photo search then offers the word search); `clip` only on a VPS with ~2 GB spare RAM (`requirements/semantic.txt`, `VISION_MODEL_LOCAL_ONLY=true` after the first download). The web server's upload limit must allow `IMAGE_SEARCH_MAX_BYTES` (8 MB) |
 | `VITE_API_BASE_URL` | `http://localhost:8000/api` | `https://api.yourdomain.com/api` (**build-time**; set before `npm run build`) |
 | `ROUTING_PROVIDER` | `haversine` (offline) | `haversine`, or `osrm` with `OSRM_BASE_URL` (§2a) |

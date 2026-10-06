@@ -369,7 +369,7 @@ apps/ai/services/
    ├── ProductSearchAI          query → structured filters → catalog search
    ├── HardwareAssistant        intent detection + tool calls over catalog tools
    ├── VisionProductIdentifier  image → {category, attributes, confidence} → catalog search
-   ├── VoiceShopping            STT → HardwareAssistant → optional TTS
+   ├── VoiceShopping            words → spoken.parse → catalogue + quote (or HardwareAssistant) → answer + speech text
    ├── ProjectBuilder           guided questions → kit from real products
    ├── QuantityCalculator       deterministic formulas (paint, tiles, wire, pipe, cement, screws, adhesive)
    ├── CompatibilityChecker     spec rules + optional LLM explanation
@@ -394,8 +394,8 @@ integrations/vision/  (Phase 14; photo → item name only, see "Photo search")
 - **Production:** shared hosting cannot run an LLM (RAM/CPU/process limits). Production defaults to `LLM_PROVIDER=none`,
   so every AI feature still works in a deterministic "basic" mode (keyword search, calculators, spec-rule compatibility,
   co-purchase suggestions). Nothing subscribes to a paid API automatically.
-- **Speech:** STT/TTS interfaces. The default uses the browser's Web Speech API (free, client-side) where supported, with
-  server-side providers pluggable later.
+- **Speech:** the browser's Web Speech API listens and `speechSynthesis` speaks (free, client-side); `integrations/speech/`
+  (`STTProvider`/`TTSProvider`) adds optional server recognition and voice (Phase 18, "Voice shopping" below).
 - **Grounding, enforced in code:** the LLM reaches products only via tools; product cards are built from DB rows; cited IDs
   are re-validated; quantities come from Python formulas and are labelled as estimates; unknown specs give
   `insufficient_information`; the analytics assistant cannot run free-form SQL; low-confidence vision results show "possible matches".
@@ -441,7 +441,7 @@ POST /api/ai/conversations/{id}/messages/  →  HardwareAssistantService.ask
 ```
 - **Grounding:** the model may help understand and phrase; product ids, prices, stock and delivery come from the database and
   are re-read when a conversation is shown. Products only come from retrieval (a model cannot add one), and a model-written message containing a number that is not in the retrieved products is discarded for the rule-based message.
-- **Input:** `HardwareAssistantService.answer(text)` is independent of HTTP and storage, so Phase 18 speech-to-text can call it.
+- **Input:** `HardwareAssistantService.answer(text)` is independent of HTTP and storage; voice questions (Phase 18) call it.
 - **Safety:** electrical, gas and structural questions get a "use a qualified professional" note, not step-by-step instructions.
 - **Add to cart** goes through the ordinary cart API from the browser; the assistant cannot write prices, stock or orders.
 - **Frontend:** `/ai-assistant` (`pages/AssistantPage.tsx`, `features/ai/`): welcome, suggested prompts, product cards,
@@ -483,6 +483,41 @@ POST /api/ai/image-search/ (multipart image)            apps/ai/image_views.py �
   confidence meter, explanation, alternatives as word-search links, product cards with Add to Cart; word search on every
   dead end; signed-in history (reopen, delete, clear).
 
+### Voice shopping (Phase 18)
+```
+browser   SpeechRecognition (en-IN / hi-IN)  ─┐    no recognition (Firefox) and server STT on:
+                                              │    MediaRecorder → POST /api/ai/voice/transcribe/ → STTProvider
+          typed text / example chips ─────────┤        none (default) · faster_whisper (local Whisper) · openai_compatible
+                                              ▼
+POST /api/ai/voice/command/  {transcript, language, pending[]}      apps/ai/voice_views.py → VoiceShoppingService
+  spoken.parse             normalise (Devanagari digits, "50kg" → "50 kg"), read numbers (English words, Hindi 1–100,
+                           सौ/हज़ार, डेढ़/ढाई, romanised Hindi, dozen; "do" = 2 only before a unit or product word),
+                           units: counting (bags/बोरी/नग/packets/coils/pairs/sets → quantity), measures (kg/m/l → the
+                           quantity only if the product is sold that way), sizes (mm, sq mm, inch, grade, W … → search
+                           words); loanwords back to English ("सीमेंट" → cement); split "… aur …" when every part has
+                           its own quantity; intent: add · set_quantity · confirm · cancel · navigate · search · ask
+  catalogue                the listing's own search understanding (interpret: "53 grade" → opt_grade) + search backend
+                           over published products; best match + 2 alternatives; variant from the size words said
+  pricing                  catalog.quote.quote_product for that quantity (Phase 15 engine: tier, next tier, offers,
+                           stock, max per order); "confirm" re-prices the pending ids from the database
+  answer                   sentences in en / hi / hinglish + `speech` (₹ → "rupees"/"रुपये"); ask → HardwareAssistant
+  history                  signed in: AIConversation(kind=voice), the words only
+browser   shows lines; on "yes"/tap → POST /api/cart/items/ per line (prices again); speechSynthesis reads `speech`
+          (server TTS only if switched on and the device has no voice); navigate → React Router
+```
+- **Never buys by voice:** the command API has no cart or order write; a proposal needs "yes"/"haan" or a tap and the
+  browser adds through the normal cart API. "Checkout" only opens the page; the customer places and pays there.
+- **Prices from the engine only:** the client sends product/variant ids and quantities, never prices; a confirmation is
+  priced again, so a price change between the proposal and "yes" is honoured.
+- **Privacy:** with the default, Chrome's speech service hears the voice and the shop receives only the words (the page
+  says so). A server recording is checked by its bytes, transcribed and dropped. Throttles `voice` and `voice_audio`.
+- **Resources:** nothing extra by default. Whisper `small` via faster-whisper (CTranslate2 int8, no PyTorch) is ~480 MB on
+  disk, ~1 GB RAM, ~3 s per short command on a laptop CPU, loaded on first use: a VPS option, not shared hosting.
+- **Frontend:** `/voice` (`pages/VoicePage.tsx`, `features/voice/`), microphone in the search bar, mobile menu, footer
+  and home page: language choice (remembered), microphone with live words, "Read answers aloud" (remembered), type
+  box and examples, priced line cards (bulk tier, "Add 20 more for ₹389 each (make it 30)", alternatives, problems),
+  Add / Add all / Cancel, search results, assistant answers, signed-in history (delete, clear).
+
 ## 6. Integrations (provider pattern)
 
 | Concern   | Default (free)                         | Optional production provider     | Switch |
@@ -493,6 +528,7 @@ POST /api/ai/image-search/ (multipart image)            apps/ai/image_views.py �
 | Email     | console backend (dev)                  | hosting mailbox SMTP             | `EMAIL_*` |
 | Maps      | Offline: haversine distance, admin-managed PIN centres. OpenStreetMap tiles + **Leaflet** for the address pin (frontend) | Still free: Nominatim geocoding (rate-limited, cached), OSRM routing (self-hosted or the public demo server). No paid maps provider is implemented | `GEOCODING_PROVIDER`, `ROUTING_PROVIDER`, `VITE_MAP_TILE_URL` |
 | LLM       | `NoLLMProvider` / Ollama (local)       | OpenAI-compatible / Anthropic    | `LLM_PROVIDER` |
+| Speech    | the browser (Web Speech API, `speechSynthesis`) | local Whisper (faster-whisper) / OpenAI-compatible audio API | `SPEECH_STT_PROVIDER`, `SPEECH_TTS_PROVIDER` |
 | Storage   | local filesystem (`MEDIA_ROOT`)        | S3-compatible (only if approved) | `STORAGE_BACKEND` |
 
 Webhooks (Razorpay `X-Razorpay-Signature`, WhatsApp `X-Hub-Signature-256`) are HMAC-verified and idempotent (the event ID is unique).

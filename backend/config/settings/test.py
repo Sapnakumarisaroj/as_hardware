@@ -50,3 +50,6 @@ SEMANTIC_EMBEDDER = "none"
 CATALOG_SEARCH_BACKEND = "apps.catalog.search.KeywordSearchBackend"
 # Photo search tests use a fake provider; no model is ever loaded or called.
 VISION_PROVIDER = "none"
+# Voice tests use fake speech providers; Whisper is never loaded.
+SPEECH_STT_PROVIDER = "none"
+SPEECH_TTS_PROVIDER = "none"

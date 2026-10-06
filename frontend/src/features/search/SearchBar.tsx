@@ -1,7 +1,7 @@
 import { useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 
-import { CameraIcon, ClockIcon, CloseIcon, SearchIcon } from '@/components/icons'
+import { CameraIcon, ClockIcon, CloseIcon, MicIcon, SearchIcon } from '@/components/icons'
 import { useAuth } from '@/features/auth/context'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { formatPrice } from '@/lib/format'
@@ -182,6 +182,14 @@ export function SearchBar({ initialQuery = '', autoFocus = false }: { initialQue
             <CloseIcon className="size-4" />
           </button>
         )}
+        <Link
+          to="/voice"
+          aria-label="Shop by voice"
+          title="Shop by voice"
+          className="p-2 text-ink-600 hover:text-amber-600 focus-visible:text-amber-600"
+        >
+          <MicIcon className="size-5" />
+        </Link>
         <Link
           to="/image-search"
           aria-label="Search by photo"

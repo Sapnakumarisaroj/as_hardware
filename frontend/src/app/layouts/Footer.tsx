@@ -89,6 +89,11 @@ export function Footer() {
               </Link>
             </li>
             <li>
+              <Link to="/voice" className="hover:text-amber-500">
+                Shop by voice
+              </Link>
+            </li>
+            <li>
               <Link to="/account/returns" className="hover:text-amber-500">
                 Returns
               </Link>

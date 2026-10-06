@@ -1,0 +1,9 @@
+# Optional (Phase 18): server-side speech recognition with OpenAI's open-source Whisper model through
+# faster-whisper (CTranslate2, int8 on the CPU, no PyTorch needed). Only needed when
+# SPEECH_STT_PROVIDER=faster_whisper. The default voice shopping uses the browser's own speech recognition
+# and needs nothing from this file.
+# The model downloads on first use into the Hugging Face cache (`small` ≈ 480 MB, `base` ≈ 145 MB); set
+# SPEECH_MODEL_LOCAL_ONLY=true afterwards to never download at runtime. Needs about 1 GB of free RAM and a
+# few CPU seconds per recording, so it is for a VPS or your own machine, not shared hosting.
+-r base.txt
+faster-whisper==1.2.1

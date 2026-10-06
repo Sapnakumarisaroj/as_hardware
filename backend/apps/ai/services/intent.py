@@ -9,7 +9,7 @@ answer *adds* to the rules (extra search words, a better intent when the rules f
 a follow-up question in the customer's language). The model can't add products, only words
 to search with.
 
-Voice input (Phase 15) will feed transcribed text through the same `understand()`.
+Voice questions (Phase 18, `voice.py`) reach it through `HardwareAssistantService.answer()`.
 """
 
 import logging

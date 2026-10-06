@@ -684,5 +684,42 @@ and `cashback {amount, rule, summary} | null`; `totals.credit_discount` is the c
 **Orders:** detail adds `credit_discount` and `loyalty {credits_used, credits_restored, earned[{kind, amount, status,
 status_label, available_at, description}]}`. Return `refund_amount` leaves out the credit share of the items.
 
+## Voice shopping ✅ (Phase 18)
+The browser turns speech into words (Web Speech API) and reads answers aloud (`speechSynthesis`); the API works on the
+**words**. Nothing here writes the cart or an order: lines are proposed with prices and the browser adds confirmed ones
+through `POST /api/cart/items/`, which prices them again. Anyone may use voice; signed-in customers also get a history
+that only they can read or delete (someone else's id gives 404). Recordings are checked, transcribed and discarded.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/api/ai/voice/` | public, not throttled | `{languages[{code, label, speech, voice}], examples{en, hi, hinglish}, browser_recognition, server_recognition{provider, model, enabled, available}, server_voice{…}, max_audio_bytes, max_audio_seconds, max_lines, max_speak_chars}`. Never exposes keys or URLs |
+| POST | `/api/ai/voice/command/` | public, throttled `voice` (30/min) | `{transcript ≤ 500, language? en|hi|hinglish (else detected), conversation_id?, postal_code? (6 digits), pending?[{product_id, variant_id, quantity 1–9999, name?}] ≤ VOICE_MAX_LINES}` → result (below). 400 on invalid input |
+| POST | `/api/ai/voice/transcribe/` | public, throttled `voice_audio` (12/min) | multipart `audio` (+ `language`). WebM/Ogg/WAV/MP4/MP3/FLAC recognised by content, ≤ `VOICE_MAX_AUDIO_BYTES` (2 MB), ≤ `VOICE_MAX_AUDIO_SECONDS` (20 s, local Whisper). → `{text, language, confidence, duration, empty, provider, model}`. Errors: 400 `audio_missing`, `audio_empty`, `audio_too_long`, `audio_unreadable`; 413 `audio_too_large` (also from `Content-Length`); 415 `unsupported_audio`; 503 `speech_unavailable` (no server recognition: the default) |
+| POST | `/api/ai/voice/speak/` | public, throttled `voice_audio` | `{text ≤ 400, language?}` → audio (`audio/mpeg`, `Cache-Control: no-store`). 503 `speech_unavailable` without a server voice (the default; the browser speaks) |
+| GET | `/api/ai/voice-sessions/` | customer | Own sessions, newest first: `{id, title, language, turns, created_at, updated_at}` |
+| GET, DELETE | `/api/ai/voice-sessions/{id}/` | owner | `{…, turns[{transcript, reply, intent, language, created_at}]}` (words only) / delete |
+| POST | `/api/ai/voice-sessions/clear/` | customer | Delete all own voice sessions (204) |
+
+Command result: `conversation_id` (null for visitors), `transcript`, `language`, `intent`, `reply` (to show), `speech`
+(the same for a voice: "₹3,990" → "3990 rupees", no quote marks), `lines[]`, `products[]` (catalogue cards: search
+results or the assistant's products), `navigate {page, path} | null`, `search_path`, `needs_confirmation`, `add_now`,
+`ai_mode`, `questions[]`, `notice`.
+
+| `intent` | When | What comes back |
+|---|---|---|
+| `add_to_cart` | a quantity and product words ("10 bags of 53 grade cement", "das bori cement aur paanch pipe"), or "add …"/"… cart mein daalo" without a number (1 assumed and said) | `lines`, `needs_confirmation` when at least one line is `ready` |
+| `set_quantity` | only a number while one line waits ("make it 30", "तीस कर दो") | that line priced again |
+| `confirm` / `cancel` | "yes", "haan", "हाँ डाल दो" / "no", "nahi chahiye", "नहीं" while lines wait (`pending`) | `confirm`: pending lines priced again from the database, `add_now` true when any is `ready` |
+| `navigate` | "open my cart", "checkout", "where is my order", "my wallet" | `navigate.path` (`/cart`, `/checkout`, `/account/orders`, `/account/wallet`). Checkout is only opened |
+| `search` | "show me drills", "drill dikhao" | `products`, `search_path` |
+| `ask` | questions, budgets, anything else | the hardware assistant's answer (Phase 12) |
+| `unclear` | nothing usable, or "yes" with nothing waiting | `reply` explains |
+
+Line: `{heard, query, quantity, quantity_given, spoken_unit, status, match exact|closest, message, note, product_id,
+variant_id, product_name, unit, filters[{param, value, label}], quote, product (card), alternatives[] (cards)}`.
+`status`: `ready`, `not_found`, `too_many` (over `max_order_quantity`), `short_stock`, `unavailable`, `whole_number`
+("1.5 bags"). `quote` is the Phase 15 quote for that quantity (`unit_price` with the bulk tier, `applied_tier`,
+`next_tier {min_quantity, unit_price, units_more, reachable}`, `offer_discount`, `offers`, `total`, `within_stock`, …).
+
 ## Planned 🔜
-- **AI** more endpoints in Phases 18–22 (voice, projects, calculators, compatibility, smart cart). **Notifications/support channels** (Phase 23).
+- **AI** more endpoints in Phases 19–22 (projects, calculators, compatibility, smart cart). **Notifications/support channels** (Phase 23).
