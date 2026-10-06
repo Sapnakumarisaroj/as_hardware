@@ -103,6 +103,9 @@ TEXT: dict[str, dict[str, str]] = {
         "confirm_many": "Say “yes” to add everything, or tap Add on each item.",
         "assumed_one": "I took 1; say a number to change it.",
         "not_found": "I couldn't find “{query}” in our catalogue.",
+        "quantity_questions": "To work out the {name}, I need a few details.",
+        "quantity_intro": "{title} — estimated quantity:",
+        "quantity_more": "Open the quantity calculator for the full list and the breakdown.",
         "too_many": "{name}: at most {max} per order.",
         "short_stock": "{name}: not enough in stock for {quantity} right now.",
         "unavailable": "{name} isn't available right now.",
@@ -134,6 +137,9 @@ TEXT: dict[str, dict[str, str]] = {
         "confirm_many": "Sab add karne ke liye “haan” bolein, ya har item par Add dabayein.",
         "assumed_one": "Maine 1 liya hai; badalne ke liye number bolein.",
         "not_found": "Catalogue mein “{query}” nahi mila.",
+        "quantity_questions": "{name} ka hisaab lagane ke liye kuch details chahiye.",
+        "quantity_intro": "{title} — andazan quantity:",
+        "quantity_more": "Poori list aur hisaab ke liye quantity calculator kholiye.",
         "too_many": "{name}: ek order mein zyada se zyada {max}.",
         "short_stock": "{name}: abhi {quantity} ka stock nahi hai.",
         "unavailable": "{name} abhi uplabdh nahi hai.",
@@ -165,6 +171,9 @@ TEXT: dict[str, dict[str, str]] = {
         "confirm_many": "सब जोड़ने के लिए “हाँ” बोलें, या हर सामान पर जोड़ें दबाएँ।",
         "assumed_one": "मैंने 1 लिया है; बदलने के लिए संख्या बोलें।",
         "not_found": "कैटलॉग में “{query}” नहीं मिला।",
+        "quantity_questions": "{name} का हिसाब लगाने के लिए कुछ जानकारी चाहिए।",
+        "quantity_intro": "{title} — अनुमानित मात्रा:",
+        "quantity_more": "पूरी सूची और हिसाब के लिए मात्रा कैलकुलेटर खोलें।",
         "too_many": "{name}: एक ऑर्डर में अधिकतम {max}।",
         "short_stock": "{name}: अभी {quantity} का स्टॉक नहीं है।",
         "unavailable": "{name} अभी उपलब्ध नहीं है।",
@@ -305,6 +314,7 @@ class VoiceReply:
     ai_mode: str = "basic"
     questions: list[str] = field(default_factory=list)
     notice: str = ""
+    quantity: dict | None = None  # Phase 20: a quantity request ({calculator, title, complete, path})
 
     @property
     def speech(self) -> str:
@@ -329,6 +339,7 @@ class VoiceReply:
             "ai_mode": self.ai_mode,
             "questions": self.questions,
             "notice": self.notice,
+            "quantity": self.quantity,
         }
 
     def refs(self) -> list[dict]:
@@ -435,8 +446,84 @@ class VoiceShoppingService:
             Command.SEARCH: self._search,
             Command.ASK: self._ask,
         }.get(parsed.intent, self._unclear)
+        if (
+            not pending
+            and parsed.intent in (Command.ADD, Command.ASK, Command.SEARCH)
+            and self._wants_quantity(transcript, parsed)
+        ):
+            handler = self._quantity
         handler(reply, parsed, pending=pending, user=user, postal_code=postal_code)
         return reply
+
+    # --- Quantity AI (Phase 20) -------------------------------------------------------------------
+
+    @staticmethod
+    def _wants_quantity(transcript: str, parsed) -> bool:
+        """ "500 sq ft plastering ka saman", "how much paint for a 12 by 15 room": the quantity calculator.
+        A counted order ("5 packets of screws", "2 coils of wire") stays an order."""
+        from ..quantity.service import QuantityAIService
+        from ..quantity.units import AREA, DIMENSIONS
+
+        if not QuantityAIService.detect(transcript):
+            return False
+        normal = spoken.normalize(transcript)
+        if AREA.search(normal) or DIMENSIONS.search(normal):
+            return True
+        counted = any(line.quantity_given and line.unit for line in parsed.lines)
+        return not counted and QuantityAIService.is_quantity_request(transcript)
+
+    def _quantity(self, reply, parsed, *, user, postal_code, **kwargs):
+        from urllib.parse import quote
+
+        from apps.catalog.models import ProductVariant
+
+        from ..quantity.service import QuantityAIService
+
+        result = QuantityAIService().estimate(
+            text=reply.transcript, language=reply.language, user=user, postal_code=postal_code
+        )
+        if not result.get("calculator"):
+            self._ask(reply, parsed, **kwargs)
+            return
+        reply.intent = "quantity"
+        reply.quantity = {
+            "calculator": result["calculator"],
+            "title": result.get("title") or result["name"],
+            "complete": result["complete"],
+            "path": f"/quantity?q={quote(reply.transcript)}",
+        }
+        if not result["complete"]:
+            reply.reply = text(reply.language, "quantity_questions", name=result["name"])
+            reply.questions = [q["text"] for q in result["questions"] if q["key"] in result["missing"]][:2]
+            return
+        items = [i for i in result["kit"]["items"] if i["included"] and i["variant"]]
+        variants = ProductVariant.objects.in_bulk([i["variant"]["id"] for i in items])
+        products = {p.pk: p for p in selectors.product_queryset().filter(pk__in=[i["product_id"] for i in items])}
+        lines = []
+        for item in items[: settings.VOICE_MAX_LINES]:
+            product, variant = products.get(item["product_id"]), variants.get(item["variant"]["id"])
+            out = self._line(heard=item["label"], query=item["label"], quantity=item["quantity"])
+            if product is None:
+                out.update(status="unavailable", message=text(reply.language, "unavailable", name=item["label"]))
+                lines.append(out)
+                continue
+            lines.append(
+                self._priced(
+                    out,
+                    product,
+                    variant,
+                    item["quantity"],
+                    reply.language,
+                    user=user,
+                    postal_code=postal_code,
+                    notes=[],
+                )
+            )
+        reply.lines = lines
+        prefix = text(reply.language, "quantity_intro", title=reply.quantity["title"])
+        self._propose(reply, prefix)
+        if len(items) > settings.VOICE_MAX_LINES or result["kit"]["not_found_count"]:
+            reply.reply = f"{reply.reply} {text(reply.language, 'quantity_more')}"
 
     def _add(self, reply, parsed, *, user, postal_code, **_):
         reply.lines = [self._resolve(line, reply.language, user=user, postal_code=postal_code) for line in parsed.lines]

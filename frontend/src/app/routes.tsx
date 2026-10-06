@@ -70,6 +70,7 @@ export const routes: RouteObject[] = [
             path: 'image-search',
             lazy: async () => ({ Component: (await import('@/pages/ImageSearchPage')).ImageSearchPage }),
           },
+          { path: 'quantity', lazy: async () => ({ Component: (await import('@/pages/QuantityPage')).QuantityPage }) },
           { path: 'projects', lazy: async () => ({ Component: (await projects()).ProjectsPage }) },
           { path: 'projects/:id', lazy: async () => ({ Component: (await projects()).ProjectPage }) },
           { path: 'voice', lazy: async () => ({ Component: (await import('@/pages/VoicePage')).VoicePage }) },

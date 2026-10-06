@@ -257,6 +257,12 @@ function ResultView({
         </div>
       )}
 
+      {result.quantity && (
+        <Link to={result.quantity.path} className="inline-block text-sm font-semibold text-amber-600 hover:underline">
+          Open the quantity calculator: {result.quantity.title}
+        </Link>
+      )}
+
       {result.products.length > 0 && (
         <div>
           <ul className="grid gap-3 sm:grid-cols-2" aria-label="Products">

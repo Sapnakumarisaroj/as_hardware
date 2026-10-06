@@ -263,6 +263,12 @@ suggestion, how the amount was worked out). `ai_project.inputs` holds `{descript
 from_description, custom_title}`. Prices are never stored: the kit is priced again on every read. `quantity` on an item
 is the number of packs to buy.
 
+**Quantity AI (Phase 20)**, migration `ai.0004_quantity_calculations` (choices only): `ai_project.project_type`
+gains `plastering`, `flooring`, `wiring`, `pipes`, `fasteners`, so a saved calculation is a project of that type (no new
+table). A project's `inputs` may hold `interpretations` (how measurements were read); item `details` may hold the
+breakdown `steps`, `pack_explanation`, `pack_options`, `covers` and the suggested pack combination `suggested`.
+Calculations that aren't saved are not stored at all.
+
 **Voice shopping (Phase 18)** needs no new table or migration. A signed-in customer's voice session is an
 `ai_aiconversation` with `kind = voice` (`title` = the first thing said); each request adds a user `ai_aimessage` (the
 words heard) and an assistant one (`content` = the answer, `product_refs` = products shown, `payload` = the command

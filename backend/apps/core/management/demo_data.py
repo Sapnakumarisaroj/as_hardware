@@ -12,6 +12,7 @@ CATEGORIES = {
         ("cement", "Cement", [("grey-cement", "Grey Cement")]),
         ("adhesives", "Adhesives"),
         ("tiling", "Tiling Accessories"),
+        ("flooring", "Flooring"),
     ],
     # Phase 19: painting, waterproofing (project builder demo kits)
     ("paints", "Paints & Waterproofing"): [
@@ -668,6 +669,40 @@ PRODUCTS = [
         [("SPACER-3-100", "", "90", "59", 120)],
         [("Size", "3", "mm"), ("Pack Size", "100", "pcs")],
     ),
+    # Phase 20 additions (quantity calculators): flooring sold by the box / roll it covers. Keep at the end.
+    (
+        "civil-interiors",
+        "flooring",
+        "Laminate Flooring 8 mm, Natural Oak",
+        "BuildMax (Demo)",
+        "box",
+        "18",
+        ["laminate", "flooring", "laminate flooring", "wooden floor"],
+        [("LAM-8-OAK", "Box (21.5 sq ft)", "1890", "1590", 21500)],
+        [("Thickness", "8", "mm"), ("Box Coverage", "21.5", "sq ft")],
+    ),
+    (
+        "civil-interiors",
+        "flooring",
+        "Vinyl SPC Flooring Planks, Grey Ash",
+        "BuildMax (Demo)",
+        "box",
+        "18",
+        ["vinyl", "spc", "flooring", "vinyl flooring"],
+        [("SPC-4-GREY", "Box (24 sq ft)", "2600", "2199", 24000)],
+        [("Thickness", "4", "mm"), ("Box Coverage", "24", "sq ft")],
+    ),
+    (
+        "civil-interiors",
+        "flooring",
+        "Flooring Underlay Foam 2 mm",
+        "BuildMax (Demo)",
+        "piece",
+        "18",
+        ["underlay", "flooring underlay", "foam"],
+        [("UNDERLAY-100", "Roll (100 sq ft)", "650", "499", 600)],
+        [("Thickness", "2", "mm"), ("Box Coverage", "100", "sq ft")],
+    ),
 ]
 
 # code, name, kind, area, postal code, lat, lng
@@ -791,6 +826,7 @@ PRICE_TIERS = {
     "INTEMUL-4": [(3, "969"), (6, "949")],
     "PUTTY-20": [(5, "769"), (10, "749")],
     "GROUT-1": [(10, "129")],
+    "LAM-8-OAK": [(10, "1540"), (25, "1490")],
 }
 
 # Products launched recently (sku suffix of the first variant → days ago), for "New launches".

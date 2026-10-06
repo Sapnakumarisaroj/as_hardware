@@ -80,6 +80,12 @@ class Project(TimeStampedModel):
         CONSTRUCTION = "construction", "Basic construction"
         WATERPROOFING = "waterproofing", "Waterproofing"
         TILING = "tiling", "Tiling"
+        # Phase 20: saved Quantity AI calculations
+        PLASTERING = "plastering", "Plastering"
+        FLOORING = "flooring", "Flooring"
+        WIRING = "wiring", "Wire length"
+        PIPES = "pipes", "Pipe length"
+        FASTENERS = "fasteners", "Screws and wall plugs"
         OTHER = "other", "Other"
 
     class Status(models.TextChoices):

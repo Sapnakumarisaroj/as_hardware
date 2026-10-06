@@ -19,17 +19,16 @@ import logging
 import math
 import re
 from decimal import Decimal
+from urllib.parse import quote
 
 from integrations.llm import ChatOptions, LLMError, LLMUnavailable, get_llm_provider
 
+from ..quantity import formulas
 from . import vocabulary as V
 from .schemas import AssistantReply, Intent, ProductMatch, Understanding
 
 logger = logging.getLogger(__name__)
 
-WALL_HEIGHT_FT = 10
-EMULSION_SQFT_PER_LITRE_TWO_COATS = 65  # typical interior emulsion, two coats
-PRIMER_SQFT_PER_LITRE = 110
 
 _LLM_RECOMMEND = """You are the assistant of an Indian hardware shop. The customer asked something and the shop
 found these products for it. Write 1 to 3 short, friendly sentences recommending them, in the language given
@@ -51,24 +50,27 @@ def rupees(value: Decimal) -> str:
 
 def paint_estimate(dimensions: tuple[float, float], language: str) -> dict:
     length, width = dimensions
-    area = 2 * (length + width) * WALL_HEIGHT_FT
-    litres = math.ceil(area / EMULSION_SQFT_PER_LITRE_TWO_COATS)
-    primer = math.ceil(area / PRIMER_SQFT_PER_LITRE)
+    # The Quantity AI formulas (Phase 20): one door and one window taken off, two coats, labelled defaults.
+    walls = formulas.wall_area(length, width)
+    area = walls.amount
+    litres = math.ceil(round(formulas.paint_litres(area).amount, 6))
+    primer = math.ceil(round(formulas.primer_litres(area).amount, 6))
     return {
         "kind": "paint",
         "length_ft": length,
         "width_ft": width,
-        "height_ft": WALL_HEIGHT_FT,
+        "height_ft": formulas.WALL_HEIGHT_FT,
         "wall_area_sqft": round(area),
         "emulsion_litres": litres,
         "primer_litres": primer,
         "is_estimate": True,
+        "calculator_path": f"/quantity?q={quote(f'paint for a {_num(length)}x{_num(width)} room')}",
         "text": V.text(
             language,
             "estimate_paint",
             length=_num(length),
             width=_num(width),
-            height=WALL_HEIGHT_FT,
+            height=formulas.WALL_HEIGHT_FT,
             area=round(area),
             litres=litres,
             primer=primer,

@@ -1,24 +1,21 @@
-"""Guided project flow (Phase 19): description → project type → answers → the next questions.
+"""Guided flow, shared by the project builder (Phase 19) and Quantity AI (Phase 20):
+description → template → answers → the next questions.
 
 Everything here is deterministic. The description is read for what it already says ("paint my 12x15 bedroom,
-walls have cracks" → painting, length 12, width 15, interior, minor cracks); each question is asked only
-while its answer is missing and changes the materials; a question with a default is never asked, its
-default is listed as an assumption the customer can change.
+walls have cracks" → painting, length 12, width 15, interior, minor cracks; "5 m x 4 m" → feet, shown as an
+interpretation); each question is asked only while its answer is missing and changes the materials; a
+question with a default is never asked, its default is listed as an assumption the customer can change.
 """
 
 import re
 from dataclasses import dataclass, field
 
+from ..quantity import units as U
 from ..services.intent import detect_language
 from .templates import TEMPLATES, ProjectTemplate, Question, say, t
 
-DEVANAGARI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
-NUMBER = r"(\d+(?:\.\d+)?)"
-DIMENSIONS = re.compile(rf"{NUMBER}\s*(?:ft|feet|foot|')?\s*(?:x|×|\*|by|बाई)\s*{NUMBER}", re.IGNORECASE)
-AREA = re.compile(rf"{NUMBER}\s*(?:sq\.?\s*(?:ft|feet)|sqft|square\s+(?:feet|foot|ft)|वर्ग\s*फ\S*ट)", re.IGNORECASE)
-METRES = re.compile(rf"{NUMBER}\s*(?:m|mtr|metres?|meters?|मीटर)(?![a-z])", re.IGNORECASE)
-
 ASSUMED = t("Assumed: {question} {value}", "मान लिया: {question} {value}", "Maan liya: {question} {value}")
+NUMBER = r"(\d+(?:\.\d+)?)"
 
 
 class ProjectInputError(ValueError):
@@ -26,74 +23,123 @@ class ProjectInputError(ValueError):
 
 
 def normalise(text: str) -> str:
-    return " ".join((text or "").translate(DEVANAGARI_DIGITS).split())
+    return U.normalise(text)
 
 
-def detect_type(text: str) -> str | None:
-    """The template whose words appear most in the description; ties go to the more specific job."""
+def detect_type(text: str, templates: dict[str, ProjectTemplate] | None = None) -> str | None:
+    """The template whose words appear most in the description; ties go to the earlier (more specific) one."""
     text = normalise(text).lower()
     best, best_hits = None, 0
-    for key, template in TEMPLATES.items():
+    for key, template in (templates or TEMPLATES).items():
         hits = sum(1 for pattern in template.patterns if re.search(pattern, text, re.IGNORECASE))
         if hits > best_hits:
             best, best_hits = key, hits
     return best
 
 
-def extract_answers(template: ProjectTemplate, text: str) -> dict:
-    """Answers the description already gives. Only values the questions accept are kept."""
+@dataclass
+class Reading:
+    answers: dict
+    notes: list[dict] = field(default_factory=list)  # [{key, text}]: how a value was read or converted
+
+
+def read_description(template: ProjectTemplate, text: str) -> Reading:
+    """Answers the description already gives, with the interpretation of any unit. Only values the
+    questions accept are kept."""
     text = normalise(text)
     found: dict = {}
-    by_role = {q.role: q for q in template.questions if q.role}
+    notes: list[dict] = []
+    roles = {q.role: q for q in template.questions if q.role}
+    rest = text
 
-    if match := DIMENSIONS.search(text):
-        length, width = float(match.group(1)), float(match.group(2))
-        if "length" in by_role and "width" in by_role:
-            found["length"], found["width"] = length, width
-        elif "area" in by_role:
-            found["area"] = length * width
-    if "area" in by_role and (match := AREA.search(text)):
-        found["area"] = float(match.group(1))
-    if "metres" in by_role and (match := METRES.search(text)):
-        found[by_role["metres"].key] = float(match.group(1))
+    # Choices first; their words (e.g. "600x600 mm" tiles) are then taken out before sizes are read.
+    for question in template.questions:
+        if question.kind != "choice":
+            continue
+        for choice in question.choices:
+            match = next((m for p in choice.patterns if (m := re.search(p, rest, re.IGNORECASE))), None)
+            if match:
+                found[question.key] = choice.value
+                if "x" in match.group(0).lower() or "×" in match.group(0):
+                    rest = rest[: match.start()] + " " + rest[match.end() :]
+                break
+
+    sizes = U.read_dimensions(rest, unit="ft")
+    if sizes and ("length" in roles or "area" in roles):
+        values = {r.key: r.value for r in sizes}
+        if "length" in roles and "width" in roles:
+            found["length"], found["width"] = values["length"], values["width"]
+            if "height" in values and "height" in roles:
+                found["height"] = values["height"]
+        elif "area" in roles:
+            found["area"] = round(values["length"] * values["width"], 2)
+        if sizes[0].note:
+            notes.append({"key": "length", "text": sizes[0].note})
+    if "area" in roles and (area := U.read_area(rest, unit="sq ft")):
+        found["area"] = area.value
+        found.pop("length", None), found.pop("width", None)
+        if area.note:
+            notes.append({"key": "area", "text": area.note})
+    if "metres" in roles and (run := U.read_length(rest, unit="m")):
+        found[roles["metres"].key] = run.value
+        if run.note:
+            notes.append({"key": roles["metres"].key, "text": run.note})
 
     for question in template.questions:
         if question.count_words:
             words = "|".join(re.escape(w) for w in question.count_words)
-            if match := re.search(rf"{NUMBER}\s*(?:{words})(?![a-z])", text, re.IGNORECASE):
+            if match := re.search(rf"{NUMBER}\s*(?:{words})(?![a-z])", rest, re.IGNORECASE):
                 found[question.key] = float(match.group(1))
-        if question.kind == "choice" and question.key not in found:
-            for choice in question.choices:
-                if any(re.search(p, text, re.IGNORECASE) for p in choice.patterns):
-                    found[question.key] = choice.value
-                    break
 
     if template.infer:
         template.infer(found, text)
     by_key = {q.key: q for q in template.questions}
-    return {k: v for k, v in ((k, by_key[k].clean(v) if k in by_key else v) for k, v in found.items()) if v is not None}
+    answers = {
+        k: v for k, v in ((k, by_key[k].clean(v) if k in by_key else v) for k, v in found.items()) if v is not None
+    }
+    return Reading(answers, [n for n in notes if n["key"] in answers])
+
+
+def extract_answers(template: ProjectTemplate, text: str) -> dict:
+    return read_description(template, text).answers
 
 
 def clean_answers(template: ProjectTemplate, given: dict) -> tuple[dict, dict[str, str]]:
-    """Customer answers checked against the questions: (accepted, errors by key)."""
+    """Customer answers checked against the questions: (accepted, errors by key). A number may come with
+    its unit ({"value": 5, "unit": "m"}); it is converted to the question's unit."""
+    accepted, errors, _ = clean_answers_noted(template, given)
+    return accepted, errors
+
+
+def clean_answers_noted(template: ProjectTemplate, given: dict) -> tuple[dict, dict[str, str], list[dict]]:
     by_key = {q.key: q for q in template.questions}
-    accepted, errors = {}, {}
+    accepted, errors, notes = {}, {}, []
     for key, value in (given or {}).items():
         question = by_key.get(key)
         if question is None:
             continue
-        if value is None or value == "":
+        if value is None or value == "" or (isinstance(value, dict) and value.get("value") in (None, "")):
             accepted[key] = None  # cleared
             continue
+        if question.kind == "number":
+            try:
+                number, note = question.convert(value)
+            except U.UnitError:
+                errors[key] = f"Use one of these units: {', '.join(question.units)}."
+                continue
+            if note:
+                notes.append({"key": key, "text": note})
+            value = number if number is not None else value
         cleaned = question.clean(value)
         if cleaned is None:
             if question.kind == "choice":
                 errors[key] = "Choose one of the options."
             else:
-                errors[key] = f"Enter a number from {question.minimum:g} to {question.maximum:g}."
+                unit = f" {question.unit}" if question.unit and question.unit not in ("%",) else ""
+                errors[key] = f"Enter a number from {question.minimum:g} to {question.maximum:g}{unit}."
         else:
             accepted[key] = cleaned
-    return accepted, errors
+    return accepted, errors, notes
 
 
 @dataclass

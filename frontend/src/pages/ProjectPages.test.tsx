@@ -21,6 +21,10 @@ function item(overrides: Partial<KitItem> = {}): KitItem {
   return {
     id: 1,
     material_key: 'emulsion',
+    base_key: 'emulsion',
+    steps: [{ label: 'Area to paint', value: '507 sq ft' }],
+    pack_explanation: '2 × 4 L = ₹1,998 covers 7.8 L (cheapest way).',
+    stock_status: 'available',
     label: 'Interior emulsion paint',
     rationale: 'About 486 sq ft of wall, 2 coats.',
     note: '',
@@ -41,7 +45,7 @@ function item(overrides: Partial<KitItem> = {}): KitItem {
     product: paint,
     variant: { id: 50, sku: 'INTEMUL-4', name: '4 L', options: [], price: '999.00', mrp: '1150.00' },
     problem: '',
-    stock_available: 40,
+    stock_available: null,
     price: {
       unit_price: '999.00',
       base_unit_price: '999.00',
@@ -59,7 +63,7 @@ function kit(overrides: Partial<ProjectKit> = {}): ProjectKit {
   return {
     items: [
       item(),
-      item({ id: 2, material_key: 'masking_tape', label: 'Masking tape', status: 'not_found', included: false, product: null, product_id: null, variant: null, price: null, problem: 'not_found', is_estimate: true }),
+      item({ id: 2, material_key: 'masking_tape', base_key: 'masking_tape', label: 'Masking tape', status: 'not_found', included: false, product: null, product_id: null, variant: null, price: null, problem: 'not_found', is_estimate: true }),
     ],
     postal_code: '411038',
     totals: {
@@ -109,7 +113,7 @@ function plan(overrides: Partial<ProjectPlan> = {}): ProjectPlan {
     answers: { length: 12, width: 15, surface: 'interior', condition: 'minor' },
     from_description: ['length', 'width'],
     questions: [
-      { key: 'length', kind: 'number', text: 'How long is the room (in feet)?', unit: 'ft', min: 1, max: 200, choices: [], default: null },
+      { key: 'length', kind: 'number', text: 'How long is the room (in feet)?', unit: 'ft', min: 1, max: 200, choices: [], default: null, units: ['ft', 'm'] },
       {
         key: 'condition',
         kind: 'choice',
@@ -122,6 +126,7 @@ function plan(overrides: Partial<ProjectPlan> = {}): ProjectPlan {
           { value: 'minor', label: 'A few cracks or holes' },
         ],
         default: null,
+        units: [],
       },
     ],
     missing: [],

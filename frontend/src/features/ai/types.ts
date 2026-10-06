@@ -37,7 +37,7 @@ export interface AssistantMessage {
   notice: string
   knowledge: { title: string; text: string; source?: string }[]
   safety: string[]
-  estimate: { kind: string; text: string; is_estimate: boolean } | null
+  estimate: { kind: string; text: string; is_estimate: boolean; calculator_path?: string } | null
 }
 
 export interface ConversationSummary {

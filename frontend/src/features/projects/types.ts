@@ -13,6 +13,8 @@ export interface ProjectQuestion {
   max: number
   choices: { value: string; label: string }[]
   default: AnswerValue | null
+  /** Units the answer may be given in (converted on the server), e.g. ['ft', 'm', 'cm', 'mm', 'inch']. */
+  units: string[]
 }
 
 export interface ProjectType {
@@ -26,7 +28,7 @@ export interface KitLinePrice {
   unit_price: string
   base_unit_price: string
   applied_tier: { min_quantity: number } | null
-  next_tier: { min_quantity: number; unit_price: string; units_more: number } | null
+  next_tier: { min_quantity: number; unit_price: string; units_more: number; reachable?: boolean } | null
   line_total: string
   bulk_saving: string
   offer_discount: string
@@ -34,9 +36,19 @@ export interface KitLinePrice {
 
 export type KitProblem = '' | 'not_found' | 'unavailable' | 'too_many' | 'short_stock'
 
+export interface BreakdownStep {
+  label: string
+  value: string
+}
+
 export interface KitItem {
-  id: number
+  id: number | string
   material_key: string
+  /** The material this line belongs to ("primer" for "primer~2", a second pack size). */
+  base_key: string
+  steps: BreakdownStep[]
+  pack_explanation: string
+  stock_status: 'available' | 'limited' | 'unavailable'
   label: string
   rationale: string
   note: string
@@ -45,6 +57,7 @@ export interface KitItem {
   pack_amount: number | null
   size_known: boolean
   suggested: { variant_id: number | null; quantity: number | null }
+  suggested_parts?: { variant_id: number; quantity: number }[]
   alternatives: RecommendedProduct[]
   added_by_customer: boolean
   is_optional: boolean
@@ -57,7 +70,7 @@ export interface KitItem {
   product: RecommendedProduct | null
   variant: { id: number; sku: string; name: string; options: { type: string; value: string }[]; price: string; mrp: string } | null
   problem: KitProblem
-  stock_available: number
+  stock_available: number | null
   price: KitLinePrice | null
 }
 
@@ -70,6 +83,7 @@ export interface ProjectKit {
     subtotal: string
     bulk_savings: string
     offer_discount: string
+    coupon_discount?: string
     delivery_fee: string
     tax_included: string
     grand_total: string
@@ -77,6 +91,7 @@ export interface ProjectKit {
   }
   offers: { name: string; discount: string }[]
   offers_in_reach: { name: string; description: string; min_order_value: string }[]
+  coupon?: { code: string; applied: boolean; message: string } | null
   delivery: {
     checked: boolean
     available: boolean
@@ -107,6 +122,9 @@ export interface ProjectPlan {
   summary: string
   answers: Record<string, AnswerValue>
   from_description: string[]
+  interpretations?: { key: string; text: string }[]
+  is_calculation?: boolean
+  verify?: string
   questions: ProjectQuestion[]
   missing: string[]
   assumptions: { key: string; value: AnswerValue; text: string }[]

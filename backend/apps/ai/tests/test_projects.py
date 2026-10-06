@@ -60,7 +60,11 @@ def test_answers_read_from_the_description():
 def test_only_missing_questions_are_asked_and_defaults_are_assumptions():
     state = flow.resolve(PAINTING, {"length": 12, "width": 15})
     assert [q.key for q in state.missing] == ["surface", "condition"]
-    assert state.assumptions == [{"key": "height", "value": 10}]
+    assert state.assumptions == [
+        {"key": "height", "value": 10},
+        {"key": "doors", "value": 1},
+        {"key": "windows", "value": 1},
+    ]
     state = flow.resolve(PAINTING, {"length": 12, "width": 15, "surface": "interior", "condition": "good"})
     assert state.complete and state.answers["height"] == 10
 
@@ -84,7 +88,7 @@ def test_painting_quantities_follow_the_labelled_rules():
             {"length": 12, "width": 15, "height": 10, "surface": "interior", "condition": "minor"}
         )
     }
-    area = 2 * (12 + 15) * 10 * 0.9  # 486 sq ft of wall
+    area = 2 * (12 + 15) * 10 - 21 - 12  # 507 sq ft of wall: one door and one window taken off
     assert needs["emulsion"].amount == pytest.approx(area * 2 / 130)
     assert needs["primer"].amount == pytest.approx(area / 110)
     assert needs["putty"].amount == pytest.approx(area / 50)
@@ -185,15 +189,19 @@ def test_a_described_job_becomes_a_priced_kit_of_real_products(auth_client, user
     data = response.json()
     assert data["project_type"] == "painting" and data["complete"] and data["status"] == "ready"
     assert data["missing"] == [] and data["from_description"] == ["condition", "length", "surface", "width"]
-    assert [a["key"] for a in data["assumptions"]] == ["height"]
+    assert [a["key"] for a in data["assumptions"]] == ["height", "doors", "windows"]
     assert data["title"] == "Painting · 12 × 15 ft room"
     emulsion = _item(data, "emulsion")
-    # 7.5 L needed: two 4 L tins (₹1,998) beat eight 1 L (₹2,232) and one 10 L (₹2,349)
+    # 7.8 L needed: two 4 L tins (₹1,998) beat eight 1 L (₹2,232), one 10 L (₹2,349) and 4 L + 4 × 1 L (₹2,115)
     assert emulsion["variant"]["id"] == paints["emulsion_v"][0].pk and emulsion["quantity"] == 2
     assert emulsion["is_estimate"] and emulsion["included"] and emulsion["product"]["name"] == "Interior Emulsion Paint"
-    assert _item(data, "primer")["variant"]["id"] == paints["primer_v"][1].pk and _item(data, "primer")["quantity"] == 5
-    putty = _item(data, "putty")  # 9.7 kg: two 5 kg bags (₹458) beat one 20 kg (₹799)
-    assert putty["variant"]["id"] == paints["putty_v"][1].pk and putty["quantity"] == 2
+    # 4.6 L of primer: 1 × 4 L + 1 × 1 L (₹828) beats five 1 L (₹895) and two 4 L (₹1,298): two lines
+    primer, primer_top_up = _item(data, "primer"), _item(data, "primer~2")
+    assert (primer["variant"]["id"], primer["quantity"]) == (paints["primer_v"][0].pk, 1)
+    assert (primer_top_up["variant"]["id"], primer_top_up["quantity"]) == (paints["primer_v"][1].pk, 1)
+    assert primer["base_key"] == primer_top_up["base_key"] == "primer" and "₹828" in primer["pack_explanation"]
+    putty = _item(data, "putty")  # 10.1 kg: three 5 kg bags (₹687) beat one 20 kg (₹799)
+    assert putty["variant"]["id"] == paints["putty_v"][1].pk and putty["quantity"] == 3
     assert "cracks" in putty["rationale"]
     assert _item(data, "masking_tape")["quantity"] == 2  # 33 m of edges, 20 m rolls
     assert _item(data, "brush")["quantity"] == 1  # a set of 3 covers 2 brushes
@@ -264,7 +272,12 @@ def test_bulk_tier_and_offers_apply_to_the_whole_kit(auth_client, paints, home):
     offer.categories.set([paints["paint_cat"]])
     data = _start(auth_client, description=ROOM).json()
     emulsion = _item(data, "emulsion")
-    assert emulsion["price"]["next_tier"] == {"min_quantity": 3, "unit_price": "969.00", "units_more": 1}
+    assert emulsion["price"]["next_tier"] == {
+        "min_quantity": 3,
+        "unit_price": "969.00",
+        "units_more": 1,
+        "reachable": True,
+    }
     assert data["kit"]["offers"][0]["name"] == "Paint week" and D(emulsion["price"]["offer_discount"]) > 0
     data = auth_client.patch(f"{URL}{data['id']}/items/{emulsion['id']}/", {"quantity": 3}, format="json").json()
     emulsion = _item(data, "emulsion")
@@ -285,9 +298,14 @@ def test_customer_changes_survive_new_answers(auth_client, paints):
     data = auth_client.patch(f"{URL}{data['id']}/", {"answers": {"length": 20}}, format="json").json()
     changed = _item(data, "emulsion")
     assert changed["variant"]["id"] == one_litre.pk and changed["quantity"] == 8 and changed["customer_set"]
-    # the new suggestion is shown next to it: 9.7 L → one 10 L tin (₹2,349) beats three 4 L (₹2,907 at the tier)
-    assert changed["need"]["amount"] > 9
+    # the new suggestion is shown next to it: 10.3 L → 10 L + 1 L (₹2,628) beats three 4 L (₹2,907 at the tier)
+    assert changed["need"]["amount"] > 10
     assert changed["suggested"] == {"variant_id": paints["emulsion_v"][2].pk, "quantity": 1}
+    assert changed["suggested_parts"] == [
+        {"variant_id": paints["emulsion_v"][2].pk, "quantity": 1},
+        {"variant_id": paints["emulsion_v"][1].pk, "quantity": 1},
+    ]
+    assert "emulsion~2" not in {i["material_key"] for i in data["kit"]["items"]}  # the customer's choice stands
     assert not _item(data, "roller")["included"]
     data = auth_client.post(f"{URL}{data['id']}/reset/").json()
     assert _item(data, "emulsion")["variant"]["id"] == paints["emulsion_v"][2].pk

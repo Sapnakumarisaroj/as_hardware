@@ -114,6 +114,11 @@ export function MessageBubble({
         <div className="space-y-2 rounded-2xl rounded-bl-sm bg-white px-4 py-3 text-sm ring-1 ring-steel-200">
           <span className="sr-only">Assistant: </span>
           <Paragraphs text={message.content} />
+          {message.estimate?.calculator_path && (
+            <Link to={message.estimate.calculator_path} className="inline-block text-sm font-semibold text-amber-600 hover:underline">
+              Work it out with real products in the quantity calculator
+            </Link>
+          )}
           {message.ai_mode === 'basic' && message.notice && (
             <p role="status" className="rounded-md bg-amber-100 px-3 py-2 text-xs">
               {message.notice}

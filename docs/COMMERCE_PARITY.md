@@ -145,4 +145,5 @@ Tested = automated tests (backend/frontend) and the live HTTP checks of Phase 16
 | Cashback / wallet / referral | ✅ tested (17) | Ledger-only balance, pending until the return window, 20 % cap, 90-day expiry, wallet page, referral codes |
 | Voice shopping | ✅ tested (18) | `/voice`: browser speech in English/Hindi/Hinglish, spoken quantities priced with bulk tiers, add only after “yes”; optional local Whisper |
 | Project builder | ✅ tested (19) | `/projects`: guided questions, kit of real catalogue products with pack sizes, tiers, offers, stock and delivery checked, one-step add to cart |
-| Quantity calculators, compatibility, smart cart | ⏳ 20–22 | The project builder's rules of thumb cover its own jobs; standalone calculators come in 20 |
+| Quantity calculators | ✅ tested (20) | `/quantity`: 8 calculators, units, assumptions, breakdown, real packs, tiers, offers, stock, delivery, add all / save |
+| Compatibility, smart cart | ⏳ 21–22 | |

@@ -7,7 +7,7 @@ import { QuantityStepper } from '@/components/QuantityStepper'
 import { useToast } from '@/components/toast'
 import { useAuth } from '@/features/auth/context'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
-import { isValidPincode, savePincode, usePincode } from '@/features/delivery/location'
+import { usePincode } from '@/features/delivery/location'
 import {
   useAddProjectToCart,
   useAnswerProject,
@@ -20,6 +20,7 @@ import {
   useResetProject,
   useStartProject,
 } from '@/features/projects/api'
+import { Breakdown, PinForm, StockBadge, TotalRow } from '@/features/projects/components'
 import type { AnswerValue, KitItem, ProjectKit, ProjectPlan, ProjectQuestion, ProjectStatus } from '@/features/projects/types'
 import { ApiError } from '@/lib/api/errors'
 import { formatDate, formatPrice, pluralize } from '@/lib/format'
@@ -229,10 +230,11 @@ function ProjectView({ plan, pin, onPin }: { plan: ProjectPlan; pin: string; onP
 }
 
 function SafetyNotes({ plan }: { plan: ProjectPlan }) {
-  if (!plan.safety.length && !plan.professional && !plan.not_sold) return null
+  if (!plan.safety.length && !plan.professional && !plan.not_sold && !plan.verify) return null
   return (
     <div className="mt-4 max-w-3xl space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-ink-900" role="note">
       {plan.professional && <p className="font-semibold">{plan.professional}</p>}
+      {plan.verify && <p className="font-semibold">{plan.verify}</p>}
       {plan.safety.map((line) => (
         <p key={line}>{line}</p>
       ))}
@@ -259,6 +261,13 @@ function AnswersSummary({ plan, onEdit }: { plan: ProjectPlan; onEdit: () => voi
           Change answers
         </button>
       </div>
+      {plan.interpretations && plan.interpretations.length > 0 && (
+        <ul className="mt-1 text-xs text-ink-600" aria-label="How we read your measurements">
+          {plan.interpretations.map((note) => (
+            <li key={note.key}>{note.text}</li>
+          ))}
+        </ul>
+      )}
       <dl className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
         {plan.questions.map((question) => (
           <div key={question.key} className="flex justify-between gap-3">
@@ -416,12 +425,12 @@ function KitView({ plan, kit, pin, onPin }: { plan: ProjectPlan; kit: ProjectKit
         <PinForm pin={pin || kit.postal_code} onPin={onPin} />
         <p className={`text-sm ${kit.delivery.available ? 'text-ink-800' : 'text-danger-600'}`}>{kit.delivery.message}</p>
         <dl className="space-y-1 text-sm">
-          <Row label={`Items (${kit.totals.item_count})`} value={formatPrice(kit.totals.subtotal)} />
-          {Number(kit.totals.bulk_savings) > 0 && <Row label="Bulk prices saved" value={`−${formatPrice(kit.totals.bulk_savings)}`} tone="good" />}
+          <TotalRow label={`Items (${kit.totals.item_count})`} value={formatPrice(kit.totals.subtotal)} />
+          {Number(kit.totals.bulk_savings) > 0 && <TotalRow label="Bulk prices saved" value={`−${formatPrice(kit.totals.bulk_savings)}`} tone="good" />}
           {kit.offers.map((offer) => (
-            <Row key={offer.name} label={offer.name} value={`−${formatPrice(offer.discount)}`} tone="good" />
+            <TotalRow key={offer.name} label={offer.name} value={`−${formatPrice(offer.discount)}`} tone="good" />
           ))}
-          <Row label="Delivery" value={Number(kit.totals.delivery_fee) > 0 ? formatPrice(kit.totals.delivery_fee) : 'Free'} />
+          <TotalRow label="Delivery" value={Number(kit.totals.delivery_fee) > 0 ? formatPrice(kit.totals.delivery_fee) : 'Free'} />
           <div className="flex justify-between border-t border-steel-100 pt-2 text-base font-bold">
             <dt>Total</dt>
             <dd>{formatPrice(kit.totals.grand_total)}</dd>
@@ -466,41 +475,6 @@ function KitView({ plan, kit, pin, onPin }: { plan: ProjectPlan; kit: ProjectKit
   )
 }
 
-function Row({ label, value, tone }: { label: string; value: string; tone?: 'good' }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <dt className="text-ink-700">{label}</dt>
-      <dd className={tone === 'good' ? 'font-medium text-success-600' : 'font-medium'}>{value}</dd>
-    </div>
-  )
-}
-
-function PinForm({ pin, onPin }: { pin: string; onPin: (pin: string) => void }) {
-  const [value, setValue] = useState(pin)
-  const valid = isValidPincode(value)
-  return (
-    <form
-      className="flex items-end gap-2"
-      onSubmit={(e) => {
-        e.preventDefault()
-        if (!valid) return
-        savePincode(value)
-        onPin(value)
-      }}
-    >
-      <div className="flex-1">
-        <label htmlFor="kit-pin" className="label">
-          Deliver to PIN
-        </label>
-        <input id="kit-pin" className="input" inputMode="numeric" maxLength={6} value={value} onChange={(e) => setValue(e.target.value.replace(/\D/g, ''))} />
-      </div>
-      <button type="submit" className="btn-secondary" disabled={!valid}>
-        Check
-      </button>
-    </form>
-  )
-}
-
 const PROBLEM_TEXT: Record<Exclude<KitItem['problem'], ''>, string> = {
   not_found: 'Not found in our catalogue.',
   unavailable: 'No longer available.',
@@ -512,7 +486,7 @@ function KitItemRow({ projectId, item, pin }: { projectId: number; item: KitItem
   const change = useChangeItem(projectId, pin)
   const remove = useRemoveItem(projectId, pin)
   const busy = change.isPending || remove.isPending
-  const set = (vars: { variant_id?: number; quantity?: number; included?: boolean }) => change.mutate({ itemId: item.id, ...vars })
+  const set = (vars: { variant_id?: number; quantity?: number; included?: boolean }) => change.mutate({ itemId: Number(item.id), ...vars })
   const suggestion =
     item.customer_set && item.suggested.variant_id && (item.suggested.variant_id !== item.variant?.id || item.suggested.quantity !== item.quantity)
   const nextTier = item.price?.next_tier
@@ -557,6 +531,8 @@ function KitItemRow({ projectId, item, pin }: { projectId: number; item: KitItem
               {item.note ? ` · ${item.note}` : ''}
             </p>
           )}
+          {item.pack_explanation && <p className="text-xs text-ink-600">{item.pack_explanation}</p>}
+          <Breakdown steps={item.steps} />
           {!item.size_known && <p className="text-xs text-amber-700">Check the pack size before ordering.</p>}
           {item.problem && item.problem !== 'not_found' && <p className="text-xs text-danger-600">{PROBLEM_TEXT[item.problem]}</p>}
           {suggestion && (
@@ -579,6 +555,7 @@ function KitItemRow({ projectId, item, pin }: { projectId: number; item: KitItem
                   {item.price.applied_tier && <span className="ml-1 text-xs text-success-600">bulk price from {item.price.applied_tier.min_quantity}</span>}
                 </span>
               )}
+              <StockBadge item={item} />
               {item.price && <span className="ml-auto font-semibold">{formatPrice(item.price.line_total)}</span>}
             </div>
           )}
@@ -616,7 +593,7 @@ function KitItemRow({ projectId, item, pin }: { projectId: number; item: KitItem
           )}
         </div>
         {item.added_by_customer && (
-          <button type="button" className="self-start rounded p-1 text-ink-600 hover:bg-steel-50" aria-label={`Remove ${item.label}`} onClick={() => remove.mutate(item.id)} disabled={busy}>
+          <button type="button" className="self-start rounded p-1 text-ink-600 hover:bg-steel-50" aria-label={`Remove ${item.label}`} onClick={() => remove.mutate(Number(item.id))} disabled={busy}>
             <TrashIcon className="size-4" />
           </button>
         )}

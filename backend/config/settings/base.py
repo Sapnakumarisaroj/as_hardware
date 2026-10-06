@@ -342,6 +342,7 @@ SPEECH_TIMEOUT_SECONDS = env.float("SPEECH_TIMEOUT_SECONDS", default=30)
 VOICE_MAX_AUDIO_BYTES = env.int("VOICE_MAX_AUDIO_BYTES", default=2 * 1024 * 1024)
 VOICE_MAX_AUDIO_SECONDS = env.int("VOICE_MAX_AUDIO_SECONDS", default=20)
 VOICE_MAX_SPEAK_CHARS = env.int("VOICE_MAX_SPEAK_CHARS", default=400)
+QUANTITY_PACK_RULE = env("QUANTITY_PACK_RULE", default="lowest_cost")  # lowest_cost | fewest_packs (Phase 20)
 VOICE_MAX_LINES = env.int("VOICE_MAX_LINES", default=5)  # items in one spoken order ("cement and pipes and …")
 
 # --- Logging --------------------------------------------------------------------

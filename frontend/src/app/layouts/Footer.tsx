@@ -99,6 +99,11 @@ export function Footer() {
               </Link>
             </li>
             <li>
+              <Link to="/quantity" className="hover:text-amber-500">
+                Quantity calculator
+              </Link>
+            </li>
+            <li>
               <Link to="/account/returns" className="hover:text-amber-500">
                 Returns
               </Link>

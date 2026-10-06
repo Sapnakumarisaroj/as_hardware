@@ -32,7 +32,7 @@ export interface VoiceStatus {
   max_speak_chars: number
 }
 
-export type VoiceIntent = 'add_to_cart' | 'set_quantity' | 'confirm' | 'cancel' | 'navigate' | 'search' | 'ask' | 'unclear'
+export type VoiceIntent = 'add_to_cart' | 'set_quantity' | 'confirm' | 'cancel' | 'navigate' | 'search' | 'ask' | 'unclear' | 'quantity'
 
 export type VoiceLineStatus = 'ready' | 'not_found' | 'too_many' | 'short_stock' | 'unavailable' | 'whole_number'
 
@@ -91,6 +91,8 @@ export interface VoiceResult {
   ai_mode: string
   questions: string[]
   notice: string
+  /** Phase 20: a quantity request ("500 sq ft plastering"), worked out by Quantity AI. */
+  quantity?: { calculator: string; title: string; complete: boolean; path: string } | null
 }
 
 /** A line shown and waiting for "yes" (sent back so the server can price it again). */

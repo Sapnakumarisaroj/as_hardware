@@ -3,7 +3,14 @@
 AI-powered hardware marketplace with fast delivery from nearby stores: a Django REST API and a React SPA. Delivery
 times are calculated per order (store, distance, preparation, riders, workload), never a fixed promise.
 
-> Status: **Phase 18 complete** — voice shopping at `/voice` (also the microphone in the search bar): say "10 bags of
+> Status: **Phase 20 complete** — the quantity calculator at `/quantity`: "I need materials for 500 sq ft plastering",
+> "How much paint for a 12x15 room?", "100 feet of wire", "tiles for 300 sq ft" or "Mujhe 500 sq ft ke liye plastering
+> ka saman chahiye" → only the missing questions (any unit: ft, m, cm, mm, inch, sq ft, sq m), labelled assumptions
+> ("Assumed: wall height 10 ft"), an estimated quantity with its breakdown, real catalogue products and the cheapest
+> mix of packs (e.g. 4 L + 1 L), bulk prices, offers, coupon, stock and delivery time, then Add all to cart or save it
+> as a project. Voice and the assistant use the same calculator; the optional local AI model only helps read unusual
+> wording. **Phase 19** — the project builder at `/projects`: describe a job, answer a few questions, get a kit of real
+> products priced as one cart. **Phase 18** — voice shopping at `/voice` (also the microphone in the search bar): say "10 bags of
 > 53 grade cement", "das bori cement aur paanch pipe" or "दस बोरी सीमेंट कार्ट में डालो" and see the price for that
 > quantity from the bulk tiers ("Add 20 more to pay ₹389 each"); it is added to the cart only after you say "yes" or tap
 > Add. "Make it 30", "open my cart", "show me drills" and questions work too, answers are read aloud in English or
@@ -86,6 +93,7 @@ npm run dev
 - Rider app (delivery partners): http://localhost:5173/rider
 - Search by photo: http://localhost:5173/image-search (needs `VISION_PROVIDER=clip` or `ollama` in `backend/.env`)
 - Shop by voice: http://localhost:5173/voice (Chrome/Edge/Safari; allow the microphone)
+- Project builder: http://localhost:5173/projects · Quantity calculator: http://localhost:5173/quantity
 - Business dashboard (administrators, store managers): http://localhost:5173/admin
 - API health: http://127.0.0.1:8000/api/health/
 - API docs: http://127.0.0.1:8000/api/docs/ (Swagger) · `/api/redoc/` · `/api/schema/`

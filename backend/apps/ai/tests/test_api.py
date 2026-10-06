@@ -148,6 +148,8 @@ def test_the_assistant_has_no_way_to_change_prices_stock_or_orders(auth_client, 
         # service (which checks and prices every line again); prices, stock and orders stay untouched.
         "ai/projects",
         "ai/project-types/",
+        # Phase 20: Quantity AI. Calculations are read-only; add-to-cart goes through the cart service.
+        "ai/quantity/",
     )
     assert ai_routes and all(any(part in p for part in allowed) for p in ai_routes)
     assert patterns  # sanity

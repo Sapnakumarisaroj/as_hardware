@@ -165,8 +165,9 @@ def test_drill_for_concrete(shop):
 def test_paint_gives_an_estimate_and_says_nothing_is_in_the_catalogue(shop):
     reply = HardwareAssistantService(NoLLMProvider()).answer("I need material to paint a 12x15 room.")
     assert reply.estimate == {
-        "kind": "paint", "length_ft": 12.0, "width_ft": 15.0, "height_ft": 10, "wall_area_sqft": 540,
-        "emulsion_litres": 9, "primer_litres": 5, "is_estimate": True, "text": reply.estimate["text"],
+        "kind": "paint", "length_ft": 12.0, "width_ft": 15.0, "height_ft": 10, "wall_area_sqft": 507,
+        "emulsion_litres": 8, "primer_litres": 5, "is_estimate": True, "text": reply.estimate["text"],
+        "calculator_path": "/quantity?q=paint%20for%20a%2012x15%20room",
     }  # fmt: skip
     assert "This is an estimate, not a quotation." in reply.message
     assert reply.products == []

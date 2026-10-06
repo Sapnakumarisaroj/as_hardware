@@ -310,6 +310,25 @@ describe('shop by voice', () => {
     expect(screen.queryByRole('button', { name: /to cart/ })).not.toBeInTheDocument()
   })
 
+  it('links a spoken quantity request to the quantity calculator', async () => {
+    mockApi({
+      get: { ...shopGet, '/ai/voice/': status },
+      post: {
+        '/ai/voice/command/': result({
+          intent: 'quantity',
+          reply: 'Plastering · 500 sq ft — estimated quantity: 4 bags…',
+          quantity: { calculator: 'plastering', title: 'Plastering · 500 sq ft', complete: true, path: '/quantity?q=500%20sq%20ft%20plastering' },
+        }),
+      },
+    })
+    const { user } = renderRoute('/voice')
+    await user.type(await screen.findByLabelText('Type what you need'), '500 sq ft plastering ka saman{Enter}')
+    expect(await screen.findByRole('link', { name: 'Open the quantity calculator: Plastering · 500 sq ft' })).toHaveAttribute(
+      'href',
+      '/quantity?q=500%20sq%20ft%20plastering',
+    )
+  })
+
   it('opens the page that was asked for', async () => {
     mockApi({
       get: { ...shopGet, '/ai/voice/': status },

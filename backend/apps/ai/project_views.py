@@ -31,11 +31,40 @@ from apps.core.exceptions import NotFoundError
 from .models import Project, ProjectItem
 from .projects import builder, kit
 from .projects.builder import MAX_DESCRIPTION
-from .projects.templates import TEMPLATES
+from .projects.templates import ALL_TEMPLATES, TEMPLATES
 from .views import product_cards
 
 
-class StartSerializer(serializers.Serializer):
+def location_params(request) -> dict:
+    """The PIN / saved address to check delivery for, from the query string or the body."""
+    source = {**request.query_params.dict(), **(request.data if isinstance(request.data, dict) else {})}
+    pin = str(source.get("postal_code") or "").strip()
+    raw_address = source.get("address_id")
+    address_id = int(raw_address) if str(raw_address or "").isdigit() else None
+    return {"postal_code": pin if len(pin) == 6 and pin.isdigit() else "", "address_id": address_id}
+
+
+def attach_cards(kit_data: dict | None, request) -> None:
+    """Product cards (live catalogue rows) for each kit line and its alternatives."""
+    if not kit_data:
+        return
+    context = {"request": request}
+    refs = [
+        {"product_id": item["product_id"], "variant_id": item["variant"]["id"], "reason": ""}
+        for item in kit_data["items"]
+        if item["product_id"]
+    ]
+    cards = {card["id"]: card for card in product_cards(refs, context)}
+    alt_ids = sorted({pid for item in kit_data["items"] for pid in item["alternatives"]} - set(cards))
+    alt_cards = {card["id"]: card for card in product_cards([{"product_id": pid} for pid in alt_ids], context)}
+    for item in kit_data["items"]:
+        item["product"] = cards.get(item["product_id"])
+        item["alternatives"] = [
+            card for pid in item["alternatives"] if (card := alt_cards.get(pid) or cards.get(pid)) is not None
+        ]
+
+
+class ProjectStartSerializer(serializers.Serializer):
     description = serializers.CharField(
         max_length=MAX_DESCRIPTION, required=False, allow_blank=True, trim_whitespace=True
     )
@@ -109,41 +138,20 @@ class ProjectViewSet(
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return Project.objects.none()
-        qs = Project.objects.filter(user=self.request.user, project_type__in=list(TEMPLATES))
+        qs = Project.objects.filter(user=self.request.user, project_type__in=list(ALL_TEMPLATES))
         if self.action == "list":
             qs = qs.annotate(item_count=Count("items", filter=Q(items__included=True)))
         return qs.order_by("-updated_at", "-id")
 
-    def _location(self, request) -> dict:
-        source = {**request.query_params.dict(), **(request.data if isinstance(request.data, dict) else {})}
-        pin = str(source.get("postal_code") or "").strip()
-        raw_address = source.get("address_id")
-        address_id = int(raw_address) if str(raw_address or "").isdigit() else None
-        return {"postal_code": pin if len(pin) == 6 and pin.isdigit() else "", "address_id": address_id}
-
     def _plan(self, request, project, http_status=status.HTTP_200_OK, **extra):
-        data = builder.plan_payload(project, user=request.user, **self._location(request))
-        if data["kit"]:
-            context = {"request": request}
-            refs = [
-                {"product_id": item["product_id"], "variant_id": item["variant"]["id"], "reason": ""}
-                for item in data["kit"]["items"]
-                if item["product_id"]
-            ]
-            cards = {card["id"]: card for card in product_cards(refs, context)}
-            alt_ids = sorted({pid for item in data["kit"]["items"] for pid in item["alternatives"]} - set(cards))
-            alt_cards = {card["id"]: card for card in product_cards([{"product_id": pid} for pid in alt_ids], context)}
-            for item in data["kit"]["items"]:
-                item["product"] = cards.get(item["product_id"])
-                item["alternatives"] = [
-                    card for pid in item["alternatives"] if (card := alt_cards.get(pid) or cards.get(pid)) is not None
-                ]
+        data = builder.plan_payload(project, user=request.user, **location_params(request))
+        attach_cards(data["kit"], request)
         data.update(extra)
         return Response(data, status=http_status)
 
-    @extend_schema(request=StartSerializer, responses={201: OpenApiTypes.OBJECT})
+    @extend_schema(request=ProjectStartSerializer, responses={201: OpenApiTypes.OBJECT})
     def create(self, request):
-        serializer = StartSerializer(data=request.data)
+        serializer = ProjectStartSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         project = builder.start(request.user, **serializer.validated_data)
         return self._plan(request, project, status.HTTP_201_CREATED)

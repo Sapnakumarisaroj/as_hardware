@@ -518,6 +518,41 @@ browser   shows lines; on "yes"/tap → POST /api/cart/items/ per line (prices a
   box and examples, priced line cards (bulk tier, "Add 20 more for ₹389 each (make it 30)", alternatives, problems),
   Add / Add all / Cancel, search results, assistant answers, signed-in history (delete, clear).
 
+### Project builder and Quantity AI (Phases 19–20)
+```
+customer words / calculator choice                    apps/ai/quantity/service.py → QuantityAIService
+  understand   calculator by its words (projects/templates.py: CALCULATORS, en/hi/hinglish patterns);
+               the AI model (Phase 12 provider) only when the rules find nothing or numbers are left unread —
+               only numbers present in the words and choices the words name are kept, all validated as answers
+  read         quantity/units.py: "12x15" (feet, said so), "5 m x 4 m" → ft, "28 sq m" → sq ft, "100 feet" → m;
+               projects/flow.py: choices, counts ("2 doors"), then missing questions; defaults = labelled assumptions
+  calculate    quantity/formulas.py (the only formulas: wall area − doors/windows, paint, primer, putty, plaster
+               cement + sand by dry volume, tiles + wastage, adhesive, grout, flooring boxes, wire runs, pipe + fittings,
+               solvent, fasteners, waterproofing), each with its breakdown steps; FormulaError → invalid_answers
+  products     projects/kit.py: catalogue search (Phase 13/16) — a product counts only when every search word is a
+               whole word of its name/tags/category/variants and no excluded word is ("sand" ≠ "sandpaper");
+               size words from the sentence ("25 kg") pick the variant
+  packs        quantity/packs.py: every combination of the variants' pack sizes (read from name/options/specs:
+               "4 L", "Pack of 100", "Box (21.5 sq ft)") priced with line_from_variant (tiers), chosen by
+               QUANTITY_PACK_RULE (lowest_cost | fewest_packs), stock and order limit first, explained
+  price        kit.price_rows → orders.pricing.price_lines (tiers, offers across the kit, coupon, free delivery, zone
+               fee) + delivery.plan_fulfillment (stores, ETA) — the cart's engines; stock available/limited/unavailable
+  out          POST /api/ai/quantity/ (read-only) · add-to-cart → carts.check_item for every line, then add_item (all or
+               nothing) · save → a Project (type = calculator) edited on /projects/:id
+Project builder (Phase 19): the same templates, flow, formulas, kit and pricing, saved as Project/ProjectItem.
+Voice (Phase 18): "500 sq ft plastering ka saman" → VoiceShoppingService._quantity → the same service; lines are
+                  proposed and confirmed like any spoken order. Assistant (Phase 12): its paint estimate uses formulas.
+```
+- **AI can't touch money or stock:** the model only suggests a calculator and numbers that are then validated like
+  typed answers; prices, offers, stock and delivery come from the shop's engines on every request; nothing is bought
+  without the customer pressing Add (and the cart checks every line again).
+- **Estimates are labelled:** every rule-of-thumb amount is "Estimated quantity" with its breakdown; building, wiring,
+  plumbing and waterproofing add "Verify measurements with a qualified professional before purchasing."
+- **Frontend:** `/quantity` (`pages/QuantityPage.tsx`, `features/quantity/`): requirement box + examples, calculator
+  chips, questions with unit selectors, assumptions, "Read as" interpretations, materials with breakdown, recommended
+  packs and reasons, product/quantity/tick changes (sent back as `overrides`), PIN, coupon, totals, Add all to cart,
+  Save as a project. Links from the home page, menu, footer, the assistant's paint estimate and voice answers.
+
 ## 6. Integrations (provider pattern)
 
 | Concern   | Default (free)                         | Optional production provider     | Switch |

@@ -178,6 +178,9 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
           <Link to="/projects" onClick={onClose} className={link}>
             Project builder
           </Link>
+          <Link to="/quantity" onClick={onClose} className={link}>
+            Quantity calculator
+          </Link>
           {categories.data?.map((category) => (
             <details key={category.id} className="group">
               <summary className="flex cursor-pointer list-none items-center justify-between rounded px-2 py-2 text-sm font-semibold hover:bg-steel-50">

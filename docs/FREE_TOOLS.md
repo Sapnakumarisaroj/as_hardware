@@ -223,6 +223,13 @@ cd backend
 ```
 Recordings are never stored. Throttles: `THROTTLE_VOICE` (30/min), `THROTTLE_VOICE_AUDIO` (12/min).
 
+## Project builder and Quantity AI (Phases 19–20): no new dependencies
+- Formulas, unit conversion and pack optimisation are plain Python (`itertools`, `math`); no solver library.
+- The optional AI helper is the same local model as the assistant (Ollama + `qwen2.5:3b`, `LLM_PROVIDER=ollama`):
+  it is asked only when the built-in rules can't tell what to calculate (about 8 s on a laptop CPU). Without it every
+  calculation still works; the page says the helper is off.
+- `QUANTITY_PACK_RULE` (`lowest_cost` default, or `fewest_packs`) chooses between pack combinations.
+
 ## Deliberately NOT used
 Redis, Celery, RabbitMQ, Elasticsearch/OpenSearch, pgvector-only features, paid vector databases, AWS/Azure/GCP services,
 Sentry SaaS, and any paid AI API. They are replaced by DB-backed queues + cron, DB cache, portable SQL search, and in-Python vector math.

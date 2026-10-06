@@ -285,6 +285,12 @@ function AiEntryPoints() {
       icon: <ChevronRightIcon className="size-6 text-amber-500" />,
     },
     {
+      to: '/quantity',
+      title: 'How much do I need?',
+      text: 'Paint, cement, tiles, wire or pipe: enter the size and get the quantity with real products and prices.',
+      icon: <SparkIcon className="size-6 text-amber-500" />,
+    },
+    {
       to: '/image-search',
       title: 'Search with a photo',
       text: 'Take a photo of a part and find it in our catalogue.',

@@ -759,5 +759,37 @@ is_estimate, included, customer_set, quantity, unit, product_id, product (card),
 price, mrp}, problem, stock_available, price {unit_price, base_unit_price, applied_tier, next_tier {min_quantity,
 unit_price, units_more}, line_total, bulk_saving, offer_discount} | null}`.
 
+Since Phase 20 a plan also has `interpretations[{key, text}]` (how a measurement was read or converted),
+`is_calculation` (a saved quantity calculation), `verify` (the professional-check sentence for building, wiring,
+plumbing and waterproofing work); questions have `units[]`; kit items have `base_key` (the material; `primer~2` is a
+second pack size of `primer`), `steps[{label, value}]` (the breakdown), `pack_explanation`, `pack_options[]`,
+`covers`, `suggested_parts[]`, `stock_status` (`available` | `limited` | `unavailable`) and `stock_available` (only
+when limited); `next_tier.reachable`. Kit totals add `coupon_discount`; the kit adds `coupon` and
+`free_delivery_offer`. Answers may be sent with a unit: `{"length": {"value": 5, "unit": "m"}}`.
+
+## Quantity AI ✅ (Phase 20)
+A requirement → estimated quantities → real products → one priced, delivery-checked cart. Read-only: nothing is stored
+unless the customer saves it (a project) or adds it to the cart.
+
+| Method | Path | Who | Body / response |
+|---|---|---|---|
+| GET | `/api/ai/quantity/?language=` | public | `{calculators[{key, name, summary, examples[], risky}], ai {available}, pack_rule lowest_cost|fewest_packs, label}` |
+| POST | `/api/ai/quantity/` | public, throttled `ai` | `{text? ≤ 500, calculator? (painting|plastering|tiling|flooring|wiring|pipes|fasteners|waterproofing), answers?{key: value or {value, unit}}, language?, overrides?{material_key: {variant_id?, quantity? 1–9999, included?}} ≤ 40, coupon?, postal_code? (6 digits), address_id? (signed in)}` (text or calculator) → result. 400 `invalid_answers` (`details` by key: range, unit of another kind, impossible sizes such as doors bigger than the walls), `product_unavailable` (an override), `no_product` |
+| POST | `/api/ai/quantity/add-to-cart/` | customer | `{lines[{variant_id, quantity}] 1–40}` → `{added_lines, added_units}`; every line checked first, nothing added on a problem: 400 `project_not_addable` with `details.items[{variant_id, code, message}]` |
+| POST | `/api/ai/quantity/save/` | customer, throttled `ai` | the estimate body → 201 `{project_id, path}`; the project (type = the calculator) is then read and edited through `/api/ai/projects/{id}/` |
+
+Result: `{text, language, label ("Estimated quantity"), understood_by rules|ai|chosen|"", ai {available, used, notice},
+calculators[], calculator | null, message (when nothing could be calculated), name, summary, title, answers,
+from_description[], from_ai[], interpretations[{key, text}], questions[], missing[], assumptions[{key, value, text}],
+complete, safety[], professional, verify, not_sold, estimate_notice, materials[], kit | null}`.
+
+Material: `{key, label, need {amount, unit, unit_label}, is_estimate, is_optional, steps[{label, value}], recommended
+("1 × 4 L + 1 × 1 L"), covers, extra (bought minus needed), found, explanation, item_keys[]}`. `kit` has the project
+kit's shape (items keyed by `material_key`, totals, offers, coupon, delivery, issues, `can_add_to_cart`).
+
+Voice (`POST /api/ai/voice/command/`) answers quantity requests ("500 sq ft plastering ka saman") with intent
+`quantity`, the priced lines to confirm and `quantity {calculator, title, complete, path}`; the assistant's paint
+`estimate` has `calculator_path`.
+
 ## Planned 🔜
-- **AI** more endpoints in Phases 20–22 (calculators, compatibility, smart cart). **Notifications/support channels** (Phase 23).
+- **AI** more endpoints in Phases 21–22 (compatibility, smart cart). **Notifications/support channels** (Phase 23).
