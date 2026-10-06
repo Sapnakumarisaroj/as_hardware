@@ -22,6 +22,7 @@ const returns = () => import('@/pages/admin/ReturnRefundPages')
 const support = () => import('@/pages/admin/SupportPages')
 const commerce = () => import('@/pages/admin/CommercePages')
 const shoppingAdmin = () => import('@/pages/admin/ShoppingAdminPages')
+const notificationsAdmin = () => import('@/pages/admin/NotificationPages')
 const brands = () => import('@/pages/BrandPages')
 const projects = () => import('@/pages/ProjectPages')
 const shopping = () => import('@/pages/ShoppingPages')
@@ -86,6 +87,7 @@ export const routes: RouteObject[] = [
           { path: 'account/orders/:number', lazy: async () => ({ Component: (await account()).OrderDetailPage }) },
           { path: 'account/addresses', lazy: async () => ({ Component: (await account()).AddressesPage }) },
           { path: 'account/returns', lazy: async () => ({ Component: (await account()).ReturnsPage }) },
+          { path: 'notifications', lazy: async () => ({ Component: (await import('@/pages/NotificationsPage')).NotificationsPage }) },
           { path: 'account/wallet', lazy: async () => ({ Component: (await import('@/pages/WalletPage')).WalletPage }) },
           { path: '*', element: <NotFoundPage /> },
         ],
@@ -146,6 +148,7 @@ export const routes: RouteObject[] = [
           { path: 'returns', lazy: async () => ({ Component: (await returns()).AdminReturnsPage }) },
           { path: 'refunds', lazy: async () => ({ Component: (await returns()).AdminRefundsPage }) },
           { path: 'support', lazy: async () => ({ Component: (await support()).AdminSupportPage }) },
+          { path: 'notifications', lazy: async () => ({ Component: (await notificationsAdmin()).AdminNotificationsPage }) },
           { path: 'support/:id', lazy: async () => ({ Component: (await support()).AdminConversationPage }) },
           {
             path: 'search',

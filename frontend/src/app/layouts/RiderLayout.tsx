@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
 
 import { useAuth } from '@/features/auth/context'
+import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { env } from '@/lib/env'
 
 /** A plain shell for delivery partners: large targets, no shop navigation to get lost in. */
@@ -37,6 +38,7 @@ export function RiderLayout() {
             <NavLink to="/rider/history" className={link}>
               History
             </NavLink>
+            {status === 'authenticated' && <NotificationBell className="mx-2" />}
             {status === 'authenticated' && (
               <button type="button" onClick={() => void logout()} className="rounded px-2 py-2 text-sm font-semibold hover:text-amber-500">
                 Logout

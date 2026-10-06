@@ -210,7 +210,7 @@ The React admin dashboard (Phase 11) was not started; staff use the staff API an
 - [~] Main bundle is 484 kB, close to Vite's 500 kB warning (it was 481 kB after Phase 9; the jump from 327 kB at Phase 8 is still unexplained)
 - [~] OpenAPI generation reports 8 cosmetic enum-naming warnings (4 before): new choice fields share names such as `status` and `reason`
 - [~] Browser testing was not performed (same localhost limitation as earlier phases; not re-attempted): the phone camera, `geo:` links, `tel:` links and browser location were not exercised on a real device. The proof upload was tested with generated images over real HTTP
-- [~] The delivery code is shown in the customer's order page only; it is not sent by SMS/WhatsApp (no provider until Phase 20), so a customer without internet at the door needs the store to close the delivery without the code
+- [~] The delivery code is shown in the customer's order page only; it is not sent by SMS/WhatsApp (no provider until Phase 20), so a customer without internet at the door needs the store to close the delivery without the code. *Phase 23: sent by WhatsApp/SMS to customers who opted in, once a real provider is connected*
 
 ## Phase 11 — Business dashboard ✅ (2026-09-30)
 Scope: ROADMAP Phase 11. A React dashboard at `/admin` for administrators and store managers, so the owner no longer
@@ -472,7 +472,67 @@ Frontend: `features/shopping/`, `pages/ShoppingPages.tsx`, `pages/admin/Shopping
 - [x] Live: 36/36 HTTP checks against a dev server on a **copy** of the dev DB (demo catalogue): drill page groups with reasons (masonry bits "works with"), paint → painting tools rule, best for ₹400, guest home not personal, 5 kits priced, kit edit re-prices, foreign variant 400, budget parsed from English and Hinglish, smart cart (needed with: bits for the drill, screws for the plugs; over-budget note; cart unchanged), add missing kit items, admin create/preview/deactivate/delete, customer 403; plus a complete plumbing plan at ₹5000 (₹2,143, within) and ₹1500/₹800/₹100 ("even the main materials cost more", nothing over budget)
 - [~] Not done: ROADMAP's "review summary" (no review-summary feature yet), a customer opt-out for order-based suggestions and a separate approval step for bundles (bundles are admin-only and audited); no browser run (the Chrome extension can't open localhost here; jsdom tests cover the pages)
 
+### Phase 23 — WhatsApp + notifications ✅
+Scope: ROADMAP 23 (`MockWhatsAppProvider`, optional WhatsApp Cloud API, SMTP email, in-app, signature tests) and the
+deferred notes from earlier phases (no in-app list screen, refund failures not told to anyone, delivery code not sent
+by SMS/WhatsApp). A previous session had built most of the backend without committing it; this one finished, tested
+and documented it.
+Backend: `apps/notifications/` (`events.py` the event catalogue, `services.py` routing/delivery/admin helpers,
+`templating.py`, `webhooks.py`, `jobs.py`, `views.py`, `serializers.py`, `urls.py`), migration `notifications.0002`
+(Notification gains dedupe key, language, recipient, template, provider status, attempts, delivered_at;
+NotificationPreference, ChannelSetting, EventSetting, NotificationTemplate), `integrations/messaging/` (mock WhatsApp/SMS,
+none, WhatsApp Cloud API). Callers moved to `notify(user, event=…, context=…)`: orders, returns, payments, refunds,
+delivery assignment/workflow, loyalty, support.
+Frontend: `features/notifications/` (API hooks, header bell), `pages/NotificationsPage.tsx`, `pages/admin/NotificationPages.tsx`;
+bell in the shop header, rider app and dashboard; account menu link; dashboard menu "Notifications" (administrators).
+- [x] Events in one place, each with audience, category, variables, default words (+ shorter WhatsApp/SMS words), default
+  channels, allowed channels, link, critical flag and secret variables; an unknown event fails loudly in tests
+- [x] Customer events: order placed/confirmed, payment received/failed, store accepted, packed, rider assigned, picked up,
+  out for delivery, delivery code, running late (periodic check, once per order), delivered/part delivered, failed,
+  sent again, cancelled/expired, buy again, refund started/completed/delayed, return requested/approved/rejected/received,
+  support reply, credit ready. Riders: new job, job removed, ready for pickup. Staff (store managers, else administrators):
+  new order, delivery failed, delivery late, return to review, refund failed
+- [x] Routing: channel switches → event × channel switches → person (email on/off, WhatsApp opt-in on the profile, SMS,
+  muted topics; critical events ignore muting); in-app always kept; only after commit; a failure while routing is logged
+  and never breaks the action
+- [x] Never twice: unique (person, channel, key); default key = event + data, explicit keys where an event may repeat
+  (delivery code per code, buy again per click, support reply per message)
+- [x] Delivery: email (Django email backend; SMTP in production), WhatsApp/SMS through providers, as `notifications.deliver`
+  jobs; temporary failures retried with backoff (5 tries), permanent ones fail at once; no provider / no phone / no email
+  = skipped with the reason; phone numbers masked in the log; delivery receipts (sent → delivered → read, failed) move forward only
+- [x] Delivery code: sent by WhatsApp/SMS to customers who opted in, stored as "••••••", looked up again at send time,
+  skipped when it is no longer valid
+- [x] Words: administrators write their own title/message per event, channel and language (English/Hindi/Hinglish;
+  English used when a language has none), with the approved WhatsApp template name; only the event's variables, length
+  limits, stray braces refused; preview with example values; a template that can't be filled falls back to the default
+- [x] WhatsApp Cloud API provider (stdlib HTTP, approved templates, retryable vs permanent errors) — inactive until the
+  owner has a WhatsApp Business account; webhook `GET|POST /api/notifications/webhooks/whatsapp/` with HMAC-SHA256
+  signature (refuses everything without a secret), Meta verification handshake, receipts, customer messages opening or
+  continuing a WhatsApp support conversation (once per message id), STOP turns WhatsApp off
+- [x] Inbox API (own messages only, unread count, read/unread/read all, filter by topic) and preferences API
+- [x] Admin API (administrators only, every change audited): events × channels, words CRUD + preview, channel switches with
+  provider status and last-24-hours counts, delivery log with filters, retry one / retry all failed
+- [x] Frontend: bell with unread count (refreshed every minute), `/notifications` inbox (filters, open, mark read/unread,
+  mark all) and "How we contact you" (email, WhatsApp with masked number, SMS only when a gateway exists, topics);
+  `/admin/notifications` with Channels, Messages (switches, words editor with preview) and Delivery log (filters, send again)
+- [x] Tests: backend 1469 pass (44 new in `notifications/tests/test_notifications.py`); 3 earlier tests adjusted for the
+  notification jobs now queued next to refunds and for the bell's request; frontend 377 pass (9 new in
+  `pages/Notifications.test.tsx`)
+- [x] Verified: ruff lint + format, `makemigrations --check`, migration applied to a copy of the dev DB, OpenAPI 0 errors
+  (14 warnings, as before: the new enums are named in `ENUM_NAME_OVERRIDES`), tsc, eslint, production build
+- [x] Live: 31/31 HTTP checks against a dev server on a **copy** of the dev DB: COD order → in-app + email + WhatsApp (mock,
+  template `order_confirmed`, number masked) + store staff; bell count, inbox, read/all read, someone else's message 404;
+  store accepted → customer told; muted topic → in-app only; channels overview, 35 events, unknown variable refused,
+  preview, own words saved, customer 403; undeliverable number → failed with reason → admin retry → sent; unsigned
+  webhook 403, signed accepted, customer WhatsApp → one support conversation, STOP → opt-out, Meta handshake
+- [~] Not done: a real WhatsApp/SMS account (needs the owner's WhatsApp Business account and approved templates; Meta and SMS
+  gateways charge), push notifications (channel reserved), staff replies to WhatsApp conversations going back over WhatsApp
+  (replies reach registered customers through their notification channels; phone-only contacts are answered from
+  WhatsApp Manager), a per-store "who gets staff alerts" setting (managers of the store, else administrators); no browser
+  run (localhost limitation)
+
 ## Known limitations carried forward
+- Notifications: WhatsApp and SMS run on the mock providers (recorded, nothing sent) until real accounts are connected; WhatsApp messages started by the shop must use templates approved in WhatsApp Manager with the same variables in the same order as the shop's words; the bell refreshes every minute (no live push); messages go out within one cron interval in `cron` mode (immediately in `inline` mode); the "running late" check runs from `run_jobs`; a customer's own words in Hindi/Hinglish exist only where an administrator wrote them (built-in words are English)
 - Smart cart / recommendations: "frequently bought together" needs real orders (empty on a new shop); alternatives are only suggested within a kind the compatibility engine recognises; budget mode can only plan jobs the Quantity AI / project calculators know, and drops whole lines rather than reducing quantities; bundle prices follow the live catalogue (a kit with an out-of-stock item shows it and can't be added until fixed)
 - Compatibility: only the 13 rule pairs and the shop's links decide; other kinds of product get "not enough information" (add a rule in `catalog/compatibility/rules.py` or a shop link); facts must be in the listing (specifications such as Chuck Size, Sizes, Diameter, Material, Current Rating, Thread; sizes in variant names); nominal pipe sizes are compared as written ("1/2 inch"), not converted from mm; the engine's reasons are English in all three languages; replacements are searched among up to 500 published products per check
 - Quantity AI: rules of thumb for a shopping list (labelled), not engineering; 8 calculators; pack sizes must be written in the variant name, options or size specs ("4 L", "Pack of 100", "Box (21.5 sq ft)"), otherwise one pack is suggested and flagged; a material is matched only when a product name/tags/category/variants contain all its search words, so new product kinds may need search words in `projects/templates.py`; the optional AI helper (~8 s on CPU with qwen2.5:3b) can still pick the wrong calculator for odd wording (the page says the details were read by AI); pack combinations are searched exhaustively up to 4 sizes and 20,000 combinations, single sizes beyond that
@@ -509,7 +569,6 @@ Frontend: `features/shopping/`, `pages/ShoppingPages.tsx`, `pages/admin/Shopping
 - COD refunds are paid back by staff and recorded with a reference; there is no cash-drawer reconciliation or delivery-partner cash handover yet (Phase 10)
 - Concurrency is proven with real threads on SQLite (serialised writes). PostgreSQL/MySQL rely on the same `select_for_update` locks but the suite has not yet run against those servers (Phase 26)
 - Unpaid online orders keep their stock reserved for up to `PAYMENT_EXPIRY_MINUTES` (+ the cron interval) before expiry releases it
-- Notifications are in-app records + email only; there is no in-app notification list screen yet (Phase 23)
 - Cart "save for later" uses the wishlist (per product, not per variant)
 - Plain keyword search (the fallback, and `CATALOG_SEARCH_BACKEND=apps.catalog.search.KeywordSearchBackend`) is still substring based ("tap" also matches "tape"); the hybrid default filters those accidents
 - Specification filters need consistent spec names/values in the admin; free-text variant attributes are not filterable (structured options are, since Phase 15/16)
@@ -519,7 +578,6 @@ Frontend: `features/shopping/`, `pages/ShoppingPages.tsx`, `pages/admin/Shopping
 - Delivery partners are verified by administrators in the dashboard (Delivery → Delivery partners); giving a person the delivery-partner role (Customers) creates the rider record, which needs a phone number on the account. Vehicle details are entered by an administrator there or in Django admin
 - Email verification is not implemented yet (`email_verified` is reset on email change)
 - A local dev server stopped with `Stop-Process -Force` makes Git Bash report exit 127 (the venv `python.exe` launcher loses its child); stop it with Ctrl+C in normal use
-- Refund failures are audit-logged and visible in the staff API/admin, but nobody is emailed about them yet (Phase 23 notifications)
 
 ## Later phases
 See docs/ROADMAP.md (Phases 3–27; renumbered 2026-10-05, see COMMERCE_PARITY.md).

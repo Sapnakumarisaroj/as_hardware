@@ -7,6 +7,7 @@ import { useAuth } from '@/features/auth/context'
 import { useCartCount } from '@/features/cart/api'
 import { useCategories } from '@/features/catalog/api'
 import { LocationSelector } from '@/features/location/LocationSelector'
+import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { SearchBar } from '@/features/search/SearchBar'
 import { useWishlistIds } from '@/features/wishlist/api'
 import { env } from '@/lib/env'
@@ -79,6 +80,9 @@ function AccountMenu() {
         </Link>
         <Link to="/account/wallet" onClick={close} className="block px-4 py-2 hover:bg-steel-50">
           Wallet
+        </Link>
+        <Link to="/notifications" onClick={close} className="block px-4 py-2 hover:bg-steel-50">
+          Notifications
         </Link>
         <button
           type="button"
@@ -222,6 +226,9 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
               <Link to="/account/wallet" onClick={onClose} className={link}>
                 Wallet
               </Link>
+              <Link to="/notifications" onClick={onClose} className={link}>
+                Notifications
+              </Link>
               <button
                 type="button"
                 onClick={() => {
@@ -289,6 +296,7 @@ export function Header() {
               Orders
             </Link>
           )}
+          {status === 'authenticated' && <NotificationBell />}
           <Link to="/wishlist" className="relative hidden hover:text-amber-500 sm:block" aria-label="Wishlist">
             <HeartIcon className="size-6" />
             <CountBadge count={wishlistCount} label="saved items" />

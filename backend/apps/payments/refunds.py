@@ -26,7 +26,7 @@ from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError, ServiceError
 from apps.core.jobs import enqueue
 from apps.core.money import ZERO, q
-from apps.notifications.services import notify
+from apps.notifications.services import notify_order, notify_order_staff
 from apps.orders.models import Order, PaymentStatus
 from integrations.payments import GatewayRejected, RefundResult, get_payment_provider
 
@@ -138,6 +138,12 @@ def _finish(refund: Refund, result: RefundResult) -> None:
     elif result.status == "failed":
         refund.status, refund.failure_reason = Refund.Status.FAILED, (result.failure_reason or "Refund failed.")[:255]
         record_audit(action="refund.failed", target=refund, changes={"reason": refund.failure_reason})
+        order = refund.payment.order
+        attempt = {"refund": str(refund.public_id), "reference": refund.provider_reference}
+        notify_order(order, "refund.delayed", amount=refund.amount, data=attempt)
+        notify_order_staff(
+            order, "staff.refund_failed", amount=refund.amount, reason=refund.failure_reason, data=attempt
+        )
     refund.save(update_fields=fields)
     if refund.status == Refund.Status.PROCESSED:
         _after_processed(refund)
@@ -146,13 +152,13 @@ def _finish(refund: Refund, result: RefundResult) -> None:
 def _after_processed(refund: Refund) -> None:
     order = update_refund_totals(refund.payment)
     how = "by the store" if refund.is_manual else "to your original payment method"
-    notify(
-        order.user,
-        event="refund.processed",
-        title=f"Refund of ₹{refund.amount} processed",
-        body=f"Your refund of ₹{refund.amount} for order {order.order_number} has been paid {how}. "
-        + ("" if refund.is_manual else "Banks can take 5–7 working days to show it."),
-        data={"order_number": order.order_number, "refund": str(refund.public_id)},
+    notify_order(
+        order,
+        "refund.processed",
+        amount=refund.amount,
+        refund_method=how,
+        bank_note="" if refund.is_manual else "Banks can take 5–7 working days to show it.",
+        data={"refund": str(refund.public_id)},
     )
 
 

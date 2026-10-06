@@ -122,7 +122,7 @@ describe('dashboard: navigation', () => {
     renderRoute(path)
     expect(await screen.findByText('For administrators only')).toBeInTheDocument()
     expect(screen.getByText(new RegExp(`^${what} can be managed by an administrator`))).toBeInTheDocument()
-    const asked = staffCalls(api).filter((url) => !['/admin/session/', '/admin/summary/'].includes(url))
+    const asked = staffCalls(api).filter((url) => !['/admin/session/', '/admin/summary/', '/notifications/summary/'].includes(url))
     expect(asked).toEqual([])
   })
 

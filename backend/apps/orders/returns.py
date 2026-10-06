@@ -30,7 +30,7 @@ from apps.core.exceptions import ConflictError, NotFoundError, ServiceError
 from apps.core.money import ZERO, q
 from apps.inventory.models import Inventory, StockMovement
 from apps.inventory.services import apply_movement
-from apps.notifications.services import notify
+from apps.notifications.services import notify_order, notify_order_staff
 from apps.payments.models import Payment
 from apps.payments.refunds import create_refund
 
@@ -220,14 +220,9 @@ def request_return(order: Order, *, user, items: list[dict], reason: str, detail
     apply_locked_transition(
         order, OrderStatus.RETURN_REQUESTED, actor=user, note=f"Return {ret.return_number} requested"
     )
-    notify(
-        user,
-        event="return.requested",
-        title=f"Return {ret.return_number} requested",
-        body=f"We received your return request for order {order.order_number}. We'll review it shortly.",
-        data={"order_number": order.order_number, "return_number": ret.return_number},
-        channels=("in_app",),
-    )
+    refs = {"return_number": ret.return_number}
+    notify_order(order, "return.requested", data=refs, **refs)
+    notify_order_staff(order, "staff.return_requested", data=refs, **refs)
     return ret
 
 
@@ -281,14 +276,8 @@ def approve_return(ret: ReturnRequest, *, actor, note: str = "") -> ReturnReques
     _require(ret, RS.REQUESTED, action="approved")
     _decide(ret, RS.APPROVED, actor, note)
     record_audit(action="return.approve", actor=actor, target=ret, changes={"note": note})
-    notify(
-        ret.user,
-        event="return.approved",
-        title=f"Return {ret.return_number} approved",
-        body="Your return was approved. Please hand the items over at pickup or at the store; "
-        f"a refund of ₹{ret.refund_amount} starts once we receive them.",
-        data={"order_number": order.order_number, "return_number": ret.return_number},
-    )
+    refs = {"return_number": ret.return_number}
+    notify_order(order, "return.approved", data=refs, amount=ret.refund_amount, **refs)
     return ret
 
 
@@ -302,13 +291,8 @@ def reject_return(ret: ReturnRequest, *, actor, note: str) -> ReturnRequest:
     _close_pickups(ret, actor, received=False)
     _reopen_order(order, ret, actor, f"Return {ret.return_number} rejected")
     record_audit(action="return.reject", actor=actor, target=ret, changes={"note": note})
-    notify(
-        ret.user,
-        event="return.rejected",
-        title=f"Return {ret.return_number} rejected",
-        body=f"We couldn't accept your return: {ret.decision_note}",
-        data={"order_number": order.order_number, "return_number": ret.return_number},
-    )
+    refs = {"return_number": ret.return_number}
+    notify_order(order, "return.rejected", data=refs, reason=ret.decision_note, **refs)
     return ret
 
 
@@ -367,13 +351,8 @@ def receive_return(ret: ReturnRequest, *, actor, note: str = "", restock: bool =
         if ret.refund_method == ReturnRequest.RefundMethod.ORIGINAL_PAYMENT
         else "by the store (cash on delivery order)"
     )
-    notify(
-        ret.user,
-        event="return.received",
-        title=f"Return {ret.return_number} received",
-        body=f"We received your returned items. A refund of ₹{ret.refund_amount} has been initiated {method}.",
-        data={"order_number": order.order_number, "return_number": ret.return_number},
-    )
+    refs = {"return_number": ret.return_number}
+    notify_order(order, "return.received", data=refs, amount=ret.refund_amount, refund_method=method, **refs)
     return ret
 
 

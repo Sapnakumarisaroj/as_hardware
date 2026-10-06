@@ -463,10 +463,11 @@ def release_due(now=None) -> int:
             notify(
                 entry.user,
                 event="loyalty.credit_available",
-                title=f"₹{entry.amount} credit is ready to use",
-                body=f"{entry.description or entry.get_kind_display()}. "
-                f"Use it at checkout within {rules.expiry_days} days.",
+                context={
+                    "amount": entry.amount,
+                    "description": entry.description or entry.get_kind_display(),
+                    "expiry_days": rules.expiry_days,
+                },
                 data={"entry_id": entry.pk},
-                channels=("in_app",),
             )
     return count

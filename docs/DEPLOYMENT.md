@@ -100,7 +100,8 @@ All configuration comes from environment variables. See `.env.example` for the f
 | `PRIVATE_MEDIA_ROOT` | blank → `backend/private_media` | a folder outside the document roots (§7) |
 | `DELIVERY_OTP_*`, `DELIVERY_PROOF_REQUIRED`, `DELIVERY_EARNING_*` | defaults | optional; see `.env.example` (Phase 10) |
 | `PAYMENT_PROVIDER` | `mock` | `razorpay` (prod **refuses** `mock` unless `ALLOW_MOCK_PAYMENTS_IN_PROD=true`) |
-| `WHATSAPP_PROVIDER`, `SMS_PROVIDER` | `mock` | `mock` until you connect real accounts |
+| `WHATSAPP_PROVIDER`, `SMS_PROVIDER` | `mock` | `mock` until you connect real accounts (messages are recorded in the delivery log, nothing is sent; customers still get in-app + email). WhatsApp: `meta` with `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` (see “WhatsApp go-live”). SMS: no gateway ships (paid); keep `mock` or `none` |
+| `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL` | console | the hosting mailbox's SMTP details: order, delivery, refund and support emails go out through it |
 | `LLM_PROVIDER` | `none` or `ollama` | `none` unless you choose and approve a provider |
 | `BACKGROUND_JOBS_MODE` | `inline` | `cron` if cron is available |
 | `SEMANTIC_EMBEDDER` | `hashing` | `hashing` on shared hosting; `sentence_transformers` only on a VPS with ~1 GB spare RAM (`requirements/semantic.txt`, `SEMANTIC_MODEL_LOCAL_ONLY=true`). After deploying run `manage.py migrate` then `manage.py rebuild_search_index` once |
@@ -227,6 +228,22 @@ payments whose confirmation never arrived, and cancels unpaid online orders afte
 after a deploy. Without cron, payments still work (checkout verification + webhooks), but refunds are only submitted
 inline and unpaid orders don't expire.
 
+Notifications (Phase 23) are sent by the same `run_jobs` cron in `cron` mode (immediately after the request in
+`inline` mode); the cron also sends one "running late" message for orders past their estimate
+(`DELIVERY_DELAY_NOTICE_MINUTES`). Failed messages are listed in the dashboard (Notifications → Delivery log) with a
+"Send again" button.
+
+WhatsApp go-live (only after the owner decides to pay for it): create a WhatsApp Business account and app in Meta's
+developer console, add the shop's phone number, and get these templates approved in WhatsApp Manager with the variables
+shown in the dashboard (Notifications → Messages → WhatsApp words), in the same order: `order_confirmed`,
+`payment_received`, `out_for_delivery`, `delivery_code`, `delivery_delayed`, `order_delivered`, `delivery_failed`,
+`delivery_retry`, `order_cancelled`, `reorder_ready`, `refund_started`, `refund_completed`, `return_update`,
+`support_reply` (only those for events switched on for WhatsApp are needed). Put `WHATSAPP_PROVIDER=meta`,
+`WHATSAPP_ACCESS_TOKEN` (a permanent system-user token), `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET` (the app's
+secret) and a random `WHATSAPP_VERIFY_TOKEN` in `.env`, restart, then register the webhook
+`https://api.yourdomain.com/api/notifications/webhooks/whatsapp/` with that verify token and subscribe to `messages`.
+The Notifications → Channels screen then shows WhatsApp as "Live". Customers receive WhatsApp only after opting in.
+
 Razorpay go-live: put the live keys in `.env` (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`), then create a webhook in the
 Razorpay dashboard for `https://api.yourdomain.com/api/payments/webhooks/razorpay/` with a secret
 (`RAZORPAY_WEBHOOK_SECRET`) and the events `payment.captured`, `payment.failed`, `order.paid`, `refund.processed` and
@@ -281,7 +298,7 @@ Options -Indexes
 - Update `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, and rebuild the frontend with the right
   `VITE_API_BASE_URL`.
 - Webhook URLs to register later: `https://api.yourdomain.com/api/payments/webhooks/razorpay/`,
-  `https://api.yourdomain.com/api/support/webhooks/whatsapp/`.
+  `https://api.yourdomain.com/api/notifications/webhooks/whatsapp/`.
 
 ### Sitemap and robots (Phase 16)
 - The API serves the sitemap at `https://api.yourdomain.com/api/seo/sitemap.xml` with absolute URLs on `FRONTEND_URL`

@@ -35,4 +35,24 @@ def post_message(conversation: SupportConversation, *, sender, sender_type: str,
     if sender_type == SupportMessage.Sender.CUSTOMER and conversation.status != SupportConversation.Status.OPEN:
         conversation.status = SupportConversation.Status.OPEN
     conversation.save(update_fields=["last_message_at", "status", "updated_at"])
+    if sender_type == SupportMessage.Sender.AGENT and conversation.user_id:
+        _tell_customer(conversation, message, sender)
     return message
+
+
+def _tell_customer(conversation: SupportConversation, message: SupportMessage, agent) -> None:
+    """A staff reply reaches the customer in the app, by email and (if they opted in) on WhatsApp."""
+    from apps.notifications.services import notify
+
+    text = message.body if len(message.body) <= 300 else message.body[:297].rstrip() + "…"
+    notify(
+        conversation.user,
+        event="support.reply",
+        context={
+            "subject": conversation.subject or "your message",
+            "agent_name": (getattr(agent, "full_name", "") or "").split(" ")[0] or "Our team",
+            "message": text,
+        },
+        data={"conversation_id": conversation.pk},
+        key=f"support:{message.pk}",
+    )

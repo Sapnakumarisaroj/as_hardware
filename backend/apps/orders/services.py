@@ -24,7 +24,7 @@ from apps.inventory.services import InsufficientStock, apply_movement, total_ava
 from apps.loyalty.ledger import cashback_for, on_order_cancelled, on_order_delivered, record_cashback
 from apps.loyalty.ledger import redeem as redeem_credits
 from apps.loyalty.models import LoyaltySettings
-from apps.notifications.services import notify
+from apps.notifications.services import notify_order, notify_order_staff
 from apps.offers.models import Coupon, CouponRedemption, Offer, OfferRedemption
 from apps.offers.services import get_valid_coupon
 from apps.payments.cod_rules import cod_eligibility
@@ -284,23 +284,16 @@ def place_order(
     if payment_method == PaymentMethod.COD:
         # Cash orders need no online payment step; confirm immediately.
         _apply_transition(order, OrderStatus.CONFIRMED, actor=None, note="Cash on delivery order confirmed")
-        notify(
-            user,
-            event="order.confirmed",
-            title=f"Order {order.order_number} confirmed",
-            body=f"Thank you! Your order of ₹{order.grand_total} (cash on delivery) is confirmed. "
-            f"{delivery_sentence(order)}",
-            data={"order_number": order.order_number},
+        notify_order(
+            order,
+            "order.confirmed",
+            amount=order.grand_total,
+            payment_method="cash on delivery",
+            delivery_sentence=delivery_sentence(order),
         )
+        tell_staff_new_order(order)
     else:
-        notify(
-            user,
-            event="order.placed",
-            title=f"Order {order.order_number} placed — payment pending",
-            body=f"Complete the payment of ₹{order.grand_total} to confirm your order.",
-            data={"order_number": order.order_number},
-            channels=("in_app",),
-        )
+        notify_order(order, "order.placed", amount=order.grand_total)
 
     CartItem.objects.filter(pk__in=[item.pk for item in items]).delete()
     return order, payment
@@ -517,10 +510,17 @@ def transition_order(order: Order, to_status: str, *, actor, note: str = "") -> 
                 code="rider_in_charge",
                 details={"from": locked.status, "to": to_status},
             )
+    from_status = locked.status
     _apply_transition(locked, to_status, actor=actor, note=note)
     if to_status == OrderStatus.PACKED:
         # Riders may have been assigned while the order was being packed.
         sync_order_status(locked, actor=actor, note="Delivery partner already assigned")
+    if to_status == OrderStatus.CANCELLED and actor is not None:
+        _tell_cancelled(locked)  # system cancellations (unpaid orders) send their own message
+    elif to_status == OrderStatus.PROCESSING or (
+        to_status == OrderStatus.PACKED and from_status == OrderStatus.PROCESSING
+    ):
+        _tell_progress(locked, to_status)  # not when a packed order only goes back to waiting for a rider
     record_audit(action="order.transition", actor=actor, target=locked, changes={"to": to_status, "note": note})
     return locked
 
@@ -538,20 +538,43 @@ def cancel_order_by_customer(order: Order, *, user, reason: str) -> Order:
     if not reason.strip():
         raise OrderError("Please tell us why you are cancelling.", code="reason_required")
     order = _apply_transition(locked, OrderStatus.CANCELLED, actor=user, note=reason)
-    refund = Refund.objects.filter(payment__order=order).first()
-    notify(
-        user,
-        event="order.cancelled",
-        title=f"Order {order.order_number} cancelled",
-        body=(
-            f"Your order has been cancelled. A refund of ₹{refund.amount} has been requested and will be "
-            "processed to your original payment method."
-            if refund
-            else "Your order has been cancelled. No payment was taken."
-        ),
-        data={"order_number": order.order_number},
-    )
+    _tell_cancelled(order)
     return order
+
+
+def _tell_cancelled(order: Order) -> None:
+    refund = Refund.objects.filter(payment__order=order).first()
+    notify_order(
+        order,
+        "order.cancelled",
+        refund_sentence=f"A refund of ₹{refund.amount} has been requested and will be processed to your original "
+        "payment method."
+        if refund
+        else "No payment was taken.",
+    )
+
+
+def tell_staff_new_order(order: Order) -> None:
+    """A confirmed order reaches the people who will prepare it."""
+    notify_order_staff(
+        order,
+        "staff.order_new",
+        amount=order.grand_total,
+        store_name=", ".join(sorted({s.store.name for s in order.shipments.select_related("store")})) or "the shop",
+        delivery_type=order.get_delivery_type_display().lower() if order.delivery_type else "delivery",
+    )
+
+
+def _tell_progress(order: Order, to_status: str) -> None:
+    """Customer (and rider) messages for status changes made by the store."""
+    store = ", ".join(sorted({s.store.name for s in order.shipments.select_related("store")})) or "The store"
+    if to_status == OrderStatus.PROCESSING:
+        notify_order(order, "order.accepted", store_name=store)
+    elif to_status == OrderStatus.PACKED:
+        notify_order(order, "order.packed")
+        from apps.delivery.assignment import tell_riders_ready
+
+        tell_riders_ready(order)
 
 
 # --- Buy again ------------------------------------------------------------------------------
@@ -607,4 +630,8 @@ def reorder(order: Order, *, user) -> list[ReorderLine]:
                     cart=cart, variant=variant, quantity=target, price_at_add=variant.price
                 )
         results.append(ReorderLine(variant.sku, name, item.quantity, added, reason))
+    added_lines = sum(1 for line in results if line.added)
+    if added_lines:
+        notify_order(order, "order.reorder", key=f"reorder:{order.order_number}:{timezone.now().isoformat()}",
+                     item_count=added_lines)  # fmt: skip
     return results

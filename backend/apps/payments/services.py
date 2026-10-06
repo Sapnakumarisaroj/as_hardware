@@ -27,10 +27,10 @@ from django.utils import timezone
 from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError, NotFoundError, ServiceError
 from apps.core.money import q
-from apps.notifications.services import notify
+from apps.notifications.services import notify_order
 from apps.orders.delivery_info import delivery_sentence
 from apps.orders.models import Order, OrderStatus, PaymentMethod, PaymentStatus
-from apps.orders.services import apply_locked_transition, create_payment_for_order
+from apps.orders.services import apply_locked_transition, create_payment_for_order, tell_staff_new_order
 from integrations.payments import GatewayError, GatewayPayment, InvalidSignature, RefundResult, get_payment_provider
 from integrations.payments.registry import ONLINE_PROVIDERS
 
@@ -72,7 +72,8 @@ def _record_capture(
         record_audit(
             action="payment.amount_mismatch", target=payment, changes={"expected": str(expected), "paid": str(amount)}
         )
-        create_refund(payment, payment.amount, reason="Paid amount did not match the order")
+        refund = create_refund(payment, payment.amount, reason="Paid amount did not match the order")
+        notify_order(order, "refund.initiated", amount=refund.amount, data={"refund": str(refund.public_id)})
         return "refunded_mismatch"
     payment.save(update_fields=fields)
 
@@ -83,8 +84,9 @@ def _record_capture(
             if order.status == OrderStatus.CANCELLED
             else "Duplicate payment: the order was already paid"
         )
-        create_refund(payment, payment.amount, reason=reason)
+        refund = create_refund(payment, payment.amount, reason=reason)
         record_audit(action="payment.auto_refund", target=payment, changes={"reason": reason, "source": source})
+        notify_order(order, "refund.initiated", amount=refund.amount, data={"refund": str(refund.public_id)})
         return "refunded_late"
 
     order.payment_status = PaymentStatus.PAID
@@ -94,13 +96,8 @@ def _record_capture(
     )
     if order.status == OrderStatus.PENDING:
         apply_locked_transition(order, OrderStatus.CONFIRMED, actor=None, note="Online payment received")
-        notify(
-            order.user,
-            event="order.confirmed",
-            title=f"Payment received — order {order.order_number} confirmed",
-            body=f"We received ₹{payment.amount}. Your order is confirmed. {delivery_sentence(order)}",
-            data={"order_number": order.order_number},
-        )
+        notify_order(order, "payment.succeeded", amount=payment.amount, delivery_sentence=delivery_sentence(order))
+        tell_staff_new_order(order)
     return "captured"
 
 
@@ -113,14 +110,7 @@ def _record_failure(payment: Payment, order: Order, *, reason: str, cancelled: b
     if not cancelled and order.status == OrderStatus.PENDING and order.payment_status != PaymentStatus.PAID:
         order.payment_status = PaymentStatus.FAILED
         order.save(update_fields=["payment_status", "updated_at"])
-        notify(
-            order.user,
-            event="payment.failed",
-            title=f"Payment failed for order {order.order_number}",
-            body="Your payment did not go through and no money was taken. You can retry from your orders page.",
-            data={"order_number": order.order_number},
-            channels=("in_app",),
-        )
+        notify_order(order, "payment.failed", data={"payment": payment.pk})
     return "cancelled" if cancelled else "failed"
 
 
@@ -366,14 +356,7 @@ def expire_unpaid_orders(now=None) -> int:
         except ServiceError:
             continue  # changed concurrently
         expired += 1
-        notify(
-            order.user,
-            event="order.expired",
-            title=f"Order {order.order_number} cancelled — payment not completed",
-            body="We didn't receive the payment in time, so the order was cancelled and the items released. "
-            "No money was taken.",
-            data={"order_number": order.order_number},
-        )
+        notify_order(order, "order.expired")
     return expired
 
 

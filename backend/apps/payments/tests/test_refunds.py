@@ -57,7 +57,7 @@ def test_cron_mode_only_queues(user, shop, gateway, settings, django_capture_on_
     with django_capture_on_commit_callbacks(execute=True):
         cancel_order_by_customer(order, user=user, reason="Changed my mind")
     assert Refund.objects.get().status == "pending" and gateway.refund_calls == []
-    assert run_due_jobs() == 1
+    assert run_due_jobs() >= 1  # the refund (and the cancellation messages)
     assert Refund.objects.get().status == "processed"
 
 
@@ -169,7 +169,7 @@ def test_cod_return_is_refunded_by_staff_with_a_reference(
         ret = receive_return(ret, actor=staff_user)
     refund = ret.refund
     assert ret.refund_method == "manual" and refund.is_manual and refund.status == "pending"
-    assert gateway.refund_calls == [] and not Job.objects.exists()  # never sent to a gateway
+    assert gateway.refund_calls == [] and not Job.objects.exclude(name="notifications.deliver").exists()  # no gateway
 
     listing = staff_client.get("/api/payments/refunds/?status=pending").json()
     assert listing["count"] == 1 and listing["results"][0]["is_manual"] is True

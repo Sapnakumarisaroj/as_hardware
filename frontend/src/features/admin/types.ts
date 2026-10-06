@@ -28,6 +28,7 @@ export type Section =
   | 'free-delivery'
   | 'payment-settings'
   | 'loyalty'
+  | 'notifications'
 
 export interface StoreRef {
   id: number

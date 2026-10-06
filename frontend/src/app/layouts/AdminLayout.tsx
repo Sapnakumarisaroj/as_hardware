@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, PageSpinner, SignInPrompt } from '@/components/
 import { useAdminSession, useSummary } from '@/features/admin/api'
 import type { AdminSession, Section } from '@/features/admin/types'
 import { useAuth } from '@/features/auth/context'
+import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { env } from '@/lib/env'
 
 const MENU: { title: string; items: [Section, string, string][] }[] = [
@@ -50,6 +51,7 @@ const MENU: { title: string; items: [Section, string, string][] }[] = [
       ['delivery', 'Delivery', '/admin/delivery'],
       ['stores', 'Stores', '/admin/stores'],
       ['warehouses', 'Warehouses', '/admin/warehouses'],
+      ['notifications', 'Notifications', '/admin/notifications'],
     ],
   },
 ]
@@ -232,6 +234,7 @@ function Frame({ session }: { session: AdminSession }) {
         <QuickSearch />
         <div className="ml-auto flex items-center gap-1">
           <Notifications />
+          <NotificationBell tone="light" />
           <div className="hidden text-right text-xs leading-tight sm:block">
             <p className="font-semibold">{session.user.full_name || session.user.email}</p>
             <p className="text-ink-600">

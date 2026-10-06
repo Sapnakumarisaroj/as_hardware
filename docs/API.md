@@ -834,5 +834,26 @@ returned, out-of-stock ones only where a row says so, and none linked or ruled i
 
 `GET /api/offers/coupons/available/` now shares `offers.services.available_coupons` with the smart cart.
 
+## Notifications ✅ (Phase 23)
+Events, their words and default channels: `backend/apps/notifications/events.py`. Messages are created only after the
+action's transaction commits; one row per channel, never twice for the same event key.
+
+| Method | Path | Who | Notes |
+|---|---|---|---|
+| GET | `/api/notifications/?unread=1&category=` | signed in | own in-app messages, newest first: `{id, event, category, title, body, link, is_read, read_at, created_at}` (paginated) |
+| GET | `/api/notifications/summary/` | signed in | `{unread}` (the header bell) |
+| POST | `/api/notifications/{id}/read/` · `{id}/unread/` | signed in | own only (404 otherwise) → `{unread}` |
+| POST | `/api/notifications/read-all/` | signed in | optional `{ids}` → `{marked, unread}` |
+| GET/PATCH | `/api/notifications/preferences/` | signed in | `{email, sms, whatsapp, muted_categories[]}`; reads add `has_email`, masked `phone`, per-channel `available`/`needs_phone`, `categories`. WhatsApp/SMS need a phone (400) |
+| GET/POST | `/api/notifications/webhooks/whatsapp/` | Meta (no login) | GET = verification (`hub.verify_token` = `WHATSAPP_VERIFY_TOKEN`); POST needs `X-Hub-Signature-256` = HMAC-SHA256 of the raw body with `WHATSAPP_APP_SECRET` (403 otherwise, and always when no secret is set) → `{receipts, messages}` |
+| GET | `/api/admin/notifications/events/` | administrator | every event: label, category, audience, critical, variables, secret variables, per channel on/off + default words + the shop's words per language |
+| PATCH | `/api/admin/notifications/events/{key}/{channel}/` | administrator | `{enabled}`; 404 for a channel the event can't use; audited `notifications.event_channel` |
+| CRUD | `/api/admin/notifications/templates/` | administrator | `{event, channel, language, title, body, provider_template}`; only the event's variables, length limits, one per event/channel/language; audited |
+| POST | `/api/admin/notifications/preview/` | administrator | `{event, channel, title?, body}` → `{ok, problems, title, body, parameters}` with example values |
+| GET | `/api/admin/notifications/channels/` | administrator | per channel: enabled, provider, configured, mock, live, last-24-hours counts by status, last sent, last error |
+| PATCH | `/api/admin/notifications/channels/{channel}/` | administrator | `{enabled}`; in-app can't be turned off (400); audited |
+| GET | `/api/admin/notifications/log/?status=&channel=&event=&q=` | administrator | delivery log (masked recipient, template, provider status, attempts, error, `can_retry`) |
+| POST | `/api/admin/notifications/log/{id}/retry/` · `log/retry-failed/` | administrator | send a failed/skipped email/WhatsApp/SMS again (one, or up to 200 failed, optional `{channel}`); audited |
+
 ## Planned 🔜
-- **Notifications/support channels** (Phase 23).
+- Analytics and business assistant (Phase 24).

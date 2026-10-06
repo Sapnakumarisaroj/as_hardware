@@ -26,12 +26,15 @@ from django.utils import timezone
 
 from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError
-from apps.notifications.services import notify
+from apps.notifications.services import notify, notify_order
 from apps.orders.models import Order, OrderShipment, OrderStatus, PaymentMethod, PaymentStatus, ShipmentStatus
 from apps.orders.shipments import shipment_amounts, sync_order_status
 from integrations.maps import Point, haversine_km
 
 from .models import DeliveryAssignment, DeliveryPartner, DeliveryStatusHistory
+
+# Statuses in which the goods are already packed, so a newly assigned rider can come for them at once.
+PACKED_STATUSES = (OrderStatus.PACKED, OrderStatus.DELIVERY_FAILED)
 
 ASSIGNABLE_ORDER_STATUSES = (
     OrderStatus.CONFIRMED,
@@ -151,15 +154,29 @@ def _create(order, shipment, partner, *, actor, note: str, kind=KIND.DELIVERY, r
     record_history(assignment, "", actor=actor, note=note)
     refresh_partner_status(partner)
     what = "A delivery" if kind == KIND.DELIVERY else "A return pickup"
+    refs = {"assignment_id": assignment.pk, "order_number": order.order_number, "kind": kind}
     notify(
         partner.user,
         event="delivery.assigned",
-        title=f"New job: order {order.order_number}",
-        body=f"{what} for order {order.order_number} was assigned to you. Open the rider app to accept it.",
-        data={"assignment_id": assignment.pk, "order_number": order.order_number, "kind": kind},
-        channels=("in_app",),
+        context={"order_number": order.order_number, "job_kind": what},
+        data=refs,
     )
     return assignment
+
+
+def tell_riders_ready(order: Order) -> None:
+    """The store finished packing: riders already holding a job for this order can come for it."""
+    jobs = DeliveryAssignment.objects.filter(
+        order=order, kind=KIND.DELIVERY, status__in=DeliveryAssignment.BEFORE_PICKUP
+    )
+    for job in jobs.select_related("partner__user", "shipment__store"):
+        store = job.shipment.store.name if job.shipment_id else "The store"
+        notify(
+            job.partner.user,
+            event="order.ready_for_pickup",
+            context={"order_number": order.order_number, "store_name": store},
+            data={"assignment_id": job.pk, "order_number": order.order_number},
+        )
 
 
 def _locked(shipment: OrderShipment) -> tuple[Order, OrderShipment]:
@@ -194,10 +211,24 @@ def assign_shipment(shipment: OrderShipment, partner: DeliveryPartner, *, actor)
     partner = _require_eligible(shipment, partner)
 
     again = shipment.status == ShipmentStatus.FAILED
+    packed = order.status in PACKED_STATUSES  # the rider can come for it straight away
     assignment = _create(order, shipment, partner, actor=actor, note="Sent out again" if again else "Assigned by store")
     shipment.status = ShipmentStatus.ASSIGNED
     shipment.save(update_fields=["status"])
     sync_order_status(order, actor=actor, note="Delivery partner assigned")
+    rider = partner.user.full_name.split(" ")[0] or "A delivery partner"
+    refs = {"shipment": shipment.sequence, "assignment_id": assignment.pk}
+    if again:
+        notify_order(order, "delivery.redispatched", data=refs, rider_name=rider)
+    else:
+        notify_order(order, "delivery.rider_assigned", data=refs, rider_name=rider, store_name=shipment.store.name)
+    if packed:
+        notify(
+            partner.user,
+            event="order.ready_for_pickup",
+            context={"order_number": order.order_number, "store_name": shipment.store.name},
+            data={"assignment_id": assignment.pk, "order_number": order.order_number},
+        )
     record_audit(
         action="delivery.assign",
         actor=actor,
@@ -213,13 +244,12 @@ def _take_away(assignment: DeliveryAssignment, *, actor, note: str) -> None:
     assignment.save(update_fields=["status", "updated_at"])
     record_history(assignment, previous, actor=actor, note=note)
     refresh_partner_status(DeliveryPartner.objects.select_for_update().get(pk=assignment.partner_id))
+    number = assignment.order.order_number
     notify(
         assignment.partner.user,
         event="delivery.unassigned",
-        title=f"Job removed: order {assignment.order.order_number}",
-        body=f"The store took order {assignment.order.order_number} off your list. {note}".strip(),
-        data={"assignment_id": assignment.pk},
-        channels=("in_app",),
+        context={"order_number": number, "note": note},
+        data={"assignment_id": assignment.pk, "order_number": number},
     )
 
 

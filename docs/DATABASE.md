@@ -243,7 +243,11 @@ and the change of `proof_image` to private storage; no data is changed (no proof
 ## notifications / support ✅ (foundation)
 | Table | Key columns |
 |---|---|
-| `notifications_notification` | user FK, channel (in_app/email/sms/whatsapp/push), event, title, body, data JSON, status (pending/sent/failed/skipped), provider, provider_message_id, error, sent_at, read_at. Phase 5 writes `order.placed`, `order.confirmed`, `order.cancelled`, `payment.failed` (in-app + email via Django's email backend, only after the order transaction commits) |
+| `notifications_notification` | user FK, channel (in_app/email/sms/whatsapp/push), event, title, body, data JSON (deep-link ids + the message variables, never a delivery code), status (pending/sent/failed/skipped), dedupe_key (unique per user + channel when set), language, recipient (masked phone/email), template_name, provider, provider_message_id, provider_status (receipts), attempts, error, sent_at, delivered_at, read_at. The in-app rows are the inbox; all rows are the delivery log (Phase 23) |
+| `notifications_notificationpreference` | user 1:1, email, sms, muted_categories JSON. WhatsApp opt-in stays on `accounts_customerprofile.whatsapp_opt_in` |
+| `notifications_channelsetting` | channel (unique), enabled, updated_by. No row = built-in default (SMS off) |
+| `notifications_eventsetting` | event, channel (unique together), enabled, updated_by. No row = the event's default channels |
+| `notifications_notificationtemplate` | event, channel, language (unique together), title, body, provider_template (approved WhatsApp template name), updated_by |
 | `support_supportconversation` | user FK (nullable), contact_phone, channel, subject, order FK, status, assigned_to, last_message_at |
 | `support_supportmessage` | conversation FK, sender_type (customer/agent/bot/system), sender FK, body, attachments JSON, channel_message_id |
 

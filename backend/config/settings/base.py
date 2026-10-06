@@ -231,6 +231,10 @@ SPECTACULAR_SETTINGS = {
         "OrderPaymentStatusEnum": "apps.orders.models.PaymentStatus",
         "PaymentRecordStatusEnum": "apps.payments.models.Payment.Status",
         "ReviewStatusEnum": "apps.reviews.models.Review.Status",
+        "PreferredLanguageEnum": "apps.accounts.models.CustomerProfile.Language",
+        "AILanguageEnum": "apps.ai.quantity_views.LANGUAGES",
+        "NotificationChannelEnum": "apps.notifications.models.Channel",
+        "MessageChannelEnum": "apps.notifications.serializers.MESSAGE_CHANNELS",
     },
 }
 
@@ -296,8 +300,20 @@ RAZORPAY_API_BASE = env("RAZORPAY_API_BASE", default="https://api.razorpay.com/v
 # confirms nothing was paid. `run_jobs` also asks the gateway about attempts left open this long.
 PAYMENT_EXPIRY_MINUTES = env.int("PAYMENT_EXPIRY_MINUTES", default=30)
 PAYMENT_RECONCILE_AFTER_MINUTES = env.int("PAYMENT_RECONCILE_AFTER_MINUTES", default=10)
-WHATSAPP_PROVIDER = env("WHATSAPP_PROVIDER", default="mock")  # mock | meta
-SMS_PROVIDER = env("SMS_PROVIDER", default="mock")  # mock | msg91 | twilio
+# Notifications (Phase 23). WhatsApp: mock (records, sends nothing) | meta (WhatsApp Cloud API, needs the
+# owner's WhatsApp Business account, approved templates; Meta bills per conversation) | none.
+# SMS: mock | none (a paid gateway is one provider class in integrations/messaging; none ships).
+WHATSAPP_PROVIDER = env("WHATSAPP_PROVIDER", default="mock")
+SMS_PROVIDER = env("SMS_PROVIDER", default="mock")
+WHATSAPP_ACCESS_TOKEN = env("WHATSAPP_ACCESS_TOKEN", default="")
+WHATSAPP_PHONE_NUMBER_ID = env("WHATSAPP_PHONE_NUMBER_ID", default="")
+WHATSAPP_API_VERSION = env("WHATSAPP_API_VERSION", default="v21.0")
+WHATSAPP_APP_SECRET = env("WHATSAPP_APP_SECRET", default="")  # checks the signature of delivery receipts
+WHATSAPP_VERIFY_TOKEN = env("WHATSAPP_VERIFY_TOKEN", default="")  # Meta's one-time webhook verification
+MESSAGING_TIMEOUT_SECONDS = env.float("MESSAGING_TIMEOUT_SECONDS", default=10)
+PHONE_COUNTRY_CODE = env("PHONE_COUNTRY_CODE", default="91")  # stored phones are 10 digits
+# Active orders this many minutes past their estimated delivery get one "running late" message.
+DELIVERY_DELAY_NOTICE_MINUTES = env.int("DELIVERY_DELAY_NOTICE_MINUTES", default=15)
 LLM_PROVIDER = env("LLM_PROVIDER", default="none")  # none | ollama | openai_compatible | anthropic
 OLLAMA_BASE_URL = env("OLLAMA_BASE_URL", default="http://localhost:11434")
 OLLAMA_KEEP_ALIVE = env("OLLAMA_KEEP_ALIVE", default="30m")  # keep the model loaded between questions

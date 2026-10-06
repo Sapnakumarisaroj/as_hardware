@@ -29,7 +29,7 @@ from django.utils import timezone
 from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError, NotFoundError, ServiceError
 from apps.core.money import q
-from apps.notifications.services import notify
+from apps.notifications.services import notify_order, notify_order_staff
 from apps.orders.models import Order, OrderShipment, OrderStatus, PaymentMethod, ReturnRequest, ShipmentStatus
 from apps.orders.shipments import sell_stock, sync_order_status
 
@@ -112,8 +112,21 @@ def _shipment(assignment: DeliveryAssignment) -> OrderShipment:
     return OrderShipment.objects.select_related("store").prefetch_related("items").get(pk=assignment.shipment_id)
 
 
-def _tell_customer(order: Order, event: str, title: str, body: str, **data) -> None:
-    notify(order.user, event=event, title=title, body=body, data={"order_number": order.order_number, **data})
+def _rider_name(assignment: DeliveryAssignment) -> str:
+    return assignment.partner.user.full_name.split(" ")[0] or "Your delivery partner"
+
+
+def _tell_customer(order: Order, event: str, assignment: DeliveryAssignment, shipment, **context) -> None:
+    """One message per delivery attempt (the assignment), so a second attempt is told again."""
+    data = {"shipment": shipment.sequence, "assignment_id": assignment.pk}
+    notify_order(order, event, data=data, **context)
+
+
+def tell_delivery_code(order: Order, assignment: DeliveryAssignment) -> None:
+    """The delivery code by WhatsApp/SMS for customers who opted in (it is also on the order page).
+    The code itself is never stored with the message: it is looked up again when sending."""
+    notify_order(order, "delivery.otp", key=f"otp:{assignment.pk}:{assignment.otp_nonce[:12]}",
+                 data={"assignment_id": assignment.pk}, otp="")  # fmt: skip
 
 
 # --- Steps ---------------------------------------------------------------------------------------
@@ -181,6 +194,8 @@ def pickup(assignment_id: int, *, rider, position=None) -> DeliveryAssignment:
     _move(assignment, A.PICKED_UP, actor=rider, note=note, position=position, fields=["picked_up_at"])
     if assignment.kind == KIND.DELIVERY:
         sync_order_status(order, actor=rider, note="Picked up by the delivery partner")
+        _tell_customer(order, "order.picked_up", assignment, shipment, rider_name=_rider_name(assignment),
+                       store_name=shipment.store.name)  # fmt: skip
     return assignment
 
 
@@ -201,15 +216,8 @@ def start_delivery(assignment_id: int, *, rider, position=None) -> DeliveryAssig
     shipment.delivery_attempts += 1
     shipment.save(update_fields=["status", "out_for_delivery_at", "delivery_attempts"])
     sync_order_status(order, actor=rider, note="Out for delivery")
-    _tell_customer(
-        order,
-        "order.out_for_delivery",
-        f"Order {order.order_number} is on its way",
-        f"{assignment.partner.user.full_name.split(' ')[0] or 'Your delivery partner'} is bringing your order. "
-        "Open the order page to see your delivery code and give it to the delivery partner at the door. "
-        "Never share it on a call.",
-        shipment=shipment.sequence,
-    )
+    _tell_customer(order, "order.out_for_delivery", assignment, shipment, rider_name=_rider_name(assignment))
+    tell_delivery_code(order, assignment)
     return assignment
 
 
@@ -270,15 +278,10 @@ def _finish_delivery(order, assignment, *, actor, now, note, position=None) -> N
     sync_order_status(order, actor=actor, note="Delivered")
     order.refresh_from_db(fields=["status"])
     whole = order.status == OrderStatus.DELIVERED
-    _tell_customer(
-        order,
-        "order.delivered" if whole else "order.part_delivered",
-        f"Order {order.order_number} delivered" if whole else f"Part of order {order.order_number} delivered",
-        "Your order has been delivered. Thank you for shopping with us!"
-        if whole
-        else f"The items from {shipment.store.name} have been delivered. The rest of your order is still on its way.",
-        shipment=shipment.sequence,
-    )
+    if whole:
+        notify_order(order, "order.delivered")  # once per order, however many shipments it had
+    else:
+        _tell_customer(order, "order.part_delivered", assignment, shipment, store_name=shipment.store.name)
 
 
 def complete_delivery(
@@ -382,14 +385,9 @@ def fail_delivery(assignment_id: int, *, rider, reason_code: str, note: str = ""
         shipment.failure_reason, shipment.failure_note = reason_code, note.strip()[:255]
         shipment.save(update_fields=["status", "failed_at", "failure_reason", "failure_note"])
         sync_order_status(order, actor=rider, note=f"Delivery attempt failed: {label}")
-        _tell_customer(
-            order,
-            "delivery.failed",
-            f"We couldn't deliver order {order.order_number}",
-            f"Our delivery partner could not complete the delivery ({label.lower()}). "
-            "The store will contact you to arrange another attempt.",
-            shipment=shipment.sequence,
-        )
+        _tell_customer(order, "delivery.failed", assignment, shipment, reason=label.lower())
+        notify_order_staff(order, "staff.delivery_failed", data={"assignment_id": assignment.pk},
+                           store_name=shipment.store.name, reason=assignment.failure_reason)  # fmt: skip
     record_audit(
         action="delivery.fail",
         actor=rider,
@@ -452,6 +450,7 @@ def new_delivery_code(order: Order, shipment_sequence: int, *, user) -> Delivery
             "A delivery code is only needed while the order is out for delivery.", code="otp_not_needed"
         )
     otp.reissue(assignment)
+    tell_delivery_code(order, assignment)
     return assignment
 
 

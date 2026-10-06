@@ -59,8 +59,8 @@ as_hardware/
 │   │   ├── delivery/        ✅ zones, PIN codes, fulfilment + ETA engine (Phase 9); riders, assignments, rider workflow,
 │   │   │                       delivery code, proof of delivery, cash on delivery (Phase 10) (+ rider and staff API)
 │   │   ├── reviews/         ✅ Review (verified buyers only, moderation) (+ API)
-│   │   ├── notifications/   ✅ Notification (sending in Phase 23)
-│   │   ├── support/         ✅ SupportConversation, SupportMessage (channels in Phase 23)
+│   │   ├── notifications/   ✅ event catalogue, routing, inbox, delivery log, words, WhatsApp webhook (Phase 23)
+│   │   ├── support/         ✅ SupportConversation, SupportMessage (WhatsApp messages arrive here since Phase 23)
 │   │   ├── ai/              ✅ AIConversation, AIMessage, Project, ProjectItem (AI logic Phases 12–19)
 │   │   └── analytics/       🔜 whitelisted reporting queries + business assistant (Phase 24)
 │   ├── integrations/        payments/ ✅ (PaymentProvider, MockPaymentProvider, RazorpayPaymentProvider); maps/ ✅ (Phase 9);
@@ -159,8 +159,11 @@ Cart ──► POST /checkout/preview/ (orders/checkout.py: build_checkout — r
   threshold and whether that store has a fast-delivery zone. `eta_minutes` stays `null`; the UI says the estimate is
   confirmed after ordering. Phase 9 replaces `find_fulfilment_store`/`quote_delivery` with the distance/ETA engine
   without changing the API shape.
-- **Notifications** (`notifications/services.notify`): in-app rows plus email through Django's email backend (console in
-  dev), sent only after commit so rolled-back orders never notify. SMS/WhatsApp providers are Phase 23.
+- **Notifications** (`notifications/services.notify`, Phase 23): code raises an event from `notifications/events.py`;
+  after commit it is routed (admin channel/event switches, the person's choices, critical events always) to one row
+  per channel, unique per event key. In-app rows are the inbox; email (Django email backend, SMTP in production),
+  WhatsApp and SMS (`integrations/messaging`, mock by default) are sent by `core.Job` with retries. Secret values
+  (the delivery code) are filled in only when sending.
 
 ### Offers and coupons (Phase 6)
 One pricing path, `orders.pricing.price_lines(lines, coupon=None)`, is used by the cart, checkout preview, coupon
@@ -607,7 +610,7 @@ out                                verdict, reason, checks, matching variant pai
 |-----------|----------------------------------------|----------------------------------|--------|
 | Payments  | `MockPaymentProvider` (dev only; prod refuses it) + COD | Razorpay (UPI, cards, net banking, refunds, webhooks) | `PAYMENT_PROVIDER` |
 | WhatsApp  | `MockWhatsAppProvider` (stores and logs messages)  | WhatsApp Business Cloud API (Meta) | `WHATSAPP_PROVIDER` |
-| SMS       | `MockSMSProvider`                      | MSG91 / Twilio                   | `SMS_PROVIDER` |
+| SMS       | `MockSMSProvider`                      | MSG91 / Twilio (not implemented: paid; one provider class in `integrations/messaging`) | `SMS_PROVIDER` |
 | Email     | console backend (dev)                  | hosting mailbox SMTP             | `EMAIL_*` |
 | Maps      | Offline: haversine distance, admin-managed PIN centres. OpenStreetMap tiles + **Leaflet** for the address pin (frontend) | Still free: Nominatim geocoding (rate-limited, cached), OSRM routing (self-hosted or the public demo server). No paid maps provider is implemented | `GEOCODING_PROVIDER`, `ROUTING_PROVIDER`, `VITE_MAP_TILE_URL` |
 | LLM       | `NoLLMProvider` / Ollama (local)       | OpenAI-compatible / Anthropic    | `LLM_PROVIDER` |
