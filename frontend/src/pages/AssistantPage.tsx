@@ -76,6 +76,8 @@ export function AssistantPage() {
   const toast = useToast()
   const [params, setParams] = useSearchParams()
   const conversationId = Number(params.get('c')) || null
+  // Phase 21: opened from a product page ("Ask the assistant"): "this" means that product
+  const productId = Number(params.get('product')) || null
 
   const assistant = useAssistantStatus()
   const conversations = useConversations()
@@ -120,7 +122,7 @@ export function AssistantPage() {
     setLastError(null)
     setText('')
     ask.mutate(
-      { conversationId, message: trimmed, language },
+      { conversationId, message: trimmed, language, productId },
       {
         onSuccess: (result) => {
           if (result.kind === 'new') open(result.conversation.id)

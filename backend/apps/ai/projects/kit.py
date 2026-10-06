@@ -273,6 +273,46 @@ def need_lines(needs: list[Need], language: str, *, prefer: dict | None = None) 
                     "sort_order": order * 10 + index,
                 }
             )
+    return align_variants(lines)
+
+
+def align_variants(lines: list[dict]) -> list[dict]:
+    """Phase 21: when the cheapest pick of one line doesn't fit another ("3/4 inch pipe" with "1/2 inch elbows"),
+    switch the second line to a variant the compatibility engine says matches, with enough packs for its need."""
+    from apps.catalog.compatibility import profiles, rules
+    from apps.catalog.compatibility.service import CompatibilityService
+
+    service = CompatibilityService()
+    picked = [
+        line
+        for line in lines
+        if line.get("variant") is not None and line["material_key"] == base_key(line["material_key"])
+    ]
+    for i, first in enumerate(picked):
+        for second in picked[i + 1 :]:
+            a, b = first["variant"].product, second["variant"].product
+            if a.pk == b.pk or rules.find_rule(profiles.kind_of(a), profiles.kind_of(b))[0] is None:
+                continue
+            try:
+                result = service.check_ids(a.pk, b.pk, first["variant"].pk, None)
+            except ServiceError:
+                continue
+            if result.verdict == "NOT_COMPATIBLE":
+                continue  # no variant of it fits: the warning shows replacements instead
+            # a match may not name the first line's variant (plugs/screws: any 6 mm plug takes 4.2 mm screws)
+            wanted = next((m["b"] for m in result.matching_variants if m["a"] in (None, first["variant"].pk)), None)
+            if wanted and wanted != second["variant"].pk:
+                variant = ProductVariant.objects.select_related("product").filter(pk=wanted, is_active=True).first()
+                if variant is not None:
+                    count, size = regather(second["details"], variant)
+                    second.update(variant=variant, quantity=count)
+                    label = next(m["label"] for m in result.matching_variants if m["b"] == wanted)
+                    second["details"] = {
+                        **second["details"],
+                        "pack_amount": size,
+                        "aligned_with": first["material_key"],
+                        "pack_explanation": f"Chosen to match {first['label']}: {label}.",
+                    }
     return lines
 
 
@@ -596,7 +636,16 @@ def price_rows(
         "can_add_to_cart": bool(lines) and not issues,
         "not_found_count": sum(1 for r in out_items if r["status"] == "not_found"),
         "included_count": len(included),
+        "compatibility": kit_compatibility(rows),
     }
+
+
+def kit_compatibility(rows: list[Row]) -> list[dict]:
+    """Phase 21: ticked lines that may not work together, with compatible replacements for the second one."""
+    from apps.catalog.compatibility.service import CompatibilityService
+
+    lines = [{"key": row.id, "variant": row.variant} for row in rows if row.included and row.variant is not None]
+    return CompatibilityService().check_lines(lines)
 
 
 def quote_kit(project: Project, *, user, postal_code: str = "", address_id: int | None = None) -> dict:

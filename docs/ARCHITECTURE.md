@@ -553,6 +553,33 @@ Voice (Phase 18): "500 sq ft plastering ka saman" → VoiceShoppingService._quan
   packs and reasons, product/quantity/tick changes (sent back as `overrides`), PIN, coupon, totals, Add all to cart,
   Save as a project. Links from the home page, menu, footer, the assistant's paint estimate and voice answers.
 
+### Compatibility checker (Phase 21)
+```
+POST /api/compatibility/check/  ·  product page  ·  assistant / voice ("will this work with that?")  ·  kits  ·  cart
+        │
+        ▼  catalog/compatibility/service.py → CompatibilityService
+profiles.build(product, variant)   kind from name + category (KINDS table: drill, drill_bit, wall_plug, screw, bolt,
+                                   spanner, pipe, pipe_fitting, tap, mcb, switch, socket, wire, bulb, holder);
+                                   facts only from the listing: chuck size, impact function, bit sizes and material,
+                                   plug diameter, screw gauge → mm, material, nominal sizes per variant ("1/2 inch"),
+                                   thread, current rating, cross-section, base; missing stays missing
+evidence, strongest first          1. staff links (ProductRelation): incompatible → NOT; compatible/required →
+                                      COMPATIBLE unless the facts disagree (then POSSIBLY, both reasons)
+                                   2. rules.py: one function per kind pair (named constants: wire size per MCB
+                                      rating, bolt → spanner size, plug → screw diameter share)
+                                   3. "goes with" link only → POSSIBLY; nothing → INSUFFICIENT_INFORMATION
+out                                verdict, reason, checks, matching variant pairs, compatible options (same kind as B)
+```
+- **AI can't decide:** the assistant/voice find the products (catalogue search, whole-word check, "this" = the viewed
+  product, size words pick the variant) and run the engine; a configured model may only reword the reason, and a
+  rewording with a number not in the facts is dropped. The verdict shown is always the engine's.
+- **Kits and Quantity AI:** `kit.align_variants` switches a line to the variant the engine matches (6 mm plugs → 4.2 mm
+  screws); `kit_compatibility` lists remaining problems with options ("View compatible options" → use one).
+- **Cart (for Phase 22):** `GET /api/cart/compatibility/` and `POST /api/cart/items/{id}/replace/` (atomic, checked by
+  the cart service).
+- **Data ownership:** links are edited only in the dashboard (staff with catalogue rights), audited before/after;
+  specifications are edited only there too. Customers and the AI have read-only access.
+
 ## 6. Integrations (provider pattern)
 
 | Concern   | Default (free)                         | Optional production provider     | Switch |

@@ -184,9 +184,9 @@ class AdminProductDetailSerializer(AdminProductListSerializer):
         ]
 
     def get_accessories(self, obj) -> list[dict]:
-        """Linked accessories (Phase 16) in order: [{id, name, slug, note}]."""
+        """Linked products in order: [{id, name, slug, note, kind}] (kind since Phase 21)."""
         return [
-            {"id": r.related_id, "name": r.related.name, "slug": r.related.slug, "note": r.note}
+            {"id": r.related_id, "name": r.related.name, "slug": r.related.slug, "note": r.note, "kind": r.kind}
             for r in obj.relations.select_related("related").order_by("sort_order", "id")
         ]
 
@@ -325,13 +325,19 @@ class AdminProductViewSet(viewsets.ModelViewSet):
         )
         serializer.is_valid(raise_exception=True)
         changed = sorted(serializer.validated_data)
+        before = services.relation_rows(instance) if instance and "accessories" in serializer.validated_data else None
         product = services.save_product(instance=instance, data=dict(serializer.validated_data), actor=request.user)
+        changes = {"fields": changed}
+        if "accessories" in serializer.validated_data:
+            after = services.relation_rows(product)
+            if after != before:  # Phase 21: product links drive compatibility, so each change is recorded in full
+                changes["relations"] = {"before": before or [], "after": after}
         record_audit(
             action="product.update" if instance else "product.create",
             actor=request.user,
             target=product,
             request=request,
-            changes={"fields": changed},
+            changes=changes,
         )
         return product
 

@@ -102,6 +102,7 @@ export function useProduct(slug: string) {
     queryKey: catalogKeys.product(slug, pin.postal_code ?? ''),
     queryFn: async () => (await api.get<ProductDetail>(`/products/${encodeURIComponent(slug)}/`, { params: pin })).data,
     placeholderData: keepPreviousData, // a PIN change keeps the page while the delivery flags reload
+    enabled: Boolean(slug), // e.g. the compatibility checker before a second product is chosen
   })
 }
 

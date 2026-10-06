@@ -39,15 +39,32 @@ class HardwareAssistantService:
             "max_products": settings.AI_ASSISTANT_MAX_PRODUCTS,
         }
 
-    def ask(self, conversation, text: str, *, language_hint: str = "") -> tuple[AssistantReply, object, object]:
-        """Answer `text` inside `conversation`; returns the reply and the two stored messages."""
+    def ask(
+        self, conversation, text: str, *, language_hint: str = "", product_id: int | None = None
+    ) -> tuple[AssistantReply, object, object]:
+        """Answer `text` inside `conversation`; returns the reply and the two stored messages. `product_id`: the
+        product the customer is looking at ("will this work with...")."""
         history = self.conversations.history(conversation)
-        reply = self.answer(text, history=history, language_hint=language_hint or conversation.language)
+        language = language_hint or conversation.language
+        reply = self.answer(text, history=history, language_hint=language, product_id=product_id)
         user_message, assistant_message = self.conversations.record(conversation, text, reply)
         return reply, user_message, assistant_message
 
-    def answer(self, text: str, *, history: list[dict] | None = None, language_hint: str = "") -> AssistantReply:
+    def answer(
+        self, text: str, *, history: list[dict] | None = None, language_hint: str = "", product_id: int | None = None
+    ) -> AssistantReply:
         """The whole pipeline without storage (also what a voice front end would call)."""
+        from .compatibility import CompatibilityAssistant, is_question
+        from .intent import detect_language
+
+        if is_question(text):
+            # Phase 21: compatibility questions are decided by the compatibility engine from listing facts.
+            language = detect_language(text)
+            language = language_hint if language == "en" and language_hint in ("hi", "hinglish") else language
+            reply = CompatibilityAssistant(self.provider).answer(text, language=language, context_product_id=product_id)
+            if not (reply.compatibility or {}).get("needs_products") or reply.products:
+                reply.ai_mode = "llm" if (reply.compatibility or {}).get("explained_by_ai") else "basic"
+                return reply
         understood = self.intents.understand(text, history=history, language_hint=language_hint)
         understood = self._carry_context(understood, history or [])
         matches, missing = [], []

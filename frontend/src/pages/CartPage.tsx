@@ -6,6 +6,8 @@ import { QuantityStepper } from '@/components/QuantityStepper'
 import { useToast } from '@/components/toast'
 import { useAuth } from '@/features/auth/context'
 import { useCart, useRemoveCartItem, useUpdateCartItem, type CartLine } from '@/features/cart/api'
+import { optionVariant, useCartCompatibility, useReplaceCartItem } from '@/features/compatibility/api'
+import { CompatibilityProblems } from '@/features/compatibility/components'
 import { useAddresses } from '@/features/addresses/api'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { useCartEstimate } from '@/features/delivery/api'
@@ -191,6 +193,34 @@ function CartDelivery({ cartVersion }: { cartVersion: string }) {
   )
 }
 
+/** Phase 21 (Smart Cart preparation): cart lines that may not work together, with a one-step replace. */
+function CartCompatibility({ lines, count }: { lines: string; count: number }) {
+  const toast = useToast()
+  const problems = useCartCompatibility(lines, count >= 2)
+  const replace = useReplaceCartItem()
+  if (!problems.data?.length) return null
+  return (
+    <div className="mt-4">
+      <CompatibilityProblems
+        problems={problems.data}
+        replaceLabel="Replace with this"
+        onReplace={(problem, option) => {
+          const itemId = problem.cart_item_ids?.[1]
+          const variantId = optionVariant(option)
+          if (!itemId || !variantId) return
+          replace.mutate(
+            { itemId, variantId },
+            {
+              onSuccess: () => toast.show(`Replaced with ${option.product?.name ?? 'a compatible product'}.`),
+              onError: (error) => toast.show(error instanceof ApiError ? error.message : 'Could not replace it.', { tone: 'error' }),
+            },
+          )
+        }}
+      />
+    </div>
+  )
+}
+
 export function CartPage() {
   usePageMeta('Your cart')
   const { status } = useAuth()
@@ -264,6 +294,7 @@ export function CartPage() {
             </ul>
           </div>
         )}
+        <CartCompatibility lines={items.map((line) => `${line.id}:${line.variant_id}`).join(',')} count={items.length} />
         <ul className="divide-y divide-steel-100">
           {items.map((line) => (
             <Line key={line.id} line={line} />

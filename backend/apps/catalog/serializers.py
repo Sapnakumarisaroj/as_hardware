@@ -639,14 +639,16 @@ class SpecificationWriteSerializer(serializers.Serializer):
 
 
 class AccessoryWriteSerializer(serializers.Serializer):
-    product = serializers.IntegerField(help_text="Id of the accessory product")
+    product = serializers.IntegerField(help_text="Id of the linked product")
     note = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+    # Phase 21: what the link means for the compatibility checker (accessory = "goes with", no fit claimed)
+    kind = serializers.ChoiceField(choices=ProductRelation.Kind.choices, required=False, default="accessory")
 
 
 class ProductWriteSerializer(serializers.ModelSerializer):
     variants = VariantWriteSerializer(many=True, required=False)
     specifications = SpecificationWriteSerializer(many=True, required=False)
-    accessories = AccessoryWriteSerializer(many=True, required=False, max_length=20)
+    accessories = AccessoryWriteSerializer(many=True, required=False, max_length=40)
 
     class Meta:
         model = Product

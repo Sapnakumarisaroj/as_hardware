@@ -42,14 +42,16 @@ export function useConversation(id: number | null) {
 export function useAsk() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { conversationId: number | null; message: string; language?: AssistantLanguage }) => {
+    mutationFn: async (input: { conversationId: number | null; message: string; language?: AssistantLanguage; productId?: number | null }) => {
+      const product = input.productId ? { product_id: input.productId } : {}
       if (input.conversationId === null) {
-        const { data } = await api.post<Conversation>('/ai/conversations/', { message: input.message, language: input.language })
+        const { data } = await api.post<Conversation>('/ai/conversations/', { message: input.message, language: input.language, ...product })
         return { kind: 'new' as const, conversation: data }
       }
       const { data } = await api.post<Turn>(`/ai/conversations/${input.conversationId}/messages/`, {
         message: input.message,
         language: input.language,
+        ...product,
       })
       return { kind: 'turn' as const, turn: data }
     },

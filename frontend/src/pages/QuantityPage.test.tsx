@@ -231,6 +231,29 @@ describe('Quantity calculator', () => {
     await waitFor(() => expect(bodyOf(api.post, '/ai/quantity/').at(-1)).toMatchObject({ overrides: { cement: { included: false } } }))
   })
 
+  it('flags lines that don’t fit together and swaps one for a compatible product', async () => {
+    const problem = {
+      verdict: 'NOT_COMPATIBLE' as const,
+      reason: 'Sizes don’t match: 3/4 vs 1/2 inch.',
+      product_a: { id: 11, name: 'CPVC Pipe', slug: 'cpvc', kind: 'pipe' },
+      product_b: { id: 16, name: 'CPVC Elbow', slug: 'elbow', kind: 'pipe_fitting' },
+      variant_a: 15,
+      variant_b: 22,
+      checks: [],
+      matching_variants: [],
+      sources: ['rule:pipe+pipe_fitting'],
+      keys: ['pipe', 'elbows'],
+      message: 'Your selected CPVC Elbow won’t work with CPVC Pipe. Sizes don’t match: 3/4 vs 1/2 inch.',
+      options: [{ product_id: 30, variant_id: 31, verdict: 'COMPATIBLE' as const, reason: 'ok', product: otherCement }],
+    }
+    const api = mockApi({ get: { ...shopGet, '/ai/quantity/': status }, post: { '/ai/quantity/': result({ kit: kit({ compatibility: [problem] }) }) } })
+    const { user } = renderRoute('/quantity?q=20%20m%20CPVC%20pipe%203%2F4%20inch')
+    expect(await screen.findByText(/won’t work with CPVC Pipe/)).toBeInTheDocument()
+    await user.click(screen.getByText('View compatible options'))
+    await user.click(screen.getByRole('button', { name: 'Use this instead' }))
+    await waitFor(() => expect(bodyOf(api.post, '/ai/quantity/').at(-1)).toMatchObject({ overrides: { elbows: { variant_id: 31 } } }))
+  })
+
   it('adds all lines to the cart and saves the calculation as a project', async () => {
     signIn()
     const api = mockApi({

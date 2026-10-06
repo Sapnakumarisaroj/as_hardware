@@ -230,6 +230,11 @@ Recordings are never stored. Throttles: `THROTTLE_VOICE` (30/min), `THROTTLE_VOI
   calculation still works; the page says the helper is off.
 - `QUANTITY_PACK_RULE` (`lowest_cost` default, or `fewest_packs`) chooses between pack combinations.
 
+## Compatibility checker (Phase 21): no new dependencies
+- Rules are plain Python over the shop's own product data; no external or paid compatibility API.
+- The optional local model (Ollama + `qwen2.5:3b`) may reword an explanation (a few seconds on CPU); without it the
+  engine's own reason is shown. `THROTTLE_COMPATIBILITY` (60/min) limits the public check endpoint.
+
 ## Deliberately NOT used
 Redis, Celery, RabbitMQ, Elasticsearch/OpenSearch, pgvector-only features, paid vector databases, AWS/Azure/GCP services,
 Sentry SaaS, and any paid AI API. They are replaced by DB-backed queues + cron, DB cache, portable SQL search, and in-Python vector math.

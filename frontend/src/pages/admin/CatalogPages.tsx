@@ -20,7 +20,7 @@ import {
 } from '@/features/admin/api'
 import { flattenCategories } from '@/features/admin/categories'
 import { useSession } from '@/features/admin/session'
-import type { AdminBrand, AdminCategory, AdminProduct, AdminProductRow, ProductInput, VariantInput } from '@/features/admin/types'
+import type { AdminBrand, AdminCategory, AdminProduct, AdminProductRow, ProductInput, RelationKind, VariantInput } from '@/features/admin/types'
 import { useOptionTypes } from '@/features/admin/api'
 import {
   Badge,
@@ -318,7 +318,7 @@ function fromProduct(product: AdminProduct): ProductInput {
     uses: product.uses ?? '',
     installation_steps: product.installation_steps ?? '',
     faqs: product.faqs ?? [],
-    accessories: (product.accessories ?? []).map((a) => ({ product: a.id, note: a.note })),
+    accessories: (product.accessories ?? []).map((a) => ({ product: a.id, note: a.note, kind: a.kind ?? 'accessory' })),
   }
 }
 
@@ -377,6 +377,14 @@ function problems(form: ProductInput): string[] {
  * Phase 16 product-page content: quick answer, uses, steps, questions and linked accessories. Each block
  * appears on the product page only when filled in. Accessories are chosen from the shop's products.
  */
+const RELATION_KINDS: [RelationKind, string][] = [
+  ['accessory', 'Goes well with'],
+  ['compatible', 'Compatible (verified)'],
+  ['required', 'Required with it'],
+  ['alternative', 'Alternative'],
+  ['incompatible', 'Not compatible'],
+]
+
 function ProductPageContent({
   form,
   set,
@@ -446,12 +454,30 @@ function ProductPageContent({
           </button>
         </fieldset>
         <fieldset>
-          <legend className="label">Recommended accessories (“Goes well with”)</legend>
+          <legend className="label">Linked products (accessories and compatibility)</legend>
+          <p className="mb-2 text-xs text-ink-600">
+            “Compatible”, “Required” and “Not compatible” are used by the compatibility checker; every change is recorded in the audit log.
+          </p>
           {accessories.length > 0 && (
             <ul className="mb-2 space-y-2" aria-label="Chosen accessories">
               {accessories.map((accessory, index) => (
                 <li key={accessory.product} className="flex flex-wrap items-end gap-2 rounded-md bg-steel-50 p-2">
                   <span className="min-w-40 flex-1 text-sm font-semibold">{names[accessory.product] ?? `Product ${accessory.product}`}</span>
+                  <label className="text-sm">
+                    <span className="label">Link type</span>
+                    <select
+                      className="input"
+                      aria-label={`Link type for ${names[accessory.product] ?? `product ${accessory.product}`}`}
+                      value={accessory.kind ?? 'accessory'}
+                      onChange={(e) => set('accessories', accessories.map((a, i) => (i === index ? { ...a, kind: e.target.value as RelationKind } : a)))}
+                    >
+                      {RELATION_KINDS.map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <FormField
                     id={`accessory-${accessory.product}-note`}
                     label="Why it goes with it"
@@ -488,7 +514,7 @@ function ProductPageContent({
                       className="w-full px-3 py-2 text-left text-sm hover:bg-steel-50"
                       onClick={() => {
                         onName(row.id, row.name)
-                        set('accessories', [...accessories, { product: row.id, note: '' }])
+                        set('accessories', [...accessories, { product: row.id, note: '', kind: 'accessory' }])
                         setTerm('')
                       }}
                     >
@@ -642,7 +668,7 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
         specifications: form.specifications.map((s) => ({ name: s.name.trim(), value: s.value.trim() })),
         quick_answer: (form.quick_answer ?? '').trim(),
         faqs: (form.faqs ?? []).map((f) => ({ question: f.question.trim(), answer: f.answer.trim() })),
-        accessories: (form.accessories ?? []).map((a) => ({ product: a.product, note: a.note.trim() })),
+        accessories: (form.accessories ?? []).map((a) => ({ product: a.product, note: a.note.trim(), kind: a.kind ?? 'accessory' })),
       },
       {
         onSuccess: (saved) => {

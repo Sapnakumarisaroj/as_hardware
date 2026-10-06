@@ -58,6 +58,7 @@ class AIMessageSerializer(serializers.ModelSerializer):
     knowledge = serializers.SerializerMethodField()
     safety = serializers.SerializerMethodField()
     estimate = serializers.SerializerMethodField()
+    compatibility = serializers.SerializerMethodField()
 
     class Meta:
         model = AIMessage
@@ -75,6 +76,7 @@ class AIMessageSerializer(serializers.ModelSerializer):
             "knowledge",
             "safety",
             "estimate",
+            "compatibility",
         ]
 
     def _payload(self, obj, key, default):
@@ -107,6 +109,9 @@ class AIMessageSerializer(serializers.ModelSerializer):
     def get_estimate(self, obj) -> dict | None:
         return self._payload(obj, "estimate", None)
 
+    def get_compatibility(self, obj) -> dict | None:
+        return self._payload(obj, "compatibility", None)
+
 
 class AIConversationSerializer(serializers.ModelSerializer):
     message_count = serializers.IntegerField(read_only=True, default=0)
@@ -130,6 +135,7 @@ class AIConversationDetailSerializer(AIConversationSerializer):
 class AskSerializer(serializers.Serializer):
     message = serializers.CharField(max_length=MAX_MESSAGE_LENGTH, trim_whitespace=True)
     language = serializers.ChoiceField(choices=LANGUAGES, required=False)
+    product_id = serializers.IntegerField(min_value=1, required=False, help_text="The product being viewed (Phase 21)")
 
 
 class StartSerializer(serializers.Serializer):
@@ -137,6 +143,7 @@ class StartSerializer(serializers.Serializer):
         max_length=MAX_MESSAGE_LENGTH, trim_whitespace=True, required=False, allow_blank=True
     )
     language = serializers.ChoiceField(choices=LANGUAGES, required=False)
+    product_id = serializers.IntegerField(min_value=1, required=False, help_text="The product being viewed (Phase 21)")
 
 
 class AssistantStatusView(APIView):
@@ -189,7 +196,9 @@ class AIConversationViewSet(
         service = AIConversationService()
         conversation = service.start(request.user, language=data.get("language") or "en")
         if data.get("message"):
-            HardwareAssistantService().ask(conversation, data["message"], language_hint=data.get("language", ""))
+            HardwareAssistantService().ask(
+                conversation, data["message"], language_hint=data.get("language", ""), product_id=data.get("product_id")
+            )
         return self._detail(conversation, status.HTTP_201_CREATED)
 
     @extend_schema(request=AskSerializer, responses={201: None})
@@ -201,7 +210,7 @@ class AIConversationViewSet(
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         _reply, user_message, assistant_message = HardwareAssistantService().ask(
-            conversation, data["message"], language_hint=data.get("language", "")
+            conversation, data["message"], language_hint=data.get("language", ""), product_id=data.get("product_id")
         )
         context = {"request": request}
         return Response(

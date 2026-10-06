@@ -89,6 +89,32 @@ def set_item_quantity(user, item_id: int, quantity: int) -> CartItem:
     return item
 
 
+@transaction.atomic
+def replace_item(user, item_id: int, variant_id: int, quantity: int | None = None) -> CartItem:
+    """Swap a cart line for another product/variant in one step (Phase 21: "Replace with a compatible bit").
+    The new line is checked like any added line; if the cart already has it, the quantities add up."""
+    cart = Cart.objects.select_for_update().get(pk=get_cart(user).pk)
+    item = CartItem.objects.select_related("variant__product").filter(pk=item_id, cart=cart).first()
+    if item is None:
+        raise NotFoundError("Item not found in your cart.")
+    variant = _purchasable_variant(variant_id)
+    quantity = quantity or item.quantity
+    if variant.pk == item.variant_id:
+        _validate_quantity(variant, quantity)
+        item.quantity = quantity
+        item.save(update_fields=["quantity", "updated_at"])
+        return item
+    existing = CartItem.objects.filter(cart=cart, variant=variant).first()
+    new_quantity = quantity + (existing.quantity if existing else 0)
+    _validate_quantity(variant, new_quantity)
+    item.delete()
+    if existing:
+        existing.quantity = new_quantity
+        existing.save(update_fields=["quantity", "updated_at"])
+        return existing
+    return CartItem.objects.create(cart=cart, variant=variant, quantity=new_quantity, price_at_add=variant.price)
+
+
 def remove_item(user, item_id: int) -> None:
     deleted, _ = CartItem.objects.filter(pk=item_id, cart__user=user).delete()
     if not deleted:

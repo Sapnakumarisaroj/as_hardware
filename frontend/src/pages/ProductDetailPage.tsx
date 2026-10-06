@@ -24,6 +24,7 @@ import { ProductOfferCallout } from '@/features/offers/components'
 import { WishlistButton } from '@/features/wishlist/WishlistButton'
 import { isNotFound } from '@/lib/api/errors'
 import { formatDate, formatPrice } from '@/lib/format'
+import { AccessoryGroups, CompatibilityChecker } from '@/features/compatibility/ProductCompatibility'
 import { usePageMeta } from '@/lib/usePageMeta'
 
 import { NotFoundPage } from './NotFoundPage'
@@ -486,8 +487,9 @@ export function ProductDetailPage() {
         <Reviews product={data} />
       </div>
 
-      <div className="container-page">
-        <Accessories product={data} />
+      <div className="container-page space-y-6">
+        <CompatibilityChecker product={data} variantId={variant.id} />
+        <AccessoryGroups productId={data.id} variantId={variant.id} fallback={<Accessories product={data} />} />
         <ProductRail
           title={`More in ${subcategory.name}`}
           params={{ category: subcategory.slug, exclude: data.slug }}

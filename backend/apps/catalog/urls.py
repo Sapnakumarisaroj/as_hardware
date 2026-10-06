@@ -3,6 +3,7 @@ from rest_framework.routers import SimpleRouter
 
 from apps.reviews.views import ProductReviewsView
 
+from .compatibility_views import CompatibilityCheckView, ProductCompatibilityView
 from .seo import sitemap_view
 from .views import (
     BrandViewSet,
@@ -28,5 +29,7 @@ urlpatterns = [
     path("collections/<slug:slug>/", CollectionDetailView.as_view(), name="collection-detail"),
     path("options/", OptionTypeListView.as_view(), name="option-types"),
     path("seo/sitemap.xml", sitemap_view, name="sitemap"),
+    path("compatibility/check/", CompatibilityCheckView.as_view(), name="compatibility-check"),
+    path("products/<int:product_id>/compatibility/", ProductCompatibilityView.as_view(), name="product-compatibility"),
     *router.urls,
 ]

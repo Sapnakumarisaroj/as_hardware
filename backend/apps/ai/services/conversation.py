@@ -56,6 +56,7 @@ class AIConversationService:
                 "knowledge": reply.knowledge,
                 "safety": reply.safety,
                 "estimate": reply.estimate,
+                "compatibility": reply.compatibility,
             },
             provider=reply.provider,
             model=reply.model,

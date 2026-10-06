@@ -20,6 +20,8 @@ import {
   useResetProject,
   useStartProject,
 } from '@/features/projects/api'
+import { optionVariant } from '@/features/compatibility/api'
+import { CompatibilityProblems } from '@/features/compatibility/components'
 import { Breakdown, PinForm, StockBadge, TotalRow } from '@/features/projects/components'
 import type { AnswerValue, KitItem, ProjectKit, ProjectPlan, ProjectQuestion, ProjectStatus } from '@/features/projects/types'
 import { ApiError } from '@/lib/api/errors'
@@ -388,6 +390,7 @@ function KitView({ plan, kit, pin, onPin }: { plan: ProjectPlan; kit: ProjectKit
   const toast = useToast()
   const addToCart = useAddProjectToCart(plan.id, pin)
   const reset = useResetProject(plan.id, pin)
+  const change = useChangeItem(plan.id, pin)
   const problems =
     addToCart.error instanceof ApiError && Array.isArray(addToCart.error.details.items)
       ? (addToCart.error.details.items as { message: string }[])
@@ -414,6 +417,17 @@ function KitView({ plan, kit, pin, onPin }: { plan: ProjectPlan; kit: ProjectKit
           </button>
         </div>
         <p className="mt-1 text-xs text-ink-600">{plan.estimate_notice}</p>
+        <div className="mt-3">
+          <CompatibilityProblems
+            problems={kit.compatibility ?? []}
+            replaceLabel="Use this instead"
+            onReplace={(problem, option) => {
+              const itemId = Number(problem.keys?.[1])
+              const variantId = optionVariant(option)
+              if (itemId && variantId) change.mutate({ itemId, variant_id: variantId })
+            }}
+          />
+        </div>
         <ul className="mt-3 space-y-3">
           {kit.items.map((item) => (
             <KitItemRow key={item.id} projectId={plan.id} item={item} pin={pin} />

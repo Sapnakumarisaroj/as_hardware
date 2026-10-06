@@ -7,6 +7,8 @@ import { useToast } from '@/components/toast'
 import { useAuth } from '@/features/auth/context'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { usePincode } from '@/features/delivery/location'
+import { optionVariant } from '@/features/compatibility/api'
+import { CompatibilityProblems } from '@/features/compatibility/components'
 import { Breakdown, PinForm, StockBadge, TotalRow } from '@/features/projects/components'
 import type { KitItem, ProjectKit, ProjectQuestion } from '@/features/projects/types'
 import { useAddQuantityToCart, useEstimate, useQuantityStatus, useSaveQuantity } from '@/features/quantity/api'
@@ -461,6 +463,16 @@ function KitResult({ kit, materials, onOverride, pin, onPin, coupon, onCoupon, o
     <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
       <div>
         <h3 className="text-lg font-bold">Estimated materials</h3>
+        <div className="mt-3">
+          <CompatibilityProblems
+            problems={kit.compatibility ?? []}
+            replaceLabel="Use this instead"
+            onReplace={(problem, option) => {
+              const variantId = optionVariant(option)
+              if (problem.keys?.[1] !== undefined && variantId) onOverride(String(problem.keys[1]), { variant_id: variantId })
+            }}
+          />
+        </div>
         <ul className="mt-3 space-y-4">
           {materials.map((material) => (
             <MaterialCard key={material.key} material={material} items={kit.items.filter((i) => i.base_key === material.key)} onOverride={onOverride} />

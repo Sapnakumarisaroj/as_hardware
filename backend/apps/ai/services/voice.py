@@ -315,6 +315,7 @@ class VoiceReply:
     questions: list[str] = field(default_factory=list)
     notice: str = ""
     quantity: dict | None = None  # Phase 20: a quantity request ({calculator, title, complete, path})
+    compatibility: dict | None = None  # Phase 21: the compatibility engine's verdict
 
     @property
     def speech(self) -> str:
@@ -340,6 +341,7 @@ class VoiceReply:
             "questions": self.questions,
             "notice": self.notice,
             "quantity": self.quantity,
+            "compatibility": self.compatibility,
         }
 
     def refs(self) -> list[dict]:
@@ -452,8 +454,31 @@ class VoiceShoppingService:
             and self._wants_quantity(transcript, parsed)
         ):
             handler = self._quantity
+        elif not pending and parsed.intent in (Command.ASK, Command.SEARCH) and self._wants_compatibility(transcript):
+            handler = self._compatibility
         handler(reply, parsed, pending=pending, user=user, postal_code=postal_code)
         return reply
+
+    # --- Compatibility (Phase 21) -----------------------------------------------------------------
+
+    @staticmethod
+    def _wants_compatibility(transcript: str) -> bool:
+        from .compatibility import is_question
+
+        return is_question(transcript)
+
+    def _compatibility(self, reply, parsed, **kwargs):
+        """ "Will the masonry bits work with the cordless drill?" through the same CompatibilityService."""
+        from .compatibility import CompatibilityAssistant
+
+        answer = CompatibilityAssistant(self.assistant.provider).answer(reply.transcript, language=reply.language)
+        if (answer.compatibility or {}).get("needs_products") and not answer.products:
+            self._ask(reply, parsed, **kwargs)
+            return
+        reply.intent = "compatibility"
+        reply.reply = answer.message
+        reply.products = answer.product_refs()
+        reply.compatibility = answer.compatibility
 
     # --- Quantity AI (Phase 20) -------------------------------------------------------------------
 

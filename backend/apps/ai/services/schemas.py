@@ -61,6 +61,7 @@ class AssistantReply:
     knowledge: list[dict] = field(default_factory=list)
     safety: list[str] = field(default_factory=list)
     estimate: dict | None = None
+    compatibility: dict | None = None  # Phase 21: the compatibility engine's verdict (never the model's)
     provider: str = ""
     model: str = ""
     tokens_in: int = 0

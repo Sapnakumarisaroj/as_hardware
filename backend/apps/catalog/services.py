@@ -65,26 +65,41 @@ def save_product(*, instance: Product | None, data: dict, actor=None) -> Product
     return product
 
 
+def relation_rows(product: Product) -> list[dict]:
+    """The product's links as {product, kind, note}, in order (for the audit log and the dashboard)."""
+    return [
+        {"product": r.related_id, "kind": r.kind, "note": r.note}
+        for r in product.relations.order_by("sort_order", "id")
+    ]
+
+
+@transaction.atomic
 def set_accessories(product: Product, rows: list[dict]) -> None:
-    """Replace the product's linked accessories (Phase 16) with `rows` = [{product: id, note}] in order."""
+    """Replace the product's links with `rows` = [{product: id, note, kind}] in order. Kinds (Phase 21): accessory
+    (Phase 16 "goes with"), compatible, required, alternative, incompatible. A product is linked once."""
     from .models import ProductRelation
 
+    kinds = set(ProductRelation.Kind.values)
     wanted = []
     for row in rows:
         related_id = row["product"]
         if related_id == product.pk:
-            raise ServiceError("A product can't be its own accessory.", code="invalid_accessory")
+            raise ServiceError("A product can't be linked to itself.", code="invalid_accessory")
         if related_id in (w[0] for w in wanted):
             continue
-        wanted.append((related_id, (row.get("note") or "")[:120]))
+        kind = row.get("kind") or ProductRelation.Kind.ACCESSORY
+        if kind not in kinds:
+            raise ServiceError(f"Unknown link type {kind}.", code="invalid_accessory")
+        wanted.append((related_id, (row.get("note") or "")[:120], kind))
     found = set(Product.objects.filter(pk__in=[w[0] for w in wanted]).values_list("pk", flat=True))
     if missing := [w[0] for w in wanted if w[0] not in found]:
         raise ServiceError(f"Unknown accessory product {missing[0]}.", code="invalid_accessory")
-    product.relations.filter(kind=ProductRelation.Kind.ACCESSORY).delete()
+    Product.objects.select_for_update().filter(pk=product.pk).first()  # one editor at a time
+    product.relations.all().delete()
     ProductRelation.objects.bulk_create(
         [
-            ProductRelation(product=product, related_id=related_id, note=note, sort_order=order)
-            for order, (related_id, note) in enumerate(wanted)
+            ProductRelation(product=product, related_id=related_id, note=note, kind=kind, sort_order=order)
+            for order, (related_id, note, kind) in enumerate(wanted)
         ]
     )
 

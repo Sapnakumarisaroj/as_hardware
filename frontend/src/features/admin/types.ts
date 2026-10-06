@@ -330,7 +330,7 @@ export interface AdminProduct extends AdminProductRow {
   uses?: string
   installation_steps?: string
   faqs?: ProductFaq[]
-  accessories?: { id: number; name: string; slug: string; note: string }[]
+  accessories?: { id: number; name: string; slug: string; note: string; kind?: RelationKind }[]
 }
 
 export interface ProductFaq {
@@ -374,7 +374,7 @@ export interface ProductInput {
   installation_steps?: string
   faqs?: ProductFaq[]
   /** Replace-all, in order: the products shown as "Goes well with" on the product page. */
-  accessories?: { product: number; note: string }[]
+  accessories?: { product: number; note: string; kind?: RelationKind }[]
 }
 
 export interface AdminCategory {
@@ -927,3 +927,6 @@ export interface AdminReferral {
   order_number: string | null
   created_at: string
 }
+
+/** What a product link means (Phase 21): "accessory" is "goes with"; the others are facts the compatibility checker uses. */
+export type RelationKind = 'accessory' | 'compatible' | 'required' | 'alternative' | 'incompatible'

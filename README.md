@@ -3,7 +3,13 @@
 AI-powered hardware marketplace with fast delivery from nearby stores: a Django REST API and a React SPA. Delivery
 times are calculated per order (store, distance, preparation, riders, workload), never a fixed promise.
 
-> Status: **Phase 20 complete** — the quantity calculator at `/quantity`: "I need materials for 500 sq ft plastering",
+> Status: **Phase 21 complete** — the compatibility checker: on every product page pick another product (and size)
+> and see ✅ Compatible / ⚠️ Possibly compatible / ❌ Not compatible / ℹ️ Not enough information, with the reason taken
+> from both listings ("The 13 mm chuck takes every bit in the set", "A 6 A switch can't control a 16 A socket");
+> recommended accessories are grouped (needed with it, works with it, goes well with, alternatives). Ask the assistant
+> or by voice "Will the masonry bits work with the cordless drill?"; project kits, quantity results and the cart warn
+> about parts that don't fit and offer compatible replacements. Staff manage compatible / required / incompatible links
+> in the dashboard (audited). **Phase 20** — the quantity calculator at `/quantity`: "I need materials for 500 sq ft plastering",
 > "How much paint for a 12x15 room?", "100 feet of wire", "tiles for 300 sq ft" or "Mujhe 500 sq ft ke liye plastering
 > ka saman chahiye" → only the missing questions (any unit: ft, m, cm, mm, inch, sq ft, sq m), labelled assumptions
 > ("Assumed: wall height 10 ft"), an estimated quantity with its breakdown, real catalogue products and the cheapest

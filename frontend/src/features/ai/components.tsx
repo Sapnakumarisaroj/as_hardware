@@ -1,5 +1,7 @@
 import { Link } from 'react-router'
 
+import { VerdictBadge } from '@/features/compatibility/components'
+
 import { SparkIcon } from '@/components/icons'
 import { useToast } from '@/components/toast'
 import { AddToCartButton } from '@/features/cart/AddToCartButton'
@@ -114,6 +116,12 @@ export function MessageBubble({
         <div className="space-y-2 rounded-2xl rounded-bl-sm bg-white px-4 py-3 text-sm ring-1 ring-steel-200">
           <span className="sr-only">Assistant: </span>
           <Paragraphs text={message.content} />
+          {message.compatibility?.verdict && (
+            <p className="rounded-md bg-steel-50 px-3 py-2 text-xs" aria-label="Compatibility verdict">
+              <VerdictBadge verdict={message.compatibility.verdict} />
+              {message.compatibility.explained_by_ai ? ' · explained by the AI helper, decided from the product listings' : ' · from the product listings'}
+            </p>
+          )}
           {message.estimate?.calculator_path && (
             <Link to={message.estimate.calculator_path} className="inline-block text-sm font-semibold text-amber-600 hover:underline">
               Work it out with real products in the quantity calculator

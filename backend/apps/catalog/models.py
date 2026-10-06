@@ -582,6 +582,11 @@ class ProductRelation(models.Model):
 
     class Kind(models.TextChoices):
         ACCESSORY = "accessory", "Accessory / goes with"
+        # Phase 21 (compatibility): staff-verified facts the compatibility checker relies on.
+        COMPATIBLE = "compatible", "Compatible (verified)"
+        REQUIRED = "required", "Required with it"
+        ALTERNATIVE = "alternative", "Alternative"
+        INCOMPATIBLE = "incompatible", "Not compatible"
 
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="relations")
     related = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="related_from")

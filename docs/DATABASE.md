@@ -263,6 +263,11 @@ suggestion, how the amount was worked out). `ai_project.inputs` holds `{descript
 from_description, custom_title}`. Prices are never stored: the kit is priced again on every read. `quantity` on an item
 is the number of packs to buy.
 
+**Compatibility (Phase 21)**, migration `catalog.0006_relation_kinds` (choices only): `catalog_productrelation.kind`
+gains `compatible`, `required`, `alternative`, `incompatible` next to Phase 16's `accessory`. A product is linked to
+another once (one kind); saving the links replaces them in one transaction with the product row locked, and the audit
+log entry (`product.update`) holds `relations {before, after}`. Compatibility results are computed, never stored.
+
 **Quantity AI (Phase 20)**, migration `ai.0004_quantity_calculations` (choices only): `ai_project.project_type`
 gains `plastering`, `flooring`, `wiring`, `pipes`, `fasteners`, so a saved calculation is a project of that type (no new
 table). A project's `inputs` may hold `interpretations` (how measurements were read); item `details` may hold the

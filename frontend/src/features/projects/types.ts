@@ -1,3 +1,4 @@
+import type { CompatibilityProblem } from '@/features/compatibility/types'
 import type { RecommendedProduct } from '@/features/ai/types'
 
 export type ProjectLanguage = 'en' | 'hi' | 'hinglish'
@@ -92,6 +93,8 @@ export interface ProjectKit {
   offers: { name: string; discount: string }[]
   offers_in_reach: { name: string; description: string; min_order_value: string }[]
   coupon?: { code: string; applied: boolean; message: string } | null
+  /** Phase 21: ticked lines that may not work together, with compatible replacements for the second line. */
+  compatibility?: CompatibilityProblem[]
   delivery: {
     checked: boolean
     available: boolean

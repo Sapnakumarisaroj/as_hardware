@@ -89,7 +89,7 @@ class ImageInline(admin.TabularInline):
 class AccessoryInline(admin.TabularInline):
     model = ProductRelation
     fk_name = "product"
-    fields = ("related", "note", "sort_order")
+    fields = ("related", "kind", "note", "sort_order")
     autocomplete_fields = ("related",)
     extra = 0
     verbose_name = "Recommended accessory"

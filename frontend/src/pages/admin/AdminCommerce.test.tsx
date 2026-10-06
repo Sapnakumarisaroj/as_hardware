@@ -116,13 +116,17 @@ describe('bulk prices and options in the product form', () => {
     expect(await screen.findByRole('button', { name: /Add Masonry Bits/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Add Impact Drill/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Add Masonry Bits/ }))
+    await user.selectOptions(screen.getByLabelText('Link type for Masonry Bits'), 'incompatible')
     await user.click(screen.getByRole('button', { name: /^Save/ }))
     await waitFor(() => expect(api.patch).toHaveBeenCalled())
     const body = lastBody(api.patch, '/admin/products/77/') as Record<string, unknown>
     expect(body.quick_answer).toBe('Drills brick')
     expect(body.uses).toBe('Walls')
     expect(body.faqs).toEqual([{ question: 'Concrete?', answer: 'Yes' }])
-    expect(body.accessories).toEqual([{ product: 80, note: 'For walls' }, { product: 81, note: '' }])
+    expect(body.accessories).toEqual([
+      { product: 80, note: 'For walls', kind: 'accessory' },
+      { product: 81, note: '', kind: 'incompatible' },
+    ])
   })
 
   it('points out a tier that costs more than the price for fewer units', async () => {

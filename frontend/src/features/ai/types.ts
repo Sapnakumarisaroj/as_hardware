@@ -1,3 +1,4 @@
+import type { CompatibilityResult, Verdict } from '@/features/compatibility/types'
 /** Shapes of the AI assistant API (/api/ai/…). Product cards carry catalogue rows; nothing is made up here. */
 
 import type { ProductSummary } from '@/features/catalog/types'
@@ -38,6 +39,8 @@ export interface AssistantMessage {
   knowledge: { title: string; text: string; source?: string }[]
   safety: string[]
   estimate: { kind: string; text: string; is_estimate: boolean; calculator_path?: string } | null
+  /** Phase 21: the compatibility engine's verdict for a "will this work with that?" question. */
+  compatibility?: (Partial<CompatibilityResult> & { verdict: Verdict | null; explained_by_ai?: boolean }) | null
 }
 
 export interface ConversationSummary {

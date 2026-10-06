@@ -791,5 +791,30 @@ Voice (`POST /api/ai/voice/command/`) answers quantity requests ("500 sq ft plas
 `quantity`, the priced lines to confirm and `quantity {calculator, title, complete, path}`; the assistant's paint
 `estimate` has `calculator_path`.
 
+## Compatibility ✅ (Phase 21)
+Decided by `catalog.compatibility.CompatibilityService` from listing facts (specifications, variant names, option
+values) and the shop's product links; read-only for customers. Verdicts: `COMPATIBLE`, `POSSIBLY_COMPATIBLE`,
+`NOT_COMPATIBLE`, `INSUFFICIENT_INFORMATION` ("Not enough information to confirm compatibility.").
+
+| Method | Path | Who | Body / response |
+|---|---|---|---|
+| POST | `/api/compatibility/check/` | public, throttled `compatibility` (60/min) | `{product_a, variant_a?, product_b, variant_b?}` → result (below) with `options[]` (products of B's kind that work with A, with cards) when not compatible. 400 `same_product`, `invalid_variant`; 404 unknown/unpublished product |
+| GET | `/api/products/{id}/compatibility/?variant=` | public | `{product_id, kind, groups {required[], compatible[], accessories[], alternatives[]}}`; rows `{product_id, variant_id?, note, source shop|rules, verdict, reason, product (card)}`. Only published products; never one linked as incompatible |
+| GET | `/api/cart/compatibility/` | customer | `{problems[]}`: result + `cart_item_ids [first, second]`, `message` ("Your selected … may not work with …"), `options[]` for the second line |
+| POST | `/api/cart/items/{id}/replace/` | owner | `{variant_id, quantity?}` → the cart; the new line is checked like any added line (purchasable, order limit, stock); an existing line of it is merged |
+
+Result: `{verdict, reason, product_a {id, name, slug, kind, card}, product_b {…}, variant_a, variant_b,
+checks[{name, status pass|warn|fail|missing, detail}], matching_variants[{a, b, label}], sources[] (relation:<kind>,
+rule:<kind>+<kind>), options[]}`.
+
+Product links are managed in the dashboard (`PATCH /api/admin/products/{id}/` with `accessories[{product, note,
+kind}]`, kind `accessory` (default, "goes with"), `compatible`, `required`, `alternative`, `incompatible`, at most 40);
+every change is written to the audit log with the links before and after. Customers can't change them (403).
+
+Also: project and Quantity AI kits have `compatibility[]` (problems between ticked lines, keyed by item id /
+material key, with `options[]`); assistant messages have `compatibility` (the engine's verdict; `explained_by_ai` when
+the model reworded the reason), and `POST /api/ai/conversations/…` accepts `product_id` (the product being viewed:
+"will **this** work with…"); voice answers compatibility questions with intent `compatibility`.
+
 ## Planned 🔜
-- **AI** more endpoints in Phases 21–22 (compatibility, smart cart). **Notifications/support channels** (Phase 23).
+- **AI** more endpoints in Phase 22 (smart cart, recommendations, budget, bundles). **Notifications/support channels** (Phase 23).

@@ -62,6 +62,15 @@ def attach_cards(kit_data: dict | None, request) -> None:
         item["alternatives"] = [
             card for pid in item["alternatives"] if (card := alt_cards.get(pid) or cards.get(pid)) is not None
         ]
+    problems = kit_data.get("compatibility") or []
+    option_ids = {o["product_id"] for problem in problems for o in problem.get("options", [])}
+    option_cards = {
+        card["id"]: card for card in product_cards([{"product_id": pid} for pid in sorted(option_ids)], context)
+    }
+    for problem in problems:
+        for option in problem.get("options", []):
+            option["product"] = option_cards.get(option["product_id"])
+        problem["options"] = [o for o in problem.get("options", []) if o.get("product")]
 
 
 class ProjectStartSerializer(serializers.Serializer):

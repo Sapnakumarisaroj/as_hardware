@@ -202,6 +202,7 @@ REST_FRAMEWORK = {
         "image_search": env("THROTTLE_IMAGE_SEARCH", default="10/min"),
         "voice": env("THROTTLE_VOICE", default="30/min"),
         "voice_audio": env("THROTTLE_VOICE_AUDIO", default="12/min"),
+        "compatibility": env("THROTTLE_COMPATIBILITY", default="60/min"),
     },
 }
 
