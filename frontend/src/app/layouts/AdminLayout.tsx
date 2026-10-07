@@ -10,7 +10,15 @@ import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { env } from '@/lib/env'
 
 const MENU: { title: string; items: [Section, string, string][] }[] = [
-  { title: 'Overview', items: [['dashboard', 'Dashboard', '/admin'], ['analytics', 'Analytics', '/admin/analytics']] },
+  {
+    title: 'Overview',
+    items: [
+      ['dashboard', 'Dashboard', '/admin'],
+      ['analytics', 'Analytics', '/admin/analytics'],
+      ['reports', 'Reports', '/admin/reports'],
+      ['assistant', 'Business assistant', '/admin/assistant'],
+    ],
+  },
   {
     title: 'Sales',
     items: [

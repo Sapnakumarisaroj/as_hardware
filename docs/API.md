@@ -855,5 +855,19 @@ action's transaction commits; one row per channel, never twice for the same even
 | GET | `/api/admin/notifications/log/?status=&channel=&event=&q=` | administrator | delivery log (masked recipient, template, provider status, attempts, error, `can_retry`) |
 | POST | `/api/admin/notifications/log/{id}/retry/` · `log/retry-failed/` | administrator | send a failed/skipped email/WhatsApp/SMS again (one, or up to 200 failed, optional `{channel}`); audited |
 
+## Reports and business assistant ✅ (Phase 24)
+Administrators and store managers (`IsStaffRole`); managers see only their stores, `?store=` narrows and never widens
+(another store → 404). Definitions as in the Phase 11 analytics. Every report returns
+`{key, title, description, period, kpis[{key,label,value,format,hint?}], series|null, tables[{key,title,columns[{key,label,format}],rows,chart}], notes}`.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/admin/reports/` | `{results: [{key, title, description}]}`: sales, orders, products, categories, brands, inventory, delivery, riders, customers, returns, offers, stores, margin |
+| GET | `/api/admin/reports/{key}/?from=&to=&group_by=&store=` | one report; default the last 30 days; ≤ 366 days; 400 `invalid_date` / `range_too_long`; 404 unknown key |
+| GET | `/api/admin/reports/{key}/export/?table=&from=&to=&store=` | CSV (UTF-8 with BOM) of one table, or `table=kpis`; formula-looking text prefixed with `'`; 404 unknown table |
+| GET | `/api/admin/assistant/` | `{ai: {provider, model, available}, suggestions, topics, stores}` |
+| POST | `/api/admin/assistant/?store=` | `{question}` (≤ 300) → `{understood, intent, intent_label, report, period{from,to,label}, store, text, kpis, comparison, table, notes, link, source: rules|ai, suggestions}`; throttle scope `ai` |
+| GET | `/api/admin/assistant/history/` | the person's last 30 questions and answers |
+
 ## Planned 🔜
-- Analytics and business assistant (Phase 24).
+- Security hardening (Phase 25).

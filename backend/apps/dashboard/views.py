@@ -13,13 +13,15 @@ from .scope import date_range, store_ids_for
 # What each role may open. The dashboard builds its menu from this list; every API checks the
 # role again, so hiding a menu entry is a convenience, not the protection.
 ADMIN_SECTIONS = [
-    "dashboard", "orders", "products", "categories", "brands", "inventory", "stores", "warehouses",
+    "dashboard", "reports", "assistant", "orders", "products", "categories", "brands", "inventory", "stores",
+    "warehouses",
     "delivery", "offers", "coupons", "customers", "returns", "refunds", "support", "analytics", "search",
     "options", "collections", "free-delivery", "payment-settings", "loyalty", "bundles", "recommendations",
     "notifications",
 ]  # fmt: skip
 MANAGER_SECTIONS = [
-    "dashboard", "orders", "inventory", "stores", "delivery", "returns", "refunds", "support", "analytics",
+    "dashboard", "reports", "assistant", "orders", "inventory", "stores", "delivery", "returns", "refunds",
+    "support", "analytics",
 ]  # fmt: skip
 STORE_PARAM = OpenApiParameter("store", int, description="One store (administrators: any; managers: their own)")
 

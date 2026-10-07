@@ -563,7 +563,58 @@ Safety Tools & Workwear · Glass Door Hardware); everything else hidden without 
   exist; with this catalogue they say the products are not sold here. The compatibility rules for pipes, taps and
   electrical items have nothing to check now
 
+### Phase 24 — Analytics + business assistant ✅
+Scope: ROADMAP 24 + the Phase 24 prompt (sales, orders, products, categories, brands, inventory and stock movement,
+fast delivery, customers and repeat purchases, returns/refunds/cancellations, offers/coupons, riders, stores, margin
+where the data allows; dashboards, filters, date ranges, charts, KPIs, downloads; an AI business assistant on the real
+database with free/local tools; admin and store-manager permissions).
+Backend: new app `apps/analytics` (`reports.py` the 13 reports, `assistant.py`, `views.py`, `urls.py`, model
+`BusinessQuestion`, migration `analytics.0001`); sections `reports` and `assistant` for administrators and managers.
+Frontend: `features/analytics/api.ts`, `pages/admin/ReportPages.tsx` (`/admin/reports`, `/admin/assistant`), menu
+entries under Overview.
+- [x] Reports share one shape (KPIs, optional series, tables with column formats and a chart hint, notes) and the
+  Phase 11 definitions (revenue = paid orders placed in the period; sales = order lines after offers, excluding
+  cancelled and unpaid orders); grouping by day/hour/weekday in Python (portable to MySQL without time-zone tables)
+- [x] Sales (revenue, net, refunds, AOV, discounts, delivery fees, GST; by payment method, weekday, hour) · Orders (by
+  status, delivery type, payment) · Products (by sales with returns; slowest published with stock) · Categories (by the
+  approved top-level category and subcategory; archived ones still named for old orders) · Brands (order-line brand
+  snapshot) · Inventory (units, value at selling price, low/out of stock with days of cover, movements by type, by
+  location) · Fast delivery (on-time, fast vs standard promised/actual minutes, first attempt, failures, by store) ·
+  Delivery partners (jobs, delivered, failed, rejected, minutes on the road, cash collected, earnings, distance) ·
+  Customers (new vs returning, repeat rate, per-customer value, top customers with masked emails) · Returns/refunds/
+  cancellations (rates, reasons, most returned products, refunds by status) · Offers (automatic offers, coupons with the
+  revenue of their orders, credits used, free-delivery reasons) · Stores (revenue, AOV, cancellations, fast share,
+  on-time, low-stock items) · Price realisation (MRP vs selling value, promotions; gross margin "not available")
+- [x] API: list, report (`from`, `to`, `group_by`, `store`), CSV export of any table or the KPIs (UTF-8 BOM for Excel;
+  cells starting with = + - @ that aren't numbers are prefixed with ')
+- [x] Business assistant: 16 intents in English, Hinglish and Hindi; periods (today, yesterday, this/last week, this/last
+  month, last N days/weeks/months, this year, a month name, two ISO dates; default last 30 days); "top N"; "compared with
+  the previous period" (same length, with % change); a store named in the question narrows to it only if the person may
+  see it. No SQL from questions. With `LLM_PROVIDER` set, the model may (1) pick an intent key when the rules find none
+  (anything else is refused) and (2) reword the answer — accepted only if it quotes the facts' numbers and adds none,
+  with no table rows or customer data in the prompt; profit questions are never reworded. History per person
+- [x] Frontend: Reports page (report tabs, period presets or custom dates, store filter, group-by, KPI tiles, revenue/
+  orders charts, share charts and bar lists per table, tables that turn into cards on phones, CSV per table and for the
+  summary, notes); Business assistant page (suggested questions, answers with KPI tiles, comparison, table, notes, "Open
+  the full report" with the same dates, "From the numbers" / "Worded by AI from the numbers", earlier questions, store
+  choice)
+- [x] Tests: backend 1527 pass (53 new in `analytics/tests/test_analytics.py`); frontend 382 pass (5 new in
+  `pages/admin/AdminReports.test.tsx`)
+- [x] Verified: ruff lint + format, Django check, `makemigrations --check`, OpenAPI 0 errors (14 warnings, as before),
+  tsc, eslint, production build
+- [x] Live: 43/43 HTTP checks on a copy of the dev DB with 5 real orders placed through the services (2 delivered, a
+  coupon, one paid online, one cancelled, a return): every report loads (≤ 0.05 s), revenue/orders/coupon/top product/
+  categories match the orders, CSV, manager limited to Baner (0 orders) and refused Kothrud, customer 403, 8 assistant
+  questions with Ollama `qwen2.5:3b` (3.8–10 s when the model words the answer; 0.1 s for exact answers). The first run
+  showed the model turning "realised 77% of MRP" into "profit margin 77%": fixed by never rewording profit answers and a
+  stricter prompt
+- [~] Not done: purchase costs (so no profit or gross margin), scheduled/emailed reports, PDF export, a report builder
+  for custom queries (deliberately: only whitelisted reports), live push of KPIs (pages refresh on demand), cashback/
+  credit cost per rule (credits used are shown), period-over-period comparison in the Reports page itself (the assistant
+  does it); the assistant's sentences are English (Hindi/Hinglish questions are understood)
+
 ## Known limitations carried forward
+- Reports/assistant: no purchase costs, so no profit or margin; orders count for the store chosen at checkout (a split order's second store shows in delivery figures only); periods ≤ 366 days; the assistant knows 16 kinds of question and answers in English; with a local model on CPU an AI-worded answer takes 4–10 s
 - Catalogue: all 47 products are demo data (fictional "(Demo)" brands, illustrative prices, drawn demo pictures, demo stock); Fevicol products use the real brand name with placeholder prices. Real products, photos, prices, MRPs, GST/HSN codes, stock and specifications must be entered before going live
 - Notifications: WhatsApp and SMS run on the mock providers (recorded, nothing sent) until real accounts are connected; WhatsApp messages started by the shop must use templates approved in WhatsApp Manager with the same variables in the same order as the shop's words; the bell refreshes every minute (no live push); messages go out within one cron interval in `cron` mode (immediately in `inline` mode); the "running late" check runs from `run_jobs`; a customer's own words in Hindi/Hinglish exist only where an administrator wrote them (built-in words are English)
 - Smart cart / recommendations: "frequently bought together" needs real orders (empty on a new shop); alternatives are only suggested within a kind the compatibility engine recognises; budget mode can only plan jobs the Quantity AI / project calculators know, and drops whole lines rather than reducing quantities; bundle prices follow the live catalogue (a kit with an out-of-stock item shows it and can't be added until fixed)

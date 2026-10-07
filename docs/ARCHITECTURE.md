@@ -62,7 +62,7 @@ as_hardware/
 │   │   ├── notifications/   ✅ event catalogue, routing, inbox, delivery log, words, WhatsApp webhook (Phase 23)
 │   │   ├── support/         ✅ SupportConversation, SupportMessage (WhatsApp messages arrive here since Phase 23)
 │   │   ├── ai/              ✅ AIConversation, AIMessage, Project, ProjectItem (AI logic Phases 12–19)
-│   │   └── analytics/       🔜 whitelisted reporting queries + business assistant (Phase 24)
+│   │   └── analytics/       ✅ 13 whitelisted reports, CSV, business assistant, BusinessQuestion (Phase 24)
 │   ├── integrations/        payments/ ✅ (PaymentProvider, MockPaymentProvider, RazorpayPaymentProvider); maps/ ✅ (Phase 9);
 │   │                        llm/, messaging/ 🔜
 │   ├── private_media/       proof-of-delivery photos: NOT web-served, not in git (PRIVATE_MEDIA_ROOT)

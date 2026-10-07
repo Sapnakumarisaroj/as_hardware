@@ -248,6 +248,7 @@ and the change of `proof_image` to private storage; no data is changed (no proof
 | `notifications_channelsetting` | channel (unique), enabled, updated_by. No row = built-in default (SMS off) |
 | `notifications_eventsetting` | event, channel (unique together), enabled, updated_by. No row = the event's default channels |
 | `notifications_notificationtemplate` | event, channel, language (unique together), title, body, provider_template (approved WhatsApp template name), updated_by |
+| `analytics_businessquestion` | user FK, question, intent, report, period_from/to, store_name, answer, source (rules/ai), created_at — the business assistant's history (Phase 24) |
 | `support_supportconversation` | user FK (nullable), contact_phone, channel, subject, order FK, status, assigned_to, last_message_at |
 | `support_supportmessage` | conversation FK, sender_type (customer/agent/bot/system), sender FK, body, attachments JSON, channel_message_id |
 

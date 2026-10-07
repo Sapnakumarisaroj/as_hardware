@@ -23,6 +23,7 @@ const support = () => import('@/pages/admin/SupportPages')
 const commerce = () => import('@/pages/admin/CommercePages')
 const shoppingAdmin = () => import('@/pages/admin/ShoppingAdminPages')
 const notificationsAdmin = () => import('@/pages/admin/NotificationPages')
+const reportPages = () => import('@/pages/admin/ReportPages')
 const brands = () => import('@/pages/BrandPages')
 const projects = () => import('@/pages/ProjectPages')
 const shopping = () => import('@/pages/ShoppingPages')
@@ -113,6 +114,8 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, lazy: async () => ({ Component: (await overview()).AdminDashboardPage }) },
           { path: 'analytics', lazy: async () => ({ Component: (await overview()).AdminAnalyticsPage }) },
+          { path: 'reports', lazy: async () => ({ Component: (await reportPages()).AdminReportsPage }) },
+          { path: 'assistant', lazy: async () => ({ Component: (await reportPages()).AdminAssistantPage }) },
           { path: 'orders', lazy: async () => ({ Component: (await adminOrders()).AdminOrdersPage }) },
           { path: 'orders/:number', lazy: async () => ({ Component: (await adminOrders()).AdminOrderDetailPage }) },
           { path: 'products', lazy: async () => ({ Component: (await catalog()).AdminProductsPage }) },
