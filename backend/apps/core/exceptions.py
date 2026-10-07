@@ -6,6 +6,7 @@
 import logging
 
 from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import Http404
 from rest_framework import exceptions, status
 from rest_framework.response import Response
@@ -49,6 +50,8 @@ def _envelope(code: str, message: str, details, status_code: int) -> Response:
 
 
 def api_exception_handler(exc, context):
+    if isinstance(exc, DjangoValidationError):  # model validators (image size/format…) are input errors
+        exc = exceptions.ValidationError(exc.message_dict if hasattr(exc, "error_dict") else exc.messages)
     if isinstance(exc, Http404):
         exc = exceptions.NotFound()
     elif isinstance(exc, PermissionDenied):

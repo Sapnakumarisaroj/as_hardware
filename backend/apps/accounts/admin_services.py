@@ -23,6 +23,14 @@ def update_user(target, *, actor, request=None, **data):
         raise UserManagementError(
             "You cannot change your own role or deactivate your own account.", code="self_modification"
         )
+    demoting = "role" in data and data["role"] != User.Role.ADMIN and target.role == User.Role.ADMIN
+    deactivating = data.get("is_active") is False and target.is_active
+    if target.is_superuser and not actor.is_superuser and (demoting or deactivating or "role" in data):
+        raise UserManagementError("Only the owner account can change the owner account.", code="owner_protected")
+    if (demoting or deactivating) and target.role == User.Role.ADMIN:
+        others = User.objects.filter(role=User.Role.ADMIN, is_active=True).exclude(pk=target.pk)
+        if not others.exists():
+            raise UserManagementError("The shop must keep at least one active administrator.", code="last_admin")
 
     # Personal values are never copied into the audit log, only which fields changed.
     changes = {}

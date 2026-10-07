@@ -26,7 +26,7 @@ from apps.catalog.serializers import (
 )
 from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError, NotFoundError, ServiceError
-from apps.core.permissions import IsAdminOrStaffReadOnly
+from apps.core.permissions import IsAdminOrStaffReadOnly, managed_store_ids
 from apps.inventory.models import Inventory
 
 MAX_IMAGES_PER_PRODUCT = 12
@@ -270,11 +270,11 @@ class AdminProductViewSet(viewsets.ModelViewSet):
                 "specifications",
             )  # fmt: skip
         params = self.request.query_params
-        stock = (
-            Inventory.objects.filter(is_active=True, store__is_deleted=False)
-            .values("variant__product_id")
-            .annotate(total=Sum("available_quantity"))
-        )
+        stock = Inventory.objects.filter(is_active=True, store__is_deleted=False)
+        allowed = managed_store_ids(self.request.user)  # store managers: their stores' stock only
+        if allowed is not None:
+            stock = stock.filter(store_id__in=allowed)
+        stock = stock.values("variant__product_id").annotate(total=Sum("available_quantity"))
         self._stock = {row["variant__product_id"]: row["total"] or 0 for row in stock}
         state = params.get("state") or "current"
         if state == "deleted":

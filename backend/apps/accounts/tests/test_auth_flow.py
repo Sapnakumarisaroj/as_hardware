@@ -102,17 +102,23 @@ def test_password_change_revokes_older_tokens_and_keeps_this_session(api_client,
     assert _login(api_client, user.email, NEW_PASSWORD).status_code == 200
 
 
-def test_forgot_password_does_not_reveal_whether_an_account_exists(api_client, user):
-    unknown = api_client.post("/api/auth/password/forgot/", {"email": "nobody@example.com"}, format="json")
-    known = api_client.post("/api/auth/password/forgot/", {"email": user.email}, format="json")
+def test_forgot_password_does_not_reveal_whether_an_account_exists(
+    api_client, user, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):  # the email is sent by a job, after the request
+        unknown = api_client.post("/api/auth/password/forgot/", {"email": "nobody@example.com"}, format="json")
+        known = api_client.post("/api/auth/password/forgot/", {"email": user.email}, format="json")
     assert unknown.status_code == known.status_code == 200
     assert unknown.json() == known.json()
     assert len(mail.outbox) == 1 and mail.outbox[0].to == [user.email]
 
 
-def test_password_reset_link_works_once_and_signs_out_other_sessions(api_client, user):
+def test_password_reset_link_works_once_and_signs_out_other_sessions(
+    api_client, user, django_capture_on_commit_callbacks
+):
     old_refresh = _login(api_client, user.email).json()["refresh"]
-    api_client.post("/api/auth/password/forgot/", {"email": user.email}, format="json")
+    with django_capture_on_commit_callbacks(execute=True):
+        api_client.post("/api/auth/password/forgot/", {"email": user.email}, format="json")
     link = re.search(r"http\S+reset-password\S+", mail.outbox[0].body).group(0)
     assert link.startswith("http://testserver-frontend/reset-password?")
     query = parse_qs(urlparse(link).query)

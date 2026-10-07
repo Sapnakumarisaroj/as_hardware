@@ -1,5 +1,7 @@
 """Search index tools for administrators (Phase 13): status, rebuild, refresh one product, explain a query."""
 
+import logging
+
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers, status
 from rest_framework.response import Response
@@ -12,6 +14,11 @@ from apps.catalog.semantic import index
 from apps.catalog.semantic.backend import HybridSearchBackend
 from apps.core.audit import record_audit
 from apps.core.permissions import IsAdminRole
+
+logger = logging.getLogger(__name__)
+UNAVAILABLE = (
+    "The meaning-based search could not be updated; keyword search keeps working. Details are in the server log."
+)
 
 
 def _status_payload() -> dict:
@@ -45,9 +52,10 @@ class SearchIndexRebuildView(APIView):
         serializer.is_valid(raise_exception=True)
         try:
             result = index.sync_products(force=serializer.validated_data["force"])
-        except RuntimeError as exc:
+        except RuntimeError:
+            logger.exception("Semantic search index update failed")
             return Response(
-                {"error": {"code": "semantic_unavailable", "message": f"{exc} Keyword search keeps working."}},
+                {"error": {"code": "semantic_unavailable", "message": UNAVAILABLE}},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         record_audit(
@@ -70,9 +78,10 @@ class SearchIndexProductView(APIView):
             return Response({"error": {"code": "not_found", "message": "Product not found."}}, status=404)
         try:
             index.sync_products([index._products().get(pk=pk)], force=True)
-        except RuntimeError as exc:
+        except RuntimeError:
+            logger.exception("Semantic search index update failed")
             return Response(
-                {"error": {"code": "semantic_unavailable", "message": f"{exc} Keyword search keeps working."}},
+                {"error": {"code": "semantic_unavailable", "message": UNAVAILABLE}},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         return Response({"status": _status_payload()})

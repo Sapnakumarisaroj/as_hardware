@@ -135,6 +135,13 @@ class ProfileView(APIView):
     """The signed-in user's own profile. There is no way to read another user's profile here."""
 
     permission_classes = [IsAuthenticated]
+    throttle_scope = "auth"
+
+    def get_throttles(self):
+        # Changing email/phone answers "already registered": limit it like the other account forms.
+        if self.request.method == "PATCH":
+            return [ScopedRateThrottle()]
+        return super().get_throttles()
 
     def _profile_user(self, request):
         CustomerProfile.objects.get_or_create(user=request.user)
@@ -153,6 +160,7 @@ class ProfileView(APIView):
         data = dict(serializer.validated_data)
         data.pop("current_password", None)
         prefs = data.pop("profile", {})
+        previous_email = user.email
         changed = []
         for field in ("email", "full_name", "phone"):
             if field in data:
@@ -169,6 +177,13 @@ class ProfileView(APIView):
             raise ConflictError(
                 "That email or phone is already used by another account.", code="account_exists"
             ) from exc
+        if "email" in changed:
+            from apps.accounts.auth_services import EMAIL_CHANGED_JOB
+            from apps.core.jobs import enqueue
+
+            enqueue(
+                EMAIL_CHANGED_JOB, {"old_email": previous_email, "new_email": user.email, "name": user.get_short_name()}
+            )
         for field, value in prefs.items():
             setattr(user.profile, field, value)
         user.profile.save()
@@ -192,9 +207,13 @@ class AvatarView(APIView):
         serializer.is_valid(raise_exception=True)
         profile, _ = CustomerProfile.objects.get_or_create(user=request.user)
         profile.avatar.field.run_validators(serializer.validated_data["avatar"])
+        from apps.delivery.proof import clean_photo
+
+        # Re-encoded like proof photos: the stored file carries no metadata (phone GPS location) or trailing payload.
+        cleaned = clean_photo(serializer.validated_data["avatar"])
         if profile.avatar:
             profile.avatar.delete(save=False)
-        profile.avatar = serializer.validated_data["avatar"]
+        profile.avatar.save("avatar.jpg", cleaned, save=False)
         profile.save()
         return Response(ProfileSerializer(request.user, context={"request": request}).data)
 

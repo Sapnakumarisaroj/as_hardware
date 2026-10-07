@@ -50,6 +50,19 @@ class InventoryViewSet(
             return StockAdjustSerializer
         return InventorySerializer
 
+    def perform_update(self, serializer):
+        """Threshold / on-off changes (quantities only move through `adjust`) are audited too."""
+        fields = sorted(serializer.validated_data)
+        before = {f: getattr(serializer.instance, f) for f in fields}
+        row = serializer.save()
+        record_audit(
+            action="inventory.update",
+            actor=self.request.user,
+            target=row,
+            request=self.request,
+            changes={f: {"from": before[f], "to": getattr(row, f)} for f in fields if before[f] != getattr(row, f)},
+        )
+
     def get_queryset(self):
         qs = scope_to_managed_stores(super().get_queryset(), self.request.user)
         params = self.request.query_params

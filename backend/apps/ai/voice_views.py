@@ -148,7 +148,9 @@ class VoiceTranscribeView(APIView):
 
 
 class VoiceSpeakView(APIView):
-    permission_classes = [AllowAny]
+    # Signed-in only: with a paid speech provider this would otherwise be a free public text-to-speech service.
+    # Visitors hear answers through the browser's own voice (the page falls back to it).
+    permission_classes = [IsAuthenticated]
 
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "voice_audio"

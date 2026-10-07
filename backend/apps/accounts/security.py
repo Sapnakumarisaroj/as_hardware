@@ -21,11 +21,17 @@ def is_locked_out(email: str) -> bool:
 
 
 def register_failure(email: str) -> None:
-    key = _key(email)
+    key, window = _key(email), settings.LOGIN_LOCKOUT_SECONDS
+    if cache.add(key, 1, timeout=window):
+        return
     try:
         cache.incr(key)
-    except ValueError:  # key missing
-        cache.set(key, 1, timeout=settings.LOGIN_LOCKOUT_SECONDS)
+    except ValueError:  # expired between add() and incr()
+        cache.set(key, 1, timeout=window)
+        return
+    # Some cache backends (the database cache used in production) re-save on incr() with the default
+    # 5-minute timeout; restore the lockout window, counted from the latest failure.
+    cache.touch(key, window)
 
 
 def clear_failures(email: str) -> None:

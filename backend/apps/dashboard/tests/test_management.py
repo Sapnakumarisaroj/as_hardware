@@ -97,7 +97,7 @@ def test_admin_edits_unpublishes_deletes_and_restores_a_product(admin_client, ap
     assert restored.data["state"] == "draft"  # comes back unpublished
 
 
-def test_product_list_searches_and_filters(admin_client, staff_client):
+def test_product_list_searches_and_filters(admin_client, staff_client, staff_user):
     tools, paint = create_category("Tools"), create_category("Paint")
     store = create_store()
     create_product(name="Claw Hammer", category=tools, stock=5, store=store)
@@ -112,6 +112,9 @@ def test_product_list_searches_and_filters(admin_client, staff_client):
     assert names("state=draft") == ["Draft Saw"]
     assert names("stock=in") == ["Claw Hammer"]
     assert names("stock=out") == ["Draft Saw", "Wall Primer"]
+    # Store managers see stock of their own stores only (Phase 25): none until the store is theirs.
+    assert staff_client.get("/api/admin/products/?q=hammer").data["results"][0]["stock_available"] == 0
+    store.managers.add(staff_user)
     assert staff_client.get("/api/admin/products/?q=hammer").data["results"][0]["stock_available"] == 5
 
 

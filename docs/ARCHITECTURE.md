@@ -634,6 +634,10 @@ Nominatim's usage policy (1 req/s, identifying User-Agent) is respected: geocode
 - Secrets come only from environment variables (control-panel variables or a `.env` outside the web root).
 - `AuditLog` for admin and sensitive actions. `prod` settings add HSTS, secure cookies and `check --deploy`.
 - `PAYMENT_PROVIDER=mock` raises at startup in production unless explicitly overridden for staging.
+- Phase 25: client IP for throttles and audit = REMOTE_ADDR unless `TRUSTED_PROXY_COUNT` proxies are declared;
+  request bodies above `MAX_REQUEST_BYTES` refused before parsing; production refuses weak SECRET_KEY and `*` hosts,
+  and serves the API schema to administrators only; account emails (password reset, email changed) go through the
+  job queue; the owner account and the last administrator can't be removed by another administrator.
 
 ## 8. Frontend
 React 19 + TypeScript (strict) + Vite 8 + Tailwind v4 (charcoal + safety-amber industrial theme), React Router,

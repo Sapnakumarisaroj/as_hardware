@@ -20,7 +20,7 @@ from apps.catalog.collections import collection_products
 from apps.catalog.models import Category, Collection, CollectionItem, OptionType, OptionValue, Product, VariantOption
 from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError
-from apps.core.permissions import IsAdminOrStaffReadOnly, IsAdminRole
+from apps.core.permissions import IsAdminOrStaffReadOnly, IsAdminRole, managed_store_ids
 from apps.delivery.models import DeliveryZone, FreeDeliveryRule
 from apps.payments.cod_rules import format_inr
 from apps.payments.models import PaymentSettings
@@ -455,21 +455,20 @@ class PaymentSettingsView(APIView):
 
     permission_classes = [IsAdminOrStaffReadOnly]
 
-    def _payload(self, settings: PaymentSettings) -> dict:
+    def _payload(self, settings: PaymentSettings, request) -> dict:
         data = PaymentSettingsSerializer(settings).data
-        data["stores_without_cod"] = [
-            {"id": s.pk, "name": s.name}
-            for s in Store.objects.filter(cod_enabled=False, kind__in=Store.FULFILLMENT_KINDS).order_by("name")
-        ]
-        data["zones_without_cod"] = [
-            {"id": z.pk, "name": z.name, "store_name": z.store.name}
-            for z in DeliveryZone.objects.filter(cod_enabled=False, store__is_deleted=False).select_related("store")
-        ]
+        stores = Store.objects.filter(cod_enabled=False, kind__in=Store.FULFILLMENT_KINDS)
+        zones = DeliveryZone.objects.filter(cod_enabled=False, store__is_deleted=False).select_related("store")
+        allowed = managed_store_ids(request.user)  # store managers: their own stores only
+        if allowed is not None:
+            stores, zones = stores.filter(pk__in=allowed), zones.filter(store_id__in=allowed)
+        data["stores_without_cod"] = [{"id": s.pk, "name": s.name} for s in stores.order_by("name")]
+        data["zones_without_cod"] = [{"id": z.pk, "name": z.name, "store_name": z.store.name} for z in zones]
         return data
 
     @extend_schema(responses={200: PaymentSettingsSerializer})
     def get(self, request):
-        return Response(self._payload(PaymentSettings.load()))
+        return Response(self._payload(PaymentSettings.load(), request))
 
     @extend_schema(request=PaymentSettingsSerializer, responses={200: PaymentSettingsSerializer})
     def patch(self, request):
@@ -484,4 +483,4 @@ class PaymentSettingsView(APIView):
             settings,
             {f: {"from": before[f], "to": str(getattr(settings, f))} for f in serializer.validated_data},
         )
-        return Response(self._payload(settings))
+        return Response(self._payload(settings, request))

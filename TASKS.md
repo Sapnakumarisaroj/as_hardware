@@ -613,6 +613,73 @@ entries under Overview.
   credit cost per rule (credits used are shown), period-over-period comparison in the Reports page itself (the assistant
   does it); the assistant's sentences are English (Hindi/Hinglish questions are understood)
 
+### Phase 25 — Security hardening ✅
+Scope: the Phase 25 prompt (auth and sessions, authorization, commerce, API, AI, secrets and production settings,
+admin) and ROADMAP 25. Three read-only reviews (authentication; every route's role and object-level checks; uploads,
+URLs, errors, AI, input limits and settings) plus a check of checkout, payments and the frontend; every finding was
+confirmed in the code before fixing. Smallest changes; no API changed except where noted.
+- [x] Rate limits: DRF trusted the whole `X-Forwarded-For` header, so a fake value per request bypassed every throttle
+  (login, register, forgot/reset, AI). `REST_FRAMEWORK["NUM_PROXIES"]` = `TRUSTED_PROXY_COUNT` (default 0 = use
+  REMOTE_ADDR); the audit log's IP follows the same rule (it took the forgeable left-most entry)
+- [x] Login lockout: on the database cache (production) each failure re-saved the counter with the default 5-minute
+  timeout, so the 15-minute lockout became 5; the window is restored after every failure (`cache.touch`)
+- [x] Forgot password: the email was sent inside the request, so existing accounts answered slower and an SMTP failure
+  gave them a 500; it is now a `core.Job` (`accounts.password_reset_email`, the link made in the job and never stored)
+  and errors stay in the job log. In `cron` mode the response time no longer depends on the account
+- [x] Login timing: a wrong password on a deactivated account cost two hashes, other failures one; now every failure costs
+  the same
+- [x] Profile PATCH (whose "email/phone already registered" answers are an account oracle) uses the `auth` rate limit
+- [x] Email change: the previous address is told, with the new one masked (`accounts.email_changed_notice` job)
+- [x] Request size: no overall cap existed (file parts don't count towards DATA_UPLOAD_MAX_MEMORY_SIZE, multipart is
+  parsed on every view); `RequestSizeLimitMiddleware` answers 413 `request_too_large` above `MAX_REQUEST_BYTES`
+  (12 MB) before parsing; DEPLOYMENT.md also asks for Apache `LimitRequestBody`
+- [x] Server text-to-speech (`POST /api/ai/voice/speak/`) required no login: with a paid voice it would be a free
+  public TTS service. Signed-in only now; the voice page uses it only for signed-in shoppers (visitors keep the
+  browser's own voice)
+- [x] Django `ValidationError` from model validators (e.g. a GIF avatar) returned 500; now 400 `validation_error`
+- [x] Avatars were stored as uploaded (phone GPS EXIF in a public file, possible trailing payload); re-encoded to JPEG
+  like proof photos
+- [x] Voice search link put the spoken words into `/search?q=` unencoded; now URL-encoded
+- [x] Admin search-index errors echoed the embedding library's exception text; fixed message, details in the log
+- [x] API schema/docs (`/api/schema/`, `/api/docs/`, `/api/redoc/`) listed every staff and rider endpoint to anyone; in
+  production only administrators may open them
+- [x] Administrators could demote or deactivate the owner (superuser) and the last remaining administrator; now only the
+  owner can change the owner account and at least one active administrator always remains (`owner_protected`,
+  `last_admin`)
+- [x] Store managers saw chain-wide stock totals in the product list and every store's/zone's COD switches; now their
+  stores only
+- [x] Inventory PATCH (threshold, on/off) is audited (`inventory.update`, before/after)
+- [x] Production settings: refuse a short/`django-insecure`/"change-me" SECRET_KEY and empty or `*` ALLOWED_HOSTS; DEBUG
+  stays hard-coded off; HSTS include-subdomains/preload configurable (`SECURE_HSTS_INCLUDE_SUBDOMAINS`,
+  `SECURE_HSTS_PRELOAD`); session and CSRF cookies HttpOnly. Development settings refuse to load where
+  `DJANGO_ENV=production` (a `manage.py` without the prod module would have run with DEBUG on and could seed demo data)
+- [x] Git: `.claude/settings.local.json` (local tool permissions) untracked and ignored; no `.env`, databases, logs, keys
+  or models are tracked (test)
+- [x] Verified sound, no change: JWT (15 min access, rotating blacklisted refresh, password change/reset/deactivation
+  revoke all sessions, token types not interchangeable); reset tokens single-use and expiring; no role escalation
+  (role/staff fields read-only; roles only via the admin service); every customer object (orders, addresses, payments,
+  returns, refunds, support, notifications, carts, AI history, wallet) filtered by the owner; managers scoped to their
+  stores everywhere else; checkout takes only ids/choices and recalculates prices, discounts, fees and totals with
+  idempotency keys and locked stock; payment verification bound to the order's owner; webhooks HMAC-verified and
+  refused without a secret; CORS allow-list; no stack traces in API errors; uploads with random names, format
+  allow-lists and Pillow checks, proof photos private; outbound hosts only from settings; AI output never writes
+  (cart additions are explicit user actions through the cart API), model JSON checked against allow-lists, numbers the
+  model adds are rejected, compatibility verdicts only from the engine, the business assistant only runs whitelisted
+  reports and sends the model no customer data; frontend has no raw-HTML rendering
+- [x] Tests: backend 1549 pass (20 new in `core/tests/test_security_phase25.py`, 2 in `ai/tests/test_voice.py`; 6
+  earlier tests adjusted: reset emails now come from a job, server speech needs sign-in, a manager's stock total is now
+  per store); frontend 382 pass
+- [x] Verified: ruff lint + format, Django check, `check --deploy` with production settings (no security warnings;
+  only the 14 known schema-naming notes), `makemigrations --check`, OpenAPI 0 errors, tsc, eslint, production build
+- [x] Live (production settings, DB cache, copy of a dev DB, port 8025): 19/19 — security headers, IDOR 404, no
+  self-promotion, anonymous TTS 401, schema 401/403/200, 13 MB body 413, CORS allow-list, lockout counter kept 900 s in
+  the DB cache, fake X-Forwarded-For still throttled (429), unknown API path without internals
+- [~] Remaining (documented): refresh token in localStorage (no XSS sinks found; an XSS would expose it), no email
+  verification yet, logout leaves the 15-minute access token valid, no CSP header from Django (set it on the web server),
+  AI endpoints for visitors rely on per-IP throttles only, reset-email timing equal only in `cron` jobs mode, lockout is
+  per email (a known email can be locked out for 15 minutes by anyone; password reset clears it), vision model wording
+  for "not hardware" photos is shown to the uploader
+
 ## Known limitations carried forward
 - Reports/assistant: no purchase costs, so no profit or margin; orders count for the store chosen at checkout (a split order's second store shows in delivery figures only); periods ≤ 366 days; the assistant knows 16 kinds of question and answers in English; with a local model on CPU an AI-worded answer takes 4–10 s
 - Catalogue: all 47 products are demo data (fictional "(Demo)" brands, illustrative prices, drawn demo pictures, demo stock); Fevicol products use the real brand name with placeholder prices. Real products, photos, prices, MRPs, GST/HSN codes, stock and specifications must be entered before going live

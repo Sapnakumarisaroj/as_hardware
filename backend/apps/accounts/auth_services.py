@@ -15,6 +15,7 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model, password_validation
+from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import update_last_login
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -123,9 +124,12 @@ def login(*, email: str, password: str, request=None):
     user = authenticate(request, email=email, password=password)
     if user is None:
         candidate = User.objects.filter(email=email).first()
-        if candidate is not None and not candidate.is_active and candidate.check_password(password):
-            record_audit(action="auth.login_inactive", target=candidate, request=request)
-            raise AccountInactive()
+        if candidate is not None and not candidate.is_active:
+            if candidate.check_password(password):
+                record_audit(action="auth.login_inactive", target=candidate, request=request)
+                raise AccountInactive()
+        else:
+            make_password(password)  # same cost as the check above, so timing doesn't tell accounts apart
         security.register_failure(email)
         record_audit(action="auth.login_failed", request=request, changes={"email_sha256": _email_fingerprint(email)})
         raise InvalidCredentials()
@@ -164,6 +168,20 @@ def request_password_reset(*, email: str, request=None) -> None:
     user = User.objects.filter(email=(email or "").strip().lower(), is_active=True).first()
     if user is None or not user.has_usable_password():
         return
+    from apps.core.jobs import enqueue
+
+    enqueue(RESET_EMAIL_JOB, {"user_id": user.pk}, dedupe_key=f"password-reset:{user.pk}")
+    record_audit(action="auth.password_reset_requested", target=user, request=request)
+
+
+RESET_EMAIL_JOB = "accounts.password_reset_email"
+
+
+def send_password_reset_email(user_id: int) -> str:
+    """The job behind `request_password_reset`. The link is made here, so it is never stored."""
+    user = User.objects.filter(pk=user_id, is_active=True).first()
+    if user is None or not user.has_usable_password():
+        return "skipped"
     minutes = settings.PASSWORD_RESET_TIMEOUT // 60
     send_mail(
         subject=f"Reset your {settings.APP_NAME} password",
@@ -178,7 +196,27 @@ def request_password_reset(*, email: str, request=None) -> None:
         recipient_list=[user.email],
         fail_silently=False,
     )
-    record_audit(action="auth.password_reset_requested", target=user, request=request)
+    return "sent"
+
+
+EMAIL_CHANGED_JOB = "accounts.email_changed_notice"
+
+
+def send_email_changed_notice(old_email: str, new_email: str, name: str) -> str:
+    """Tell the previous address that the account's email changed (a hijacked session can't do it quietly)."""
+    masked = new_email[:2] + "•••@" + new_email.partition("@")[2]
+    send_mail(
+        subject=f"Your {settings.APP_NAME} email address was changed",
+        message=(
+            f"Hello {name or 'there'},\n\n"
+            f"The email address of your {settings.APP_NAME} account was changed to {masked}. "
+            "If you didn't do this, reset your password straight away and contact us.\n"
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[old_email],
+        fail_silently=False,
+    )
+    return "sent"
 
 
 @transaction.atomic

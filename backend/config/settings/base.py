@@ -64,6 +64,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "apps.core.middleware_limits.RequestSizeLimitMiddleware",
     "apps.core.middleware.RequestIDMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -143,6 +144,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 # Password-reset links expire after this many seconds and become invalid once used
 # (Django's token embeds the password hash, so a successful reset voids it).
+# Largest request body accepted at all (uploads included); bigger ones get 413 before parsing (Phase 25).
+MAX_REQUEST_BYTES = env.int("MAX_REQUEST_BYTES", default=12 * 1024 * 1024)
 PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=3600)
 LOGIN_MAX_FAILURES = env.int("LOGIN_MAX_FAILURES", default=5)
 LOGIN_LOCKOUT_SECONDS = env.int("LOGIN_LOCKOUT_SECONDS", default=900)
@@ -192,6 +195,9 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
+    # Proxies in front of the app that append to X-Forwarded-For (0 = none: use REMOTE_ADDR). Without this, DRF
+    # trusts the whole header, so anyone could dodge every rate limit by sending a fake one (Phase 25).
+    "NUM_PROXIES": env.int("TRUSTED_PROXY_COUNT", default=0),
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",

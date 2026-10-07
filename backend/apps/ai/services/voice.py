@@ -17,6 +17,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal
+from urllib.parse import urlencode
 
 from django.conf import settings
 from rest_framework import status
@@ -603,7 +604,7 @@ class VoiceShoppingService:
         reply.products = [
             {"product_id": p.pk, "variant_id": p.cheapest_variant_id, "reason": "voice search"} for p in rows
         ]
-        reply.search_path = f"/search?q={query}"
+        reply.search_path = "/search?" + urlencode({"q": query})
         reply.reply = text(reply.language, "search" if rows else "search_none", query=query)
 
     def _ask(self, reply, parsed, **_):

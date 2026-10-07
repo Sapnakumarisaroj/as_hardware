@@ -606,23 +606,28 @@ def test_transcribe_rate_limit(api_client, stt, db, monkeypatch):
     assert _upload(api_client, webm()).status_code == 429
 
 
-def test_speak_without_a_server_voice(api_client, db):
-    response = api_client.post(SPEAK, {"text": "Opening your cart."}, format="json")
+def test_speak_is_for_signed_in_people_only(api_client, tts, db):
+    tts()
+    assert api_client.post(SPEAK, {"text": "Opening your cart."}, format="json").status_code == 401
+
+
+def test_speak_without_a_server_voice(auth_client, db):
+    response = auth_client.post(SPEAK, {"text": "Opening your cart."}, format="json")
     assert response.status_code == 503 and response.json()["error"]["code"] == "speech_unavailable"
 
 
-def test_speak_with_a_server_voice(api_client, tts, db):
+def test_speak_with_a_server_voice(auth_client, tts, db):
     provider = tts()
-    response = api_client.post(SPEAK, {"text": "Total ₹3,990.", "language": "en"}, format="json")
+    response = auth_client.post(SPEAK, {"text": "Total ₹3,990.", "language": "en"}, format="json")
     assert response.status_code == 200 and response["Content-Type"] == "audio/mpeg"
     assert response["Cache-Control"] == "no-store" and response.content == b"ID3fake-mp3"
     assert provider.said == [("Total 3990 rupees.", "en")]
 
 
-def test_speak_limits(api_client, tts, db, settings):
+def test_speak_limits(auth_client, tts, db, settings):
     tts(error=SpeechError("down"))
-    assert api_client.post(SPEAK, {"text": "x" * 401}, format="json").status_code == 400
-    assert api_client.post(SPEAK, {"text": "hello"}, format="json").status_code == 503
+    assert auth_client.post(SPEAK, {"text": "x" * 401}, format="json").status_code == 400
+    assert auth_client.post(SPEAK, {"text": "hello"}, format="json").status_code == 503
 
 
 # --- Providers -------------------------------------------------------------------------------------------
@@ -753,3 +758,12 @@ def test_local_whisper_end_to_end_through_the_api(api_client, fake_whisper, shop
     assert heard["text"] == "10 bags cement."
     body = api_client.post(COMMAND, {"transcript": heard["text"], "language": "en"}, format="json").json()
     assert body["intent"] == "add_to_cart" and body["lines"][0]["quantity"] == 10
+
+
+def test_search_link_keeps_the_whole_query_in_q(shop):
+    from urllib.parse import parse_qs, urlparse
+
+    reply = _command("show me drills #1 & bits?")
+    assert reply.search_path.startswith("/search?")
+    query = parse_qs(urlparse(reply.search_path).query)
+    assert list(query) == ["q"]  # "&", "#" and "?" can't add parameters or a fragment

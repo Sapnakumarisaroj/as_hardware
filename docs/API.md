@@ -869,5 +869,15 @@ Administrators and store managers (`IsStaffRole`); managers see only their store
 | POST | `/api/admin/assistant/?store=` | `{question}` (≤ 300) → `{understood, intent, intent_label, report, period{from,to,label}, store, text, kpis, comparison, table, notes, link, source: rules|ai, suggestions}`; throttle scope `ai` |
 | GET | `/api/admin/assistant/history/` | the person's last 30 questions and answers |
 
+## Security notes (Phase 25)
+- Any request body above `MAX_REQUEST_BYTES` (12 MB) → 413 `request_too_large`, before parsing.
+- `POST /api/ai/voice/speak/` (server voice) needs a signed-in user (401 otherwise).
+- `PATCH /api/profile/` shares the `auth` rate limit; changing the email notifies the previous address.
+- `POST /api/auth/password/forgot/` queues the email (`accounts.password_reset_email` job); the answer never depends on
+  the account.
+- `PATCH /api/admin/users/{id}/`: 400 `owner_protected` (only the owner may change the owner account) and `last_admin`.
+- Model validation errors (e.g. avatar format) are 400 `validation_error`, never 500.
+- Production: `/api/schema/`, `/api/docs/`, `/api/redoc/` for administrators only.
+
 ## Planned 🔜
-- Security hardening (Phase 25).
+- Testing: coverage gaps, Playwright e2e, MySQL run (Phase 26).

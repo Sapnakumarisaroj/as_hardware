@@ -384,7 +384,8 @@ export function VoicePage() {
   function say(text: string) {
     if (!speakAnswers || !text) return
     if (speakInBrowser(text, option.voice)) return
-    if (status.data?.server_voice.available) {
+    // Server voice is for signed-in shoppers only (the endpoint refuses visitors).
+    if (status.data?.server_voice.available && authStatus === 'authenticated') {
       fetchServerSpeech(text, language)
         .then((blob) => {
           const audio = new Audio(URL.createObjectURL(blob))

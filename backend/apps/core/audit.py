@@ -3,11 +3,18 @@ from .models import AuditLog
 
 
 def _client_ip(request) -> str | None:
+    """The client address as the throttles see it: X-Forwarded-For is trusted only for the
+    `TRUSTED_PROXY_COUNT` proxies in front of the app (its right-most entries), never as sent."""
     if request is None:
         return None
+    from django.conf import settings
+
+    proxies = settings.REST_FRAMEWORK.get("NUM_PROXIES") or 0
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    if proxies and forwarded:
+        addresses = [a.strip() for a in forwarded.split(",") if a.strip()]
+        if addresses:
+            return addresses[-min(proxies, len(addresses))][:45]
     return request.META.get("REMOTE_ADDR")
 
 
