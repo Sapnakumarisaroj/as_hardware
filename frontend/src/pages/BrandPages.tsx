@@ -26,7 +26,7 @@ function BrandMark({ brand, size = 'md' }: { brand: Brand; size?: 'md' | 'lg' })
 /** /brands — every brand with products customers can see, A–Z. */
 export function BrandsPage() {
   const brands = useBrands()
-  usePageMeta('Brands', 'Shop hardware, electrical, plumbing and tools by brand.')
+  usePageMeta('Brands', 'Shop plywood, Fevicol, furniture fittings, locks and tools by brand.')
   const visible = (brands.data ?? []).filter((b) => (b.product_count ?? 0) > 0)
   const groups = new Map<string, Brand[]>()
   for (const brand of visible) {

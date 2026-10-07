@@ -14,14 +14,16 @@ from PIL import Image, ImageDraw, ImageFont
 
 SIZE = 640
 PALETTE = {
-    "electrical": ((255, 241, 204), (217, 143, 0)),
-    "plumbing": ((219, 234, 254), (29, 78, 216)),
-    "tools": ((236, 238, 241), (42, 46, 53)),
-    "construction": ((237, 231, 225), (120, 83, 54)),
-    "civil-interiors": ((237, 231, 225), (120, 83, 54)),
-    "paint": ((252, 231, 243), (157, 23, 77)),
-    "paints": ((252, 231, 243), (157, 23, 77)),
+    "plywood-mdf-hdhmr": ((243, 232, 214), (133, 94, 46)),
+    "fevicol": ((254, 243, 199), (180, 83, 9)),
+    "hinges-channels-handles": ((226, 232, 240), (51, 65, 85)),
+    "kitchen-systems": ((224, 242, 254), (3, 105, 161)),
+    "wardrobe-bed-fittings": ((237, 233, 254), (91, 33, 182)),
+    "door-locks-hardware": ((254, 226, 226), (153, 27, 27)),
+    "power-tools": ((236, 238, 241), (42, 46, 53)),
+    "general-hardware": ((237, 231, 225), (120, 83, 54)),
     "safety": ((220, 252, 231), (21, 128, 61)),
+    "glass-door-hardware": ((207, 250, 254), (14, 116, 144)),
 }
 DEFAULT_COLOURS = ((236, 238, 241), (75, 82, 92))
 

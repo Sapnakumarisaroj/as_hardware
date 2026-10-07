@@ -17,7 +17,7 @@ describe('homepage', () => {
     const api = mockApi({ get: catalogRoutes() })
     renderRoute('/')
 
-    expect(screen.getByRole('heading', { level: 1, name: /find the right material/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: /find the right hardware/i })).toBeInTheDocument()
     expect(screen.getByTestId('deliver-to-message')).toHaveTextContent('Choose your PIN code')
     const departments = await screen.findByRole('region', { name: 'Shop by department' })
     expect(await within(departments).findByRole('link', { name: /Electrical\s*14 products/ })).toHaveAttribute(

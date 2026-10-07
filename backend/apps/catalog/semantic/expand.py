@@ -78,6 +78,30 @@ SYNONYMS: list[tuple[str, tuple[str, ...]]] = [
     (r"\b(tile|tiles|tiling|flooring)\b|\btiles?\b", ("tile adhesive",)),
     (r"\b(glue|stick|sticking|bond|fevicol|gum|adhesive|jod\w*)\b", ("adhesive", "glue")),
     (r"\b(wood|wooden|furniture|carpentry|lakdi)\b|लकड़ी", ("wood", "screw", "adhesive")),
+    # boards and furniture hardware (approved categories, 2026-10-07)
+    (r"\b(ply|plywood|plyboard|marine\s+ply|bwp)\b|प्लाई", ("plywood",)),
+    (r"\b(mdf|hdhmr|particle\s*board|board|boards)\b", ("mdf", "hdhmr", "plywood")),
+    (
+        r"\b(laminate|sunmica|veneer)\b.*\b(glue|adhesive|stick\w*)\b|\bcontact\s+adhesive\b",
+        ("contact adhesive",),
+    ),
+    (r"\b(hinge|hinges|kabja|kabje|soft\s*close)\b|कब्ज़?ा", ("hinge",)),
+    (r"\b(drawer|drawers|channel|channels|telescopic)\b", ("drawer channel",)),
+    (r"\b(handle|handles|knob|knobs)\b|हैंडल", ("handle",)),
+    (
+        r"\b(modular\s+kitchen|kitchen\s+(basket|fitting|cabinet|drawer)s?|cutlery|thali|pantry)\b",
+        ("kitchen basket", "pantry unit"),
+    ),
+    (r"\b(wardrobe|almirah|almari|cupboard|hanger\s+rod)\b|अलमारी", ("wardrobe",)),
+    (r"\b(storage\s+bed|hydraulic\s+bed|bed\s+fitting\w*)\b", ("bed fitting", "hydraulic bed")),
+    (r"\b(lock|locks|taala|tala|latch)\b|ताला", ("lock", "door lock")),
+    (r"\b(door\s+closer|closer|stopper|tower\s+bolt|aldrop)\b", ("door closer", "tower bolt")),
+    (
+        r"\b(glass\s+door|toughened\s+glass|patch\s+fitting|floor\s+spring)\b",
+        ("glass door", "patch fitting", "floor spring"),
+    ),
+    (r"\b(grinder|grinding|angle\s+grinder|cutting\s+disc)\b", ("angle grinder",)),
+    (r"\b(vest|reflective|hi\s*vis|workwear)\b", ("safety vest",)),
     # safety
     (r"\b(safety|protect\w*|ppe|hand\s+protect\w*|cut\s+resist\w*)\b", ("gloves", "goggles", "helmet", "mask")),
     (r"\b(glove|gloves|hands|dastane)\b|दस्ताने", ("gloves",)),

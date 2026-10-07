@@ -26,8 +26,19 @@ def test_seed_is_idempotent_and_clearly_labelled(settings):
     assert not ProductVariant.objects.exclude(sku__startswith="DEMO-").exists()
     assert not Product.objects.exclude(sku__startswith="DEMO-").exists()
     assert not Store.objects.exclude(code__startswith="DEMO-").exists()
-    assert all("(Demo)" in p.brand.name for p in Product.objects.select_related("brand"))
+    # Fictional "(Demo)" brands, except Fevicol: the approved category is that brand.
+    assert all("(Demo)" in p.brand.name or p.brand.name == "Fevicol" for p in Product.objects.select_related("brand"))
     assert all(p.specifications.exists() for p in Product.objects.all())
+    # Only the approved categories, and every product inside them.
+    from apps.catalog.models import Category
+    from apps.catalog.taxonomy import approved_slugs, top_level_names
+
+    assert set(Category.objects.values_list("slug", flat=True)) == approved_slugs()
+    assert list(Category.objects.filter(parent=None).values_list("name", flat=True)) == top_level_names()
+    assert all(
+        p.category.slug in approved_slugs() and p.subcategory.slug in approved_slugs() for p in Product.objects.all()
+    )
+    assert Product.objects.filter(category__slug="fevicol", brand__name="Fevicol").count() == 3
 
 
 def test_demo_rider_is_opt_in_with_a_random_password_shown_once(settings, capsys):

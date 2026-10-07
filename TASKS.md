@@ -531,7 +531,40 @@ bell in the shop header, rider app and dashboard; account menu link; dashboard m
   WhatsApp Manager), a per-store "who gets staff alerts" setting (managers of the store, else administrators); no browser
   run (localhost limitation)
 
+## Catalogue: approved categories ✅ (2026-10-07, between Phases 23 and 24)
+Owner request: only ten categories (Plywood, MDF & HDHMR · Fevicol · Hinges, Channels & Handles · Kitchen Systems &
+Accessories · Wardrobe & Bed Fittings · Door Locks & Hardware · Power Tools & Accessories · General Hardware & Tools ·
+Safety Tools & Workwear · Glass Door Hardware); everything else hidden without breaking history.
+- [x] `apps/catalog/taxonomy.py` (`APPROVED_TAXONOMY`, `apply_taxonomy`) + `manage.py apply_taxonomy [--dry-run]`:
+  creates/renames the tree, moves products of re-parented subcategories, archives (soft delete + inactive +
+  unpublished) every other category and its products, switches off rules aimed only at archived categories and bundles
+  with archived products; idempotent; approved categories hidden by hand are restored
+- [x] Demo catalogue rewritten (`core/management/demo_data.py`): 47 products in the ten categories (21 kept from the old
+  demo and moved, 26 new: boards, Fevicol, hinges, channels, handles, kitchen baskets and pantry, wardrobe and bed
+  fittings, locks and door hardware, grinder, safety vest, glass-door hardware), options (thickness, board size, channel
+  length, pack size), bulk prices, curated lists, offers, free-delivery rule, product-page content, accessories, 4 kits,
+  "complete the project" rules. Products are found again by their first variant SKU (no duplicates when the list
+  changes); the seed archives demo products, categories, brands, offers, lists, bundles and option types that are no
+  longer in it, so a reset never brings the old catalogue back
+- [x] Fevicol: one category and the brand "Fevicol" on its three products (the old demo wood adhesive row was reused,
+  so its links and the project builder's "wood adhesive" still find it)
+- [x] AI: assistant words (plywood/ply/प्लाई, hinge/kabja/कब्ज़ा, channel, handle, lock/taala/ताला, wardrobe/almirah,
+  glass door, grinder, workwear …), search synonyms, voice loanwords + "sheet" as a counting word, photo-search kinds
+  (hinges, channels, handles, locks, closers, patch fittings, boards, grinder, vest); assistant prompts and voice
+  examples match the catalogue; photo search already adds the shop's subcategory names at run time
+- [x] Storefront copy (hero, footer, page descriptions, assistant/voice/project/quantity/budget examples) describes the
+  new range; navigation, home departments, filters, breadcrumbs and the dashboard read the categories from the database
+- [x] Dev DB: backed up to the session scratchpad, migrated (it lacked the Phase 22/23 migrations), seeded: 10 categories
+  (45 with subcategories), 47 live products, 31 products and 29 categories archived, 8 active brands; no orders existed
+- [x] Tests: backend 1474 pass (5 new in `catalog/tests/test_taxonomy.py`: exact tree, move vs archive, order history and
+  storefront, dry run, idempotency; seed test checks the tree and Fevicol); frontend 377 pass (homepage heading test
+  updated)
+- [~] Calculators and project types for painting, plastering, tiling, flooring, wiring, pipes and waterproofing still
+  exist; with this catalogue they say the products are not sold here. The compatibility rules for pipes, taps and
+  electrical items have nothing to check now
+
 ## Known limitations carried forward
+- Catalogue: all 47 products are demo data (fictional "(Demo)" brands, illustrative prices, drawn demo pictures, demo stock); Fevicol products use the real brand name with placeholder prices. Real products, photos, prices, MRPs, GST/HSN codes, stock and specifications must be entered before going live
 - Notifications: WhatsApp and SMS run on the mock providers (recorded, nothing sent) until real accounts are connected; WhatsApp messages started by the shop must use templates approved in WhatsApp Manager with the same variables in the same order as the shop's words; the bell refreshes every minute (no live push); messages go out within one cron interval in `cron` mode (immediately in `inline` mode); the "running late" check runs from `run_jobs`; a customer's own words in Hindi/Hinglish exist only where an administrator wrote them (built-in words are English)
 - Smart cart / recommendations: "frequently bought together" needs real orders (empty on a new shop); alternatives are only suggested within a kind the compatibility engine recognises; budget mode can only plan jobs the Quantity AI / project calculators know, and drops whole lines rather than reducing quantities; bundle prices follow the live catalogue (a kit with an out-of-stock item shows it and can't be added until fixed)
 - Compatibility: only the 13 rule pairs and the shop's links decide; other kinds of product get "not enough information" (add a rule in `catalog/compatibility/rules.py` or a shop link); facts must be in the listing (specifications such as Chuck Size, Sizes, Diameter, Material, Current Rating, Thread; sizes in variant names); nominal pipe sizes are compared as written ("1/2 inch"), not converted from mm; the engine's reasons are English in all three languages; replacements are searched among up to 500 published products per check

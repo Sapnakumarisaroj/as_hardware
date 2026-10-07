@@ -54,9 +54,9 @@ LANGUAGE_OPTIONS = [
 ]
 
 EXAMPLES = {
-    "en": ["10 bags of 53 grade cement", "2 coils of 1.5 sq mm wire", "Show me drills", "Open my cart"],
-    "hinglish": ["Das bori cement cart mein daalo", "Paanch CPVC pipe chahiye", "Drill dikhao", "Mera cart kholo"],
-    "hi": ["दस बोरी सीमेंट कार्ट में डालो", "पाँच पैकेट टेफ्लॉन टेप", "ड्रिल दिखाओ", "मेरा कार्ट खोलो"],
+    "en": ["5 sheets of 18 mm plywood", "4 pairs of soft close hinges", "Show me door locks", "Open my cart"],
+    "hinglish": ["Paanch 18 mm plywood cart mein daalo", "Do Fevicol chahiye", "Drill dikhao", "Mera cart kholo"],
+    "hi": ["पाँच 18 mm प्लाईवुड कार्ट में डालो", "दो फेविकोल", "ड्रिल दिखाओ", "मेरा कार्ट खोलो"],
 }
 
 PAGES = {

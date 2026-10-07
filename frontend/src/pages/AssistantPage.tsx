@@ -308,7 +308,7 @@ export function AssistantPage() {
               className="input min-h-11 flex-1 resize-none py-2.5"
               rows={1}
               maxLength={MAX_LENGTH}
-              placeholder={signedIn ? 'Ask about tools, plumbing, electrical, paint…' : 'Ask a question — you’ll be asked to sign in'}
+              placeholder={signedIn ? 'Ask about plywood, hinges, locks, tools…' : 'Ask a question — you’ll be asked to sign in'}
               value={text}
               onChange={(event) => setText(event.target.value)}
               onKeyDown={(event) => {

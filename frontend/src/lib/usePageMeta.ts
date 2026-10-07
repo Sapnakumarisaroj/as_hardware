@@ -4,7 +4,7 @@ import { useLocation } from 'react-router'
 import { env } from '@/lib/env'
 
 const DEFAULT_DESCRIPTION =
-  'Hardware, tools, electrical and plumbing supplies from local stores, with clear prices and live stock.'
+  'Plywood, Fevicol, furniture fittings, door locks, tools and safety gear from local stores, with clear prices and live stock.'
 
 /** Query parameters that don't change what a page is (filters/sorting/paging stay out of the canonical URL). */
 const CANONICAL_PARAMS = new Set<string>()

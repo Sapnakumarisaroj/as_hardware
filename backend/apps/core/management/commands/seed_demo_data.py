@@ -27,6 +27,7 @@ from apps.catalog.models import (
     normalize_sku,
 )
 from apps.catalog.services import set_accessories, set_price_tiers, set_variant_options
+from apps.catalog.taxonomy import apply_taxonomy, approved_slugs
 from apps.catalog.tree import breadcrumb
 from apps.delivery.models import DeliveryZone, FreeDeliveryRule, PinCode
 from apps.inventory.models import Inventory, StockMovement
@@ -38,7 +39,6 @@ from ..demo_data import (
     ACCESSORIES,
     BRANDS,
     BUNDLES,
-    CATEGORIES,
     COLLECTIONS,
     COUPONS,
     FREE_DELIVERY_RULES,
@@ -117,17 +117,18 @@ class Command(BaseCommand):
             self._product_pages()
             self._loyalty()
             self._shopping()
+            retired = self._retire_old_demo_data(products)
             if with_rider:
                 self._demo_rider()
         created_images = 0 if no_images else self._images(products)
         self.stdout.write(
             self.style.SUCCESS(
                 f"Demo data ready: {Category.objects.count()} categories, {len(brands)} brands, "
-                f"{len(products)} products, {ProductVariant.objects.filter(sku__startswith='DEMO-').count()} variants, "
+                f"{len(products)} products, {ProductVariant.objects.filter(product__in=products).count()} variants, "
                 f"{len(stores)} stores, {created_stock} new stock records, {len(COUPONS)} coupons, "
                 f"{len(OFFERS) + len(OFFERS_PHASE15)} offers, {len(COLLECTIONS)} curated lists, "
                 f"{len(BUNDLES)} bundles, "
-                f"{created_images} new demo images."
+                f"{created_images} new demo images. {retired}"
             )
         )
 
@@ -145,26 +146,47 @@ class Command(BaseCommand):
         return created
 
     def _categories(self) -> dict[str, Category]:
-        result = {}
+        """The approved tree (apps.catalog.taxonomy); categories outside it are archived at the end."""
+        apply_taxonomy(archive=False)
+        return {c.slug: c for c in Category.objects.filter(slug__in=approved_slugs())}
 
-        def upsert(slug, name, parent, position):
-            result[slug], _ = Category.all_objects.update_or_create(
-                slug=slug, defaults={"name": name, "parent": parent, "sort_order": position, "is_deleted": False}
-            )
-            return result[slug]
+    def _retire_old_demo_data(self, products) -> str:
+        """Earlier demo catalogues (cement, paint, wiring, plumbing …) are archived, never deleted: a
+        development database may have orders, carts or reviews that point at them."""
+        from apps.catalog.models import Brand
+        from apps.shopping.models import Bundle
 
-        for position, ((slug, name), children) in enumerate(CATEGORIES.items()):
-            parent = upsert(slug, name, None, position)
-            for child_pos, child in enumerate(children):
-                node = upsert(child[0], child[1], parent, child_pos)
-                for grand_pos, (grand_slug, grand_name) in enumerate(child[2] if len(child) > 2 else []):
-                    upsert(grand_slug, grand_name, node, grand_pos)
-        return result
+        now = timezone.now()
+        old = Product.all_objects.filter(sku__startswith="DEMO-").exclude(pk__in=[p.pk for p in products])
+        old_count = old.filter(is_deleted=False).count()
+        old.update(is_active=False, is_published=False, is_deleted=True, deleted_at=now, updated_at=now)
+        report = apply_taxonomy()
+        Brand.objects.filter(name__endswith="(Demo)").exclude(name__in=BRANDS).update(is_active=False)
+        Offer.objects.filter(name__startswith="Demo:").exclude(
+            name__in=[o[0] for o in OFFERS] + [o["name"] for o in OFFERS_PHASE15]
+        ).update(is_active=False)
+        Collection.objects.filter(name__startswith="Demo:").exclude(name__in=[c[0] for c in COLLECTIONS]).update(
+            is_active=False
+        )
+        FreeDeliveryRule.objects.filter(name__startswith="Demo:").exclude(
+            name__in=[r[0] for r in FREE_DELIVERY_RULES]
+        ).update(is_active=False)
+        Bundle.objects.filter(name__startswith="Demo:").exclude(name__in=[b[0] for b in BUNDLES]).update(
+            is_active=False
+        )
+        OptionType.objects.exclude(name__in=[o[0] for o in OPTION_TYPES]).update(is_active=False)
+        return (
+            f"Archived {old_count} old demo products and {len(report.archived_categories)} categories outside the "
+            f"approved list; {len(report.archived_products)} more products archived with them."
+        )
 
     def _products(self, categories, brands) -> list[Product]:
         products = []
         for index, (cat, sub, name, brand, unit, gst, tags, variants, specs) in enumerate(PRODUCTS):
-            base_sku = normalize_sku(f"DEMO-{variants[0][0].split('-')[0]}-{index:03d}")
+            # Found again by its first variant, so reordering or removing demo products never duplicates one.
+            first_variant = normalize_sku(f"DEMO-{variants[0][0]}")
+            existing = Product.all_objects.filter(variants__sku=first_variant).first()
+            base_sku = existing.sku if existing else normalize_sku(f"DEMO-P-{variants[0][0]}")
             product, _ = Product.all_objects.update_or_create(
                 sku=base_sku,
                 defaults={

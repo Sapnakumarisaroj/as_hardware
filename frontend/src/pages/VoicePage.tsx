@@ -322,7 +322,7 @@ function History() {
 }
 
 export function VoicePage() {
-  usePageMeta('Shop by voice', 'Say what you need in English, Hindi or Hinglish, for example “10 bags of cement”.')
+  usePageMeta('Shop by voice', 'Say what you need in English, Hindi or Hinglish, for example “5 sheets of 18 mm plywood”.')
   const { status: authStatus } = useAuth()
   const status = useVoiceStatus()
   const command = useVoiceCommand()
@@ -533,7 +533,7 @@ export function VoicePage() {
       <div>
         <h1 className="text-2xl font-extrabold">Shop by voice</h1>
         <p className="text-sm text-ink-600">
-          Say what you need, like “10 bags of 53 grade cement”. We show the price for that quantity and add it to your cart only when you say
+          Say what you need, like “5 sheets of 18 mm plywood”. We show the price for that quantity and add it to your cart only when you say
           “yes” or tap Add.
         </p>
       </div>

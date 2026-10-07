@@ -92,7 +92,23 @@ COUNT_UNITS: dict[str, tuple[str, ...]] = {
         "कट्टा",
         "कट्टे",
     ),
-    "piece": ("piece", "pieces", "pc", "pcs", "nos", "nag", "units", "unit", "pis", "नग", "पीस", "नंबर"),
+    "piece": (
+        "piece",
+        "pieces",
+        "pc",
+        "pcs",
+        "nos",
+        "nag",
+        "units",
+        "unit",
+        "pis",
+        "नग",
+        "पीस",
+        "नंबर",
+        "sheet",
+        "sheets",
+        "शीट",
+    ),  # boards are sold by the sheet (one piece)
     "box": (
         "box",
         "boxes",
@@ -159,6 +175,10 @@ TRANSLITERATIONS = {
     "मास्क": "mask", "गॉगल्स": "goggles", "शूज": "shoes", "शूज़": "shoes", "हैकसॉ": "hacksaw", "स्पैनर": "spanner",
     "इंसुलेशन": "insulation", "कॉपर": "copper", "ब्रास": "brass", "स्टील": "steel", "मैग्नेटिक": "magnetic",
     "कॉर्डलेस": "cordless", "इम्पैक्ट": "impact", "मेजरिंग": "measuring", "मेज़रिंग": "measuring",
+    "प्लाई": "plywood", "प्लाईवुड": "plywood", "एमडीएफ": "mdf", "बोर्ड": "board", "फेविकोल": "fevicol",
+    "हिंज": "hinge", "कब्जा": "hinge", "कब्ज़ा": "hinge", "चैनल": "channel", "हैंडल": "handle", "लॉक": "lock",
+    "ताला": "lock", "किचन": "kitchen", "बास्केट": "basket", "वार्डरोब": "wardrobe", "अलमारी": "wardrobe",
+    "ग्राइंडर": "grinder", "ग्लास": "glass", "डोर": "door", "क्लोजर": "closer",
 }  # fmt: skip
 # Hindi and Hinglish product words from the assistant's vocabulary that name one thing.
 _HINGLISH_PRODUCT_WORDS = {"nal", "paip", "hathoda", "pechkas", "pana", "aari", "pech", "gond", "lakdi", "taar", "pankha", "dastane"}  # fmt: skip

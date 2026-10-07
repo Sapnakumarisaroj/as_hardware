@@ -85,19 +85,37 @@ semantic, image and voice search, Project Builder, quantity, compatibility, smar
   entry's expiry; credits that have already expired by then are not restored.
 - Balance = sum of ledger entries; nothing is seeded or adjusted without a ledger entry and a reference.
 
-## Seed taxonomy (data, not code)
-Loaded by `seed_demo_data` (demo) and editable in the dashboard. Department › categories:
-- **Civil & Interiors**: Cement (Grey Cement, White Cement), Tiling (Tiles, tile adhesive/grout), Plywood, MDF,
-  HDHMR, Adhesives, Waterproofing, Painting, Wall care
-- **Electrical**: Wires, Cables, MCB, Distribution Boards, Switches, Sockets, Electrical Conduits, Lighting, Fans
-- **Plumbing, Sanitary & Bath**: CPVC Pipes, PVC Pipes, Fittings, Taps, Sanitary fittings, Bath fittings, Water
-  tanks, Valves
-- **Furniture & Architectural Hardware**: Hinges, Channels, Handles, Kitchen systems, Wardrobe fittings, Bed
-  fittings, Door locks, Glass-door hardware
-- **Tools**: Power tools, Hand tools, Drill machines, Drill bits, Grinders, Measuring tools, Safety equipment
-- **Hardware & Appliances**: CCTV, Home appliances, Power backup, General hardware, Workwear
+## Approved taxonomy (decided 2026-10-07)
+The owner approved exactly ten top-level categories. They live in `backend/apps/catalog/taxonomy.py`
+(`APPROVED_TAXONOMY`, the single source for the seed and for production) and are applied with
+`python manage.py apply_taxonomy [--dry-run]`:
 
-Brand names in demo data stay generic "(Demo)" brands; real brands are entered by the owner.
+| Category | Subcategories |
+|---|---|
+| Plywood, MDF & HDHMR | Plywood, MDF Boards, HDHMR Boards |
+| Fevicol | Wood Adhesives, Contact Adhesives, Waterproof Adhesives (products also carry the brand "Fevicol") |
+| Hinges, Channels & Handles | Hinges, Drawer Channels, Handles & Knobs |
+| Kitchen Systems & Accessories | Kitchen Baskets, Tall Units & Corner Solutions, Kitchen Accessories |
+| Wardrobe & Bed Fittings | Wardrobe Fittings, Bed Fittings |
+| Door Locks & Hardware | Door Locks, Door Closers, Stoppers & Bolts |
+| Power Tools & Accessories | Drills, Drill Bits, Grinders & Cutters |
+| General Hardware & Tools | Screwdrivers, Hammers, Spanners & Wrenches, Measuring Tools, Cutting Tools, Nuts, Bolts & Screws, Sealants & Abrasives |
+| Safety Tools & Workwear | Gloves, Helmets, Masks, Safety Shoes, Eye & Ear Protection, Workwear |
+| Glass Door Hardware | Patch Fittings, Glass Door Handles, Floor Springs |
+
+Every other category (cement, paints and waterproofing, electrical, plumbing, tiling, flooring, the old "Tools" and
+"Construction" parents) is **archived, not deleted**: soft-deleted and inactive, with its products unpublished,
+inactive and soft-deleted, so orders, returns, payments and reviews keep their rows and an administrator can restore
+them. Subcategories that already existed (drills, drill bits, screwdrivers, hammers, spanners, measuring and cutting
+tools, fasteners, sealants, gloves, helmets, masks, safety shoes, protective equipment) keep their slugs and are moved
+under their new parent together with their products. Offers, coupons, free-delivery rules and curated lists that only
+targeted archived categories, recommendation rules that touch them and bundles with archived products are switched off.
+
+Fevicol is one category plus one brand: the category is what customers browse, the brand "Fevicol" is on each of its
+products (brand filter, brand page). There is no separate "Fevicol" subcategory or sub-brand.
+
+Demo brands stay fictional "(Demo)" brands, except Fevicol (the approved category is that brand); demo prices are
+illustrative.
 
 ## Bulk pricing behaviour (Phase 15)
 - Tiers per variant, e.g. 1–9 → ₹450, 10+ → ₹415, 30+ → ₹405, 50+ → ₹395. The base tier is `variant.price`.

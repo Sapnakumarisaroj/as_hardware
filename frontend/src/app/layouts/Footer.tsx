@@ -12,7 +12,7 @@ export function Footer() {
         <div>
           <p className="text-lg font-extrabold">{env.appName}</p>
           <p className="mt-2 max-w-xs text-sm text-steel-200">
-            Hardware, tools, electrical and plumbing supplies from local stores. Prices include GST.
+            Plywood, Fevicol, furniture fittings, door locks, tools and safety gear from local stores. Prices include GST.
           </p>
         </div>
         <nav aria-label="Shop">

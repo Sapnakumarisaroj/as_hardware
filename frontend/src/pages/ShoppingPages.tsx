@@ -112,7 +112,7 @@ export function BudgetPage() {
             value={text}
             maxLength={500}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Plumbing materials for a new 12 m water line with 4 elbows"
+            placeholder="Hardware to fix 3 shelves on a brick wall"
           />
         </div>
         <div>

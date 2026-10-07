@@ -29,10 +29,10 @@ import { formatDate, formatPrice, pluralize } from '@/lib/format'
 import { usePageMeta } from '@/lib/usePageMeta'
 
 const EXAMPLES = [
-  'Paint my 12x15 bedroom, the walls have a few cracks',
+  'Repair my wardrobe, the doors and drawers are loose',
   'Install 2 shelves on a concrete wall, I don’t have a drill',
-  'Waterproofing for a 300 sq ft terrace',
-  'मेरे 10x12 कमरे की पुताई करनी है',
+  'Assemble a new bed and a study table',
+  'मेरी अलमारी का दरवाज़ा ढीला है, ठीक करना है',
 ]
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {

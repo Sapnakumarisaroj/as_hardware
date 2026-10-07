@@ -60,7 +60,7 @@ function SearchHero() {
     <section className="bg-ink-900 text-white">
       <div className="container-page py-8 md:py-12">
         <h1 className="max-w-3xl text-2xl font-extrabold leading-tight sm:text-4xl">
-          Building, wiring, plumbing or fixing? Find the right material and get it delivered.
+          Making furniture, fitting a kitchen or fixing a door? Find the right hardware and get it delivered.
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-steel-200 sm:text-base">
           Search by name, size, grade or job. Prices, stock and delivery times come straight from our stores.
@@ -288,7 +288,7 @@ function AiEntryPoints() {
     {
       to: '/quantity',
       title: 'How much do I need?',
-      text: 'Paint, cement, tiles, wire or pipe: enter the size and get the quantity with real products and prices.',
+      text: 'Screws, wall plugs and more: describe the job and get the quantity with real products and prices.',
       icon: <SparkIcon className="size-6 text-amber-500" />,
     },
     {
@@ -306,7 +306,7 @@ function AiEntryPoints() {
     {
       to: '/voice',
       title: 'Shop by voice',
-      text: 'Say “10 bags of cement” in English, Hindi or Hinglish and see the price for that quantity.',
+      text: 'Say “5 sheets of 18 mm plywood” in English, Hindi or Hinglish and see the price for that quantity.',
       icon: <MicIcon className="size-6 text-amber-500" />,
     },
   ]
@@ -364,7 +364,7 @@ function RecommendedForYou({ recent }: { recent: ProductSummary[] }) {
 }
 
 export function HomePage() {
-  usePageMeta(null, `${env.appName}: construction materials, hardware, electrical, plumbing and tools with live prices, stock and delivery times.`)
+  usePageMeta(null, `${env.appName}: plywood, Fevicol, hinges, kitchen and wardrobe fittings, door locks, tools and safety gear with live prices, stock and delivery times.`)
   const collections = useCollections()
   const lists = collections.data ?? []
   const recent = useRecentProducts()

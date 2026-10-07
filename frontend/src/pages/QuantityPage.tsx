@@ -25,11 +25,9 @@ import { formatPrice, pluralize } from '@/lib/format'
 import { usePageMeta } from '@/lib/usePageMeta'
 
 const EXAMPLES = [
-  'I need materials for 500 sq ft plastering',
-  'How much paint do I need for a 12x15 room?',
-  'I need 100 feet of wire for lights',
-  'How many tiles do I need for 300 sq ft?',
-  'Mujhe 500 sq ft ke liye plastering ka saman chahiye',
+  'Screws and wall plugs for 12 holes in a brick wall',
+  'Wall plugs and screws for 8 holes in concrete',
+  'Mujhe brick wall mein 10 holes ke liye screw aur plug chahiye',
 ]
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -56,7 +54,7 @@ function toAnswers(inputs: Record<string, AnswerInput>, questions: ProjectQuesti
 }
 
 export function QuantityPage() {
-  usePageMeta('Quantity calculator', 'Work out how much paint, cement, tiles, wire or pipe you need, with real products and prices.')
+  usePageMeta('Quantity calculator', 'Work out how many screws, wall plugs and other fixings you need, with real products and prices.')
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const toast = useToast()
