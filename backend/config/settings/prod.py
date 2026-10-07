@@ -26,8 +26,9 @@ if not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS:
 # Mock payments must never silently run in production.
 if PAYMENT_PROVIDER == "mock" and not env.bool("ALLOW_MOCK_PAYMENTS_IN_PROD", default=False):
     raise ImproperlyConfigured(
-        "PAYMENT_PROVIDER=mock in production. Set PAYMENT_PROVIDER=razorpay (COD works regardless), "
-        "or explicitly set ALLOW_MOCK_PAYMENTS_IN_PROD=true for a staging site."
+        "PAYMENT_PROVIDER=mock in production. Set PAYMENT_PROVIDER=razorpay, or PAYMENT_PROVIDER=none for a "
+        "cash-on-delivery-only shop; ALLOW_MOCK_PAYMENTS_IN_PROD=true is only for a staging site (anyone could "
+        "confirm an online order without paying)."
     )
 if PAYMENT_PROVIDER == "razorpay" and not (RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET):
     raise ImproperlyConfigured(

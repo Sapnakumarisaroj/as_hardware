@@ -694,19 +694,21 @@ class CheckoutPreviewSerializer(serializers.Serializer):
     def get_payment_methods(self, obj) -> list[dict]:
         """Payment choices with whether each can be used for this order (Phase 15 COD rules) and why not."""
         from integrations.payments import get_payment_provider
+        from integrations.payments.registry import online_payments_enabled
 
-        provider = get_payment_provider()
-        online_label = "Mock online payment (development — no real money)" if provider.is_test_mode else "Pay online"
+        online = online_payments_enabled()
+        test_mode = online and get_payment_provider().is_test_mode
+        online_label = "Mock online payment (development — no real money)" if test_mode else "Pay online"
         cod = obj.cod
         cod_limit = cod.max_order_value if cod else None
         return [
             {
                 "value": PaymentMethod.ONLINE,
                 "label": online_label,
-                "test_mode": provider.is_test_mode,
-                "available": True,
-                "reason_code": "",
-                "message": "",
+                "test_mode": test_mode,
+                "available": online,
+                "reason_code": "" if online else "online_unavailable",
+                "message": "" if online else "Online payment isn't available yet. Please choose cash on delivery.",
             },
             {
                 "value": PaymentMethod.COD,

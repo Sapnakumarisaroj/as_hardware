@@ -99,7 +99,7 @@ All configuration comes from environment variables. See `.env.example` for the f
 | `STATIC_ROOT` / `MEDIA_ROOT` | blank → `backend/staticfiles`, `backend/media` | absolute paths on the host (§6, §7) |
 | `PRIVATE_MEDIA_ROOT` | blank → `backend/private_media` | a folder outside the document roots (§7) |
 | `DELIVERY_OTP_*`, `DELIVERY_PROOF_REQUIRED`, `DELIVERY_EARNING_*` | defaults | optional; see `.env.example` (Phase 10) |
-| `PAYMENT_PROVIDER` | `mock` | `razorpay` (prod **refuses** `mock` unless `ALLOW_MOCK_PAYMENTS_IN_PROD=true`) |
+| `PAYMENT_PROVIDER` | `mock` | `razorpay`, or `none` for a cash-on-delivery-only launch (online payment shown as unavailable). Prod **refuses** `mock` unless `ALLOW_MOCK_PAYMENTS_IN_PROD=true`, which is for staging only: with it anyone could confirm an online order without paying |
 | `WHATSAPP_PROVIDER`, `SMS_PROVIDER` | `mock` | `mock` until you connect real accounts (messages are recorded in the delivery log, nothing is sent; customers still get in-app + email). WhatsApp: `meta` with `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` (see “WhatsApp go-live”). SMS: no gateway ships (paid); keep `mock` or `none` |
 | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL` | console | the hosting mailbox's SMTP details: order, delivery, refund and support emails go out through it |
 | `LLM_PROVIDER` | `none` or `ollama` | `none` unless you choose and approve a provider |
@@ -326,7 +326,7 @@ Options -Indexes
 - [ ] new `DJANGO_SECRET_KEY` (never reuse the dev key)
 - [ ] `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS` set to real domains
 - [ ] `DATABASE_URL` points to the hosting DB; `createcachetable` run
-- [ ] `PAYMENT_PROVIDER=razorpay` with live keys (or COD-only launch with mock blocked)
+- [ ] `PAYMENT_PROVIDER=razorpay` with live keys, or `PAYMENT_PROVIDER=none` for a COD-only launch (never `mock`)
 - [ ] SMTP credentials for password reset and order emails
 - [ ] `python manage.py check --deploy` shows no issues
 - [ ] Frontend built with the production `VITE_API_BASE_URL`
@@ -338,12 +338,26 @@ Options -Indexes
 - [ ] Stores have coordinates, opening hours and at least one active delivery zone; PIN codes entered (§2a)
 - [ ] `GET /api/delivery/check/?postal_code=<a PIN you serve>` answers `serviceable: true`, and a PIN you don't serve `false`
 
+### Go-live test pass (Phase 26 → 27)
+Everything below was tested in development (docs/TESTING.md); these checks need the real host:
+- [ ] Run the backend suite once against the hosting database engine (MySQL or PostgreSQL):
+  `DATABASE_URL=<a scratch database on that server> python -m pytest -q`
+- [ ] Copy the production database to a scratch database, run `e2e/setup.py` there and
+  `python e2e/check.py https://staging.yourdomain.com/api` against a staging copy of the site (never production)
+- [ ] Manual browser pass on a phone and a desktop: sign up, search, cart, checkout (COD; online if enabled), order
+  page, rider app (camera for the proof photo, location), dashboard, reports, business assistant
+- [ ] If Razorpay is enabled: one real low-value payment and refund in live mode; the webhook arrives (dashboard
+  shows the payment confirmed without the browser)
+- [ ] SMTP: a password-reset email and an order email arrive; spam folder checked
+- [ ] `run_jobs` cron runs (Notifications → Delivery log shows sent emails; no stuck pending jobs)
+- [ ] Real catalogue entered (prices, MRP, GST/HSN, stock, photos) and the demo data not loaded
+
 ## 12. Troubleshooting
 
 | Symptom | Likely cause / fix |
 |---|---|
 | "Incomplete response received from application" / 500 on every request | Check the Passenger log (`~/boltrun_api/stderr.log` or the panel's log). Usually a missing env var (`DJANGO_SECRET_KEY`) or `pip install` not run inside the app's virtualenv |
-| `ImproperlyConfigured: PAYMENT_PROVIDER=mock in production` | Intended safety guard. Set `PAYMENT_PROVIDER=razorpay`, or `ALLOW_MOCK_PAYMENTS_IN_PROD=true` on staging only |
+| `ImproperlyConfigured: PAYMENT_PROVIDER=mock in production` | Intended safety guard. Set `PAYMENT_PROVIDER=razorpay`, or `none` (COD only); `ALLOW_MOCK_PAYMENTS_IN_PROD=true` on staging only |
 | `Error loading MySQLdb module` | `pip install -r requirements/mysql.txt` in the app's virtualenv |
 | `Access denied for user` | Use the full cPanel-prefixed DB name and user; grant privileges; URL-encode the password |
 | `DisallowedHost` | Add the hostname to `DJANGO_ALLOWED_HOSTS` |

@@ -276,3 +276,10 @@ def test_secrets_and_local_files_are_not_tracked_by_git():
     tracked = subprocess.run(git, cwd=BACKEND, capture_output=True, text=True).stdout.splitlines()  # noqa: S603, S607
     bad = [f for f in tracked if f.endswith((".sqlite3", ".env", ".log", ".pem", ".key")) or "settings.local.json" in f]
     assert bad == []
+
+
+def test_production_accepts_a_cod_only_shop_but_still_refuses_mock_payments():
+    base = {"DJANGO_SECRET_KEY": STRONG, "DJANGO_ALLOWED_HOSTS": "api.example.com"}
+    assert _settings_import("config.settings.prod", PAYMENT_PROVIDER="none", **base).returncode == 0
+    mock = _settings_import("config.settings.prod", PAYMENT_PROVIDER="mock", **base)
+    assert mock.returncode != 0 and "PAYMENT_PROVIDER=none" in mock.stderr

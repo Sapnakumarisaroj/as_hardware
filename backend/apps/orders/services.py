@@ -31,6 +31,7 @@ from apps.payments.cod_rules import cod_eligibility
 from apps.payments.models import Payment, Refund
 from apps.payments.refunds import create_refund
 from integrations.payments import get_payment_provider
+from integrations.payments.registry import online_payments_enabled
 
 from .delivery_info import delivery_sentence, refresh_delivery_estimate
 from .models import Order, OrderItem, OrderShipment, OrderStatus, OrderStatusHistory, PaymentMethod, PaymentStatus
@@ -112,6 +113,10 @@ def place_order(
     """
     if payment_method not in PaymentMethod.values:
         raise OrderError("Unsupported payment method.", code="invalid_payment_method")
+    if payment_method == PaymentMethod.ONLINE and not online_payments_enabled():
+        raise OrderError(
+            "Online payment isn't available yet. Please choose cash on delivery.", code="online_payment_unavailable"
+        )
 
     # Serialize checkouts of the same customer: concurrent "Place order" clicks queue here.
     Cart.objects.get_or_create(user=user)

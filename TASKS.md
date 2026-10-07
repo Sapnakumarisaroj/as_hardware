@@ -680,7 +680,42 @@ confirmed in the code before fixing. Smallest changes; no API changed except whe
   per email (a known email can be locked out for 15 minutes by anyone; password reset clears it), vision model wording
   for "not hardware" photos is shown to the uploader
 
+### Phase 26 — Final testing ✅
+Scope: the Phase 26 prompt (testing only; fix genuine bugs with regression tests) and ROADMAP 26.
+- [x] Baseline: every suite green; coverage 94% of application code (application and test code); weakest parts were the customer
+  support API, editing/deleting own reviews, the payment background jobs and the language-model HTTP clients
+- [x] Coverage gaps: `support/tests/test_support_api.py` (start with an own order only, reply, privacy, staff reply
+  notifies, closed conversations, length limits), `core/tests/test_phase26_gaps.py` (edited review re-moderated and
+  dropped from the rating, deleting, others' reviews out of reach, moderation needs a decision; refund housekeeping
+  queues gateway refunds and never cash ones; periodic jobs on an empty shop; unpaid-order expiry releases stock;
+  Ollama, OpenAI-compatible and Anthropic clients and `post_json` errors over a faked network)
+- [x] End-to-end: `backend/e2e/check.py` + `setup.py` — 130 HTTP checks on a running server and a copy of the dev
+  database: customer (accounts, tokens, catalogue, filters, search, bulk quote, compatibility, wishlist, cart,
+  coupons, smart cart, recommendations, kits, assistant, voice, Quantity AI, project builder, budget, image search),
+  checkout and payments (COD limit, price changed, idempotency, failed → retried → paid, double verification,
+  cancelled payment, cancel + stock, cancel twice), delivery (zones, store transitions, store isolation,
+  assignment, rider steps, wrong OTP, proof photo private, delivery with OTP and cash, COD handover, failed
+  delivery, re-dispatch), returns and manual refund, notifications (inbox, log, WhatsApp opt-in, failure → admin
+  retry), refund of a cancelled paid order, admin (dashboard, catalogue, offers, inventory, stores, riders,
+  customers, returns, reports, business assistant, no self role change), security (anonymous 401, customer 403,
+  uploads, 413, no self-promotion, unsigned webhooks)
+- [x] Earlier live suites re-run on the final code: notifications 31/31, reports + business assistant with Ollama
+  `qwen2.5:3b` 43/43, security under production settings 19/19 (total live 223/223 with the end-to-end script)
+- [x] Bug fixed: DEPLOYMENT.md offered a "COD-only launch", but production refused to start without a payment
+  gateway unless `ALLOW_MOCK_PAYMENTS_IN_PROD=true` — and with that, anyone could confirm an online order as paid
+  with the mock gateway. New `PAYMENT_PROVIDER=none`: checkout shows online payment as unavailable (with the reason;
+  the page already greys out unavailable methods), placing or retrying an online order is refused
+  (`online_payment_unavailable`), production starts with it and still refuses `mock`. Tests:
+  `payments/tests/test_cod_only.py` (4) + 1 production-settings test
+- [x] Verified: ruff lint + format, Django check, `check --deploy` (production settings: no security warnings),
+  `makemigrations --check`, OpenAPI 0 errors (14 known naming warnings), tsc, eslint, production build
+- [x] Tests: backend 1571 pass (22 new); frontend 382 pass
+- [~] Not run here: browser automation (Playwright not installed; the browser extension can't open a local server),
+  MySQL/PostgreSQL (no server), real Razorpay/WhatsApp/SMTP accounts (none yet), load tests. All listed in the
+  Phase 27 go-live checklist
+
 ## Known limitations carried forward
+- COD limit: with plywood at ₹2–5k a sheet, the default ₹10,000 cash-on-delivery limit excludes most board orders (10 sheets ≈ ₹41,000); the owner may want to raise it in the dashboard (Cash on delivery) or rely on online payment
 - Reports/assistant: no purchase costs, so no profit or margin; orders count for the store chosen at checkout (a split order's second store shows in delivery figures only); periods ≤ 366 days; the assistant knows 16 kinds of question and answers in English; with a local model on CPU an AI-worded answer takes 4–10 s
 - Catalogue: all 47 products are demo data (fictional "(Demo)" brands, illustrative prices, drawn demo pictures, demo stock); Fevicol products use the real brand name with placeholder prices. Real products, photos, prices, MRPs, GST/HSN codes, stock and specifications must be entered before going live
 - Notifications: WhatsApp and SMS run on the mock providers (recorded, nothing sent) until real accounts are connected; WhatsApp messages started by the shop must use templates approved in WhatsApp Manager with the same variables in the same order as the shop's words; the bell refreshes every minute (no live push); messages go out within one cron interval in `cron` mode (immediately in `inline` mode); the "running late" check runs from `run_jobs`; a customer's own words in Hindi/Hinglish exist only where an administrator wrote them (built-in words are English)

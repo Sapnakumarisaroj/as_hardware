@@ -193,6 +193,13 @@ def retry_payment(order: Order, *, user) -> Payment:
     order = Order.objects.select_for_update().get(pk=order.pk)
     if order.user_id != user.id:
         raise NotFoundError("Order not found.")
+    from integrations.payments.registry import online_payments_enabled
+
+    if not online_payments_enabled():
+        raise PaymentStateError(
+            "Online payment isn't available. Cancel the order and order again with cash on delivery.",
+            code="online_payment_unavailable",
+        )
     if order.payment_method != PaymentMethod.ONLINE or order.status != OrderStatus.PENDING:
         raise PaymentStateError("This order does not need a payment.")
     if order.payments.filter(status__in=MONEY_HELD).exists():
