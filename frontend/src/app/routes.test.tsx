@@ -17,7 +17,9 @@ describe('homepage', () => {
     const api = mockApi({ get: catalogRoutes() })
     renderRoute('/')
 
-    expect(screen.getByRole('heading', { level: 1, name: /find the right hardware/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Hardware for every project' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Shop now/ })).toHaveAttribute('href', '/products')
+    expect(screen.getByRole('link', { name: 'Browse categories' })).toHaveAttribute('href', '#categories')
     // Delivery lives in the header's selector; there is no separate delivery bar on the page.
     expect(within(screen.getByRole('banner')).getByRole('button', { name: /Deliver to\s*Select location/ })).toBeInTheDocument()
     expect(screen.queryByTestId('deliver-to-message')).not.toBeInTheDocument()
@@ -25,13 +27,18 @@ describe('homepage', () => {
     expect(within(groups).getByRole('link', { name: 'Tools & Safety' })).toHaveAttribute('href', '/shop/tools-safety')
     expect(within(groups).getByRole('link', { name: 'Hinges, Channels & Handles' })).toHaveAttribute('href', '/c/hinges-channels-handles')
 
-    // Department rails are the catalogue's departments; curated-list fallbacks use live data.
-    for (const title of ['Plywood, MDF & HDHMR', 'Power Tools & Accessories', 'Best sellers', 'New arrivals', 'Bulk buying']) {
+    // Curated-list fallbacks and the popular grid use live data; departments are reached through the category cards.
+    for (const title of ['Best sellers', 'New arrivals', 'Popular hardware', 'Bulk buying']) {
       expect(await screen.findByRole('region', { name: title })).toBeInTheDocument()
     }
-    expect(screen.getByRole('region', { name: 'Not sure what you need?' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Plywood, MDF & HDHMR' })).not.toBeInTheDocument()
+    const tools = screen.getByRole('region', { name: 'Smarter way to buy hardware' })
+    expect(within(tools).getByRole('link', { name: /AI assistant/ })).toHaveAttribute('href', '/ai-assistant')
+    expect(within(tools).getAllByRole('link')).toHaveLength(6)
+    expect(screen.getByRole('region', { name: 'Fast hardware delivery across Bengaluru' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Why shop with us' })).toHaveTextContent('Cash on delivery')
     const sent = paramsSent(api.get, '/products/')
-    expect(sent).toContainEqual(expect.objectContaining({ category: 'plywood-mdf-hdhmr', ordering: 'popular' }))
+    expect(sent).toContainEqual(expect.objectContaining({ ordering: 'popular', in_stock: 'true' }))
     expect(sent).toContainEqual(expect.objectContaining({ bestseller: 'true', ordering: 'popular' }))
     expect(sent).toContainEqual(expect.objectContaining({ bulk_pricing: 'true' }))
     // No PIN: no fast-delivery section and no PIN sent; no history: no recently viewed / recommended.

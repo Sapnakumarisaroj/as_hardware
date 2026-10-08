@@ -342,7 +342,7 @@ function PromoCredit() {
           {customer ? (
             <p className="text-sm">
               Customer: <span className="font-semibold">{customer.name}</span> ({customer.email}){' '}
-              <button type="button" className="font-semibold text-amber-600 hover:underline" onClick={() => setCustomer(null)}>
+              <button type="button" className="font-semibold text-amber-700 hover:underline" onClick={() => setCustomer(null)}>
                 Change
               </button>
             </p>

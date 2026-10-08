@@ -13,7 +13,7 @@ function rangeLabel(tier: PriceTier): string {
 export function BulkPriceIndicator({ bulk }: { bulk: BulkPricingSummary }) {
   return (
     <p className="text-xs font-semibold text-ink-900" data-testid="bulk-indicator">
-      <span className="rounded bg-steel-100 px-1.5 py-0.5">Bulk price</span>{' '}
+      <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-amber-700 ring-1 ring-amber-100">Bulk price</span>{' '}
       <span className="font-normal text-ink-600">
         from {formatPrice(bulk.lowest_unit_price)}/unit
         {bulk.from_quantity ? ` (${bulk.from_quantity}+)` : ''}

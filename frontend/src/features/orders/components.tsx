@@ -16,7 +16,7 @@ const TONE_CLASSES: Record<Tone, string> = {
   progress: 'bg-amber-100 text-ink-900',
   success: 'bg-success-600/10 text-success-600',
   danger: 'bg-danger-600/10 text-danger-600',
-  warning: 'bg-amber-100 text-amber-600',
+  warning: 'bg-amber-100 text-amber-700',
 }
 
 export function OrderStatusBadge({ order }: { order: { status: OrderStatus; payment_method: string } }) {
@@ -137,7 +137,7 @@ export function OrderItemsList({ items }: { items: OrderItem[] }) {
           <ProductImage src={item.image} alt={item.product_name} className="size-16 shrink-0 rounded" />
           <div className="min-w-0 flex-1 text-sm">
             {item.product_slug ? (
-              <Link to={`/p/${item.product_slug}`} className="font-semibold text-ink-900 hover:text-amber-600">
+              <Link to={`/p/${item.product_slug}`} className="font-semibold text-ink-900 hover:text-amber-700">
                 {item.product_name}
               </Link>
             ) : (
@@ -198,7 +198,7 @@ export function OrderTimeline({ order }: { order: Pick<OrderDetail, 'status' | '
             <div className="text-sm">
               <p className={done ? 'font-semibold text-ink-900' : 'text-ink-600'}>
                 {step.label}
-                {step.state === 'current' && <span className="ml-2 text-xs font-normal text-amber-600">Current</span>}
+                {step.state === 'current' && <span className="ml-2 text-xs font-normal text-amber-700">Current</span>}
                 <span className="sr-only">{done ? ' — completed' : ' — upcoming'}</span>
               </p>
               {step.at && <p className="text-xs text-ink-600">{formatDateTime(step.at)}</p>}

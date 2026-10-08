@@ -181,7 +181,7 @@ export function OrderDeliveryCard({
   const row = 'flex flex-wrap justify-between gap-x-4 py-1'
 
   return (
-    <section aria-labelledby={headingId} className="rounded-lg bg-white p-5 text-sm ring-1 ring-steel-200">
+    <section aria-labelledby={headingId} className="rounded-2xl bg-white shadow-(--shadow-card) p-5 text-sm ring-1 ring-steel-200">
       <h2 id={headingId} className="mb-2 text-base font-bold">
         Delivery
       </h2>

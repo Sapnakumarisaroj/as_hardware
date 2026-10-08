@@ -257,7 +257,7 @@ function Customer({ id }: { id: string | undefined }) {
             title="Recent orders"
             action={
               person.order_count + person.cancelled_orders > 0 && (
-                <Link to={`/admin/orders?customer=${person.id}`} className="text-sm font-semibold text-amber-600 hover:underline">
+                <Link to={`/admin/orders?customer=${person.id}`} className="text-sm font-semibold text-amber-700 hover:underline">
                   All orders
                 </Link>
               )

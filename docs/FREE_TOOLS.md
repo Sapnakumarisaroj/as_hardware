@@ -115,6 +115,7 @@ existing React app and reads the project's own database through the Django API.
 | Feature | Tool/Library | Free/Open Source | Local | API Key | Notes |
 |---|---|---|---|---|---|
 | Charts | Recharts 3 | ✅ MIT | ✅ | No | Dashboard/analytics only (lazy chunk) |
+| Font | Inter (variable), npm `@fontsource-variable/inter` | ✅ OFL-1.1 | ✅ | No | Self-hosted with the app build (no Google Fonts request); falls back to the system sans-serif |
 | UI library | React 19 | ✅ MIT | ✅ | No | |
 | Routing | React Router | ✅ MIT | ✅ | No | |
 | Server state / caching | TanStack Query | ✅ MIT | ✅ | No | |

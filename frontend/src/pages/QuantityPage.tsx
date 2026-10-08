@@ -139,7 +139,7 @@ export function QuantityPage() {
         show bulk prices, offers, stock and delivery, ready to add to your cart.
       </p>
 
-      <form onSubmit={onSubmit} className="mt-5 max-w-2xl rounded-lg bg-white p-4 ring-1 ring-steel-200">
+      <form onSubmit={onSubmit} className="mt-5 max-w-2xl rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
         <label htmlFor="quantity-text" className="label">
           What do you need?
         </label>
@@ -271,7 +271,7 @@ function ResultView(props: ResultProps) {
   const [editing, setEditing] = useState(false)
   if (!result.calculator) {
     return (
-      <div role="status" className="mt-6 max-w-2xl rounded-lg bg-white p-4 text-sm ring-1 ring-steel-200">
+      <div role="status" className="mt-6 max-w-2xl rounded-2xl bg-white shadow-(--shadow-card) p-4 text-sm ring-1 ring-steel-200">
         <p>{result.message}</p>
         {result.ai.notice && <p className="mt-2 text-xs text-ink-600">{result.ai.notice}</p>}
       </div>
@@ -312,7 +312,7 @@ function ResultView(props: ResultProps) {
       {showForm ? (
         <AnswersForm {...props} onDone={() => setEditing(false)} />
       ) : (
-        <div className="mt-4 flex max-w-3xl flex-wrap items-start justify-between gap-3 rounded-lg bg-white p-3 text-sm ring-1 ring-steel-200">
+        <div className="mt-4 flex max-w-3xl flex-wrap items-start justify-between gap-3 rounded-2xl bg-white shadow-(--shadow-card) p-3 text-sm ring-1 ring-steel-200">
           <ul className="space-y-0.5 text-ink-700" aria-label="Assumptions">
             {result.assumptions?.map((a) => (
               <li key={a.key}>{a.text}</li>
@@ -350,7 +350,7 @@ function AnswersForm({ result, inputs, fieldErrors, onAnswers, onDone }: ResultP
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-4 max-w-3xl rounded-lg bg-white p-4 ring-1 ring-steel-200" aria-labelledby="answers-title">
+    <form onSubmit={onSubmit} className="mt-4 max-w-3xl rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200" aria-labelledby="answers-title">
       <h3 id="answers-title" className="font-bold">
         {result.complete ? 'Measurements and assumptions' : 'A few details for the right amounts'}
       </h3>
@@ -477,7 +477,7 @@ function KitResult({ kit, materials, onOverride, pin, onPin, coupon, onCoupon, o
           ))}
         </ul>
       </div>
-      <aside className="h-fit space-y-3 rounded-lg bg-white p-4 ring-1 ring-steel-200 lg:sticky lg:top-20" aria-label="Estimated total">
+      <aside className="h-fit space-y-3 rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200 lg:sticky lg:top-20" aria-label="Estimated total">
         <PinForm pin={pin || kit.postal_code} onPin={onPin} id="quantity-pin" />
         <p className={`text-sm ${kit.delivery.available ? 'text-ink-800' : 'text-danger-600'}`}>
           {kit.delivery.checked ? kit.delivery.message : 'Enter your PIN to check delivery.'}
@@ -557,7 +557,7 @@ function KitResult({ kit, materials, onOverride, pin, onPin, coupon, onCoupon, o
 
 function MaterialCard({ material, items, onOverride }: { material: QuantityMaterial; items: KitItem[]; onOverride: ResultProps['onOverride'] }) {
   return (
-    <li className="rounded-lg bg-white p-3 ring-1 ring-steel-200">
+    <li className="rounded-2xl bg-white shadow-(--shadow-card) p-3 ring-1 ring-steel-200">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h4 className="font-semibold">{material.label}</h4>
         <span className="text-sm">
@@ -615,7 +615,7 @@ function ItemRow({ item, onOverride }: { item: KitItem; onOverride: ResultProps[
       )}
       <div className="min-w-0 flex-1">
         {item.product && (
-          <Link to={`/p/${item.product.slug}`} className="block text-sm font-medium hover:text-amber-600">
+          <Link to={`/p/${item.product.slug}`} className="block text-sm font-medium hover:text-amber-700">
             {item.product.name}
             {item.variant?.name && <span className="text-ink-600"> · {item.variant.name}</span>}
           </Link>

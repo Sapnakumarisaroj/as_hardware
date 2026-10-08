@@ -31,7 +31,7 @@ export function CompatibilityChecker({ product, variantId }: { product: ProductD
   }
 
   return (
-    <section aria-labelledby="compatibility-heading" className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
+    <section aria-labelledby="compatibility-heading" className="rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
       <h2 id="compatibility-heading" className="text-lg font-bold">
         Compatibility
       </h2>
@@ -126,7 +126,7 @@ export function CompatibilityChecker({ product, variantId }: { product: ProductD
         </button>
         <Link
           to={`/ai-assistant?product=${product.id}&ask=${encodeURIComponent(`What works with the ${product.name}?`)}`}
-          className="text-sm font-semibold text-amber-600 hover:underline"
+          className="text-sm font-semibold text-amber-700 hover:underline"
         >
           Ask the assistant
         </Link>

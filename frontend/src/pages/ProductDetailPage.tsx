@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router'
 
 import { Breadcrumbs } from '@/components/Breadcrumbs'
 import { ErrorState, PageSpinner } from '@/components/feedback'
-import { ChevronDownIcon, ClockIcon, StarIcon } from '@/components/icons'
+import { ChevronDownIcon, ClockIcon, ReceiptIcon, ReturnIcon, StarIcon, TruckIcon } from '@/components/icons'
 import { QuantityStepper } from '@/components/QuantityStepper'
 import { AddToCartButton } from '@/features/cart/AddToCartButton'
 import { useProduct, useProductReviews } from '@/features/catalog/api'
@@ -63,7 +63,7 @@ function DeliveryInfo({ product, variant, quantity }: { product: ProductDetail; 
       <div aria-live="polite" aria-busy={estimate.isFetching} className="space-y-2">
         <p className="text-xs text-ink-600">
           Delivering to PIN <span className="font-semibold text-ink-900">{pincode}</span>{' '}
-          <button type="button" onClick={() => savePincode('')} className="font-semibold text-amber-600 hover:underline">
+          <button type="button" onClick={() => savePincode('')} className="font-semibold text-amber-700 hover:underline">
             Change
           </button>
         </p>
@@ -146,7 +146,7 @@ function SpecTable({ product, variant }: { product: ProductDetail; variant: Prod
 function Reviews({ product }: { product: ProductDetail }) {
   const reviews = useProductReviews(product.slug)
   return (
-    <section id="reviews" aria-labelledby="reviews-heading" className="scroll-mt-32 rounded-lg bg-white p-5 ring-1 ring-steel-200">
+    <section id="reviews" aria-labelledby="reviews-heading" className="scroll-mt-32 rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200">
       <h2 id="reviews-heading" className="text-lg font-bold">
         Ratings & reviews
       </h2>
@@ -185,7 +185,7 @@ function Reviews({ product }: { product: ProductDetail }) {
 
 function Panel({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section aria-labelledby={id} className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+    <section aria-labelledby={id} className="rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200">
       <h2 id={id} className="mb-2 text-lg font-bold">
         {title}
       </h2>
@@ -366,7 +366,7 @@ export function ProductDetailPage() {
         </div>
       </div>
 
-      <div className="container-page grid gap-8 py-6 lg:grid-cols-2">
+      <div className="container-page grid gap-8 py-6 lg:grid-cols-2 lg:gap-12 lg:py-10">
         <div className="lg:sticky lg:top-32 lg:self-start">
           <ProductGallery images={data.images} productName={data.name} variantId={variant.id} />
         </div>
@@ -376,12 +376,12 @@ export function ProductDetailPage() {
             {data.brand && (
               <Link
                 to={`/brand/${encodeURIComponent(data.brand.slug)}`}
-                className="text-sm font-semibold uppercase tracking-wide text-amber-600 hover:underline"
+                className="text-sm font-semibold uppercase tracking-wide text-amber-700 hover:underline"
               >
                 {data.brand.name}
               </Link>
             )}
-            <h1 className="mt-1 text-2xl font-bold leading-tight text-ink-950 sm:text-3xl">{data.name}</h1>
+            <h1 className="mt-1 text-2xl font-bold leading-tight text-ink-950 sm:text-3xl lg:text-[2rem]">{data.name}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-ink-600">
               {data.rating_count > 0 ? (
                 <a href="#reviews" className="hover:underline">
@@ -420,12 +420,12 @@ export function ProductDetailPage() {
           )}
 
           {hasTiers && !outOfStock && (
-            <section aria-label="Bulk pricing" className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
+            <section aria-label="Bulk pricing" className="rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
               <BulkPriceTable tiers={variant.price_tiers ?? []} quantity={safeQuantity} />
             </section>
           )}
 
-          <div className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-steel-200">
+          <div className="space-y-3 rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
             <div className="flex flex-wrap items-center gap-3">
               <QuantityStepper value={safeQuantity} max={maxQuantity} onChange={setQuantity} disabled={outOfStock} />
               <span className="text-xs text-ink-600">Max {data.max_order_quantity} per order</span>
@@ -440,9 +440,23 @@ export function ProductDetailPage() {
             <div className="lg:hidden">
               <WishlistButton productId={data.id} productName={data.name} variant="button" />
             </div>
+            <ul className="grid grid-cols-3 gap-2 border-t border-steel-100 pt-3 text-xs text-ink-600" aria-label="Buying with us">
+              <li className="flex items-center gap-1.5">
+                <TruckIcon className="size-4 shrink-0 text-amber-700" />
+                Bengaluru delivery
+              </li>
+              <li className="flex items-center gap-1.5">
+                <ReturnIcon className="size-4 shrink-0 text-amber-700" />
+                {data.is_returnable ? 'Returnable' : 'Not returnable'}
+              </li>
+              <li className="flex items-center gap-1.5">
+                <ReceiptIcon className="size-4 shrink-0 text-amber-700" />
+                GST included
+              </li>
+            </ul>
           </div>
 
-          <div className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-steel-200">
+          <div className="space-y-3 rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
             <p aria-live="polite">
               <StockLabel status={variant.stock_status} lowQuantity={variant.available_quantity} />
               {data.variants.length > 1 && (
@@ -456,12 +470,12 @@ export function ProductDetailPage() {
 
           <div className="grid gap-3 sm:grid-cols-2">
             {!outOfStock && (
-              <div className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
+              <div className="rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
                 <h2 className="mb-1 text-sm font-bold text-ink-950">Payment</h2>
                 <PaymentOptionsNote slug={data.slug} variantId={variant.id} quantity={safeQuantity} />
               </div>
             )}
-            <div className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
+            <div className="rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
               <h2 className="mb-1 text-sm font-bold text-ink-950">Returns</h2>
               <p className="text-sm text-ink-800" data-testid="return-policy">
                 {data.return_policy?.text ?? (data.is_returnable ? 'Returnable' : 'Not returnable')}

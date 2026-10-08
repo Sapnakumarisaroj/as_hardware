@@ -150,7 +150,7 @@ function Steps({ shipment }: { shipment: OrderShipment }) {
             <span className={done ? 'font-semibold text-ink-900' : 'text-ink-600'}>
               {step.label}
               <span className="sr-only">{done ? ' — done' : ' — not yet'}</span>
-              {current && <span className="ml-2 text-xs font-normal text-amber-600">Now</span>}
+              {current && <span className="ml-2 text-xs font-normal text-amber-700">Now</span>}
               {done && times[step.status] && (
                 <span className="ml-2 text-xs font-normal text-ink-600">{when(times[step.status] ?? null)}</span>
               )}
@@ -227,13 +227,13 @@ function Shipment({
       {rider && !['delivered', 'failed'].includes(shipment.status) && (
         <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
           <span className="flex items-center gap-1.5">
-            <PinIcon className="size-4 text-amber-600" />
+            <PinIcon className="size-4 text-amber-700" />
             <span>
               <span className="font-semibold">{rider.name}</span> · {rider.vehicle}
             </span>
           </span>
           {rider.phone && (
-            <a href={`tel:${rider.phone}`} className="font-semibold text-amber-600 hover:underline">
+            <a href={`tel:${rider.phone}`} className="font-semibold text-amber-700 hover:underline">
               Call {rider.name}
               <span className="sr-only"> on {rider.phone}</span>
             </a>
@@ -275,7 +275,7 @@ export function DeliveryTracking({
     shipment.item_ids.map((id) => order.items.find((item) => item.id === id)?.product_name ?? '').filter(Boolean)
 
   return (
-    <section aria-labelledby="tracking-heading" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+    <section aria-labelledby="tracking-heading" className="rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200">
       <h2 id="tracking-heading" className="mb-3 text-base font-bold">
         Track delivery
       </h2>

@@ -159,7 +159,7 @@ export function AssistantPage() {
     )
   ) : (
     <p className="text-sm text-ink-600">
-      <Link to={`/login?next=${encodeURIComponent('/ai-assistant')}`} className="font-semibold text-amber-600 hover:underline">
+      <Link to={`/login?next=${encodeURIComponent('/ai-assistant')}`} className="font-semibold text-amber-700 hover:underline">
         Sign in
       </Link>{' '}
       to keep your conversations.
@@ -230,7 +230,7 @@ export function AssistantPage() {
 
       <div className="flex min-h-0 flex-1 gap-4">
         <aside className="hidden w-64 shrink-0 lg:block">
-          <div className="sticky top-20 rounded-lg bg-white p-3 ring-1 ring-steel-200">{sidebar}</div>
+          <div className="sticky top-20 rounded-2xl bg-white shadow-(--shadow-card) p-3 ring-1 ring-steel-200">{sidebar}</div>
         </aside>
         <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)} title="Conversations">
           {sidebar}
@@ -247,7 +247,7 @@ export function AssistantPage() {
             ) : (
               <>
                 {!hasMessages && (
-                  <div className="rounded-lg bg-white px-4 py-5 ring-1 ring-steel-200">
+                  <div className="rounded-2xl bg-white shadow-(--shadow-card) px-4 py-5 ring-1 ring-steel-200">
                     <p className="text-sm">{greeting}</p>
                     <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink-600">Try asking</p>
                     <ul className="mt-2 flex flex-wrap gap-2">

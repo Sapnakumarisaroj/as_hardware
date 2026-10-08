@@ -8,6 +8,9 @@ import { useProducts, type ListingParams } from '../api'
 import type { ProductSummary } from '../types'
 import { ProductCard } from './ProductCard'
 
+/** How a section sits on the page: plain, a soft amber band, or a dark band (one design system, varied rhythm). */
+export type SectionTone = 'plain' | 'tinted' | 'dark'
+
 export function ProductGrid({ products }: { products: ProductSummary[] }) {
   return (
     <ul className="product-grid" role="list">
@@ -27,35 +30,57 @@ function railId(title: string) {
 }
 
 /** Section heading with an optional "View all" link (shared by every product row). */
-function RailHeading({ title, subtitle, viewAllHref, icon }: { title: string; subtitle?: string; viewAllHref?: string; icon?: ReactNode }) {
+function RailHeading({
+  title,
+  subtitle,
+  eyebrow,
+  viewAllHref,
+  icon,
+  tone,
+}: {
+  title: string
+  subtitle?: string
+  eyebrow?: string
+  viewAllHref?: string
+  icon?: ReactNode
+  tone: SectionTone
+}) {
+  const dark = tone === 'dark'
   return (
-    <div className="mb-4 flex items-end justify-between gap-4">
-      <div>
-        <h2 id={railId(title)} className="flex items-center gap-2 text-xl font-bold text-ink-950">
+    <div className="mb-4 flex items-end justify-between gap-4 sm:mb-5">
+      <div className="min-w-0">
+        {eyebrow && <p className={dark ? 'eyebrow text-amber-400' : 'eyebrow'}>{eyebrow}</p>}
+        <h2 id={railId(title)} className={`section-title flex items-center gap-2 ${dark ? 'text-white' : ''}`}>
           {icon}
           {title}
         </h2>
-        {subtitle && <p className="mt-0.5 text-sm text-ink-600">{subtitle}</p>}
+        {subtitle && <p className={`mt-1 text-sm ${dark ? 'text-steel-200' : 'text-ink-600'}`}>{subtitle}</p>}
       </div>
       {viewAllHref && (
         <Link
           to={viewAllHref}
-          className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-amber-600 hover:underline"
+          className={`group/all inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+            dark ? 'text-amber-400 ring-1 ring-white/20 hover:bg-white/10' : 'text-amber-700 ring-1 ring-steel-200 hover:bg-white hover:ring-steel-300'
+          }`}
         >
           View all
           <span className="sr-only"> {title}</span>
-          <ChevronRightIcon className="size-4" />
+          <ChevronRightIcon className="size-4 transition-transform group-hover/all:translate-x-0.5" />
         </Link>
       )}
     </div>
   )
 }
 
-function ProductRow({ products }: { products: ProductSummary[] }) {
+const ROW_ITEM = 'flex shrink-0 snap-start basis-[46%] sm:basis-[31%] lg:basis-[23.5%] xl:basis-[19%]'
+
+function ProductRow({ products, contained }: { products: ProductSummary[]; contained: boolean }) {
+  // Plain rows run to the screen edge on scroll; rows inside a band stay inside it.
+  const bleed = contained ? '' : '-mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8'
   return (
-    <ul role="list" className="scrollbar-none -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 sm:gap-4">
+    <ul role="list" className={`scrollbar-none flex snap-x gap-3 overflow-x-auto pb-2 sm:gap-4 ${bleed}`}>
       {products.map((product) => (
-        <li key={product.id} className="flex w-44 shrink-0 snap-start sm:w-56">
+        <li key={product.id} className={ROW_ITEM}>
           <div className="w-full">
             <ProductCard product={product} />
           </div>
@@ -65,26 +90,48 @@ function ProductRow({ products }: { products: ProductSummary[] }) {
   )
 }
 
-/** A row of products the page already has (a curated list, recently viewed…). Hidden when empty. */
-export function ProductStrip({
-  title,
-  subtitle,
-  products,
-  viewAllHref,
-  icon,
-}: {
+function Section({ title, tone, children }: { title: string; tone: SectionTone; children: ReactNode }) {
+  const shell =
+    tone === 'dark'
+      ? 'my-6 rounded-3xl bg-ink-900 p-4 sm:p-6 lg:p-8'
+      : tone === 'tinted'
+        ? 'my-6 rounded-3xl bg-gradient-to-br from-amber-50 via-white to-amber-50/60 p-4 ring-1 ring-amber-100 sm:p-6 lg:p-8'
+        : 'py-6 sm:py-8'
+  return (
+    <section aria-labelledby={railId(title)} className={`animate-rise ${shell}`}>
+      {children}
+    </section>
+  )
+}
+
+interface SectionProps {
   title: string
   subtitle?: string
-  products: ProductSummary[]
+  eyebrow?: string
   viewAllHref?: string
   icon?: ReactNode
-}) {
+  tone?: SectionTone
+  /** Show the products as a grid instead of a scrolling row. */
+  layout?: 'row' | 'grid'
+}
+
+function Products({ products, tone, layout }: { products: ProductSummary[]; tone: SectionTone; layout: 'row' | 'grid' }) {
+  return layout === 'grid' ? <ProductGrid products={products} /> : <ProductRow products={products} contained={tone !== 'plain'} />
+}
+
+/** A row of products the page already has (a curated list, recently viewed…). Hidden when empty. */
+export function ProductStrip({
+  products,
+  tone = 'plain',
+  layout = 'row',
+  ...heading
+}: SectionProps & { products: ProductSummary[] }) {
   if (!products.length) return null
   return (
-    <section aria-labelledby={railId(title)} className="py-6">
-      <RailHeading title={title} subtitle={subtitle} viewAllHref={viewAllHref} icon={icon} />
-      <ProductRow products={products} />
-    </section>
+    <Section title={heading.title} tone={tone}>
+      <RailHeading {...heading} tone={tone} />
+      <Products products={products} tone={tone} layout={layout} />
+    </Section>
   )
 }
 
@@ -93,44 +140,38 @@ export function ProductStrip({
  * products are hidden rather than padded with placeholders.
  */
 export function ProductRail({
-  title,
-  subtitle,
   params,
-  viewAllHref,
-  icon,
   enabled = true,
   hideWhenEmpty = true,
-}: {
-  title: string
-  subtitle?: string
-  params: ListingParams
-  viewAllHref?: string
-  icon?: ReactNode
-  enabled?: boolean
-  hideWhenEmpty?: boolean
-}) {
-  const query = useProducts({ page_size: '8', ...params }, { enabled })
+  tone = 'plain',
+  layout = 'row',
+  limit = 8,
+  ...heading
+}: SectionProps & { params: ListingParams; enabled?: boolean; hideWhenEmpty?: boolean; limit?: number }) {
+  const query = useProducts({ page_size: String(limit), ...params }, { enabled })
   if (!enabled) return null
   if (query.isSuccess && query.data.results.length === 0 && hideWhenEmpty) return null
 
   return (
-    <section aria-labelledby={railId(title)} className="py-6">
-      <RailHeading title={title} subtitle={subtitle} viewAllHref={viewAllHref} icon={icon} />
+    <Section title={heading.title} tone={tone}>
+      <RailHeading {...heading} tone={tone} />
       {query.isPending ? (
-        <div role="status" aria-label={`Loading ${title}`} className="flex gap-3 overflow-hidden">
-          {Array.from({ length: 4 }, (_, i) => (
-            <div key={i} className="w-44 shrink-0 sm:w-56">
-              <CardSkeleton />
+        <div role="status" aria-label={`Loading ${heading.title}`} className="flex gap-3 overflow-hidden sm:gap-4">
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className={ROW_ITEM}>
+              <div className="w-full">
+                <CardSkeleton />
+              </div>
             </div>
           ))}
         </div>
       ) : query.isError ? (
-        <ErrorState error={query.error} onRetry={() => query.refetch()} title={`Couldn’t load ${title.toLowerCase()}`} />
+        <ErrorState error={query.error} onRetry={() => query.refetch()} title={`Couldn’t load ${heading.title.toLowerCase()}`} />
       ) : query.data.results.length === 0 ? (
-        <p className="text-sm text-ink-600">Nothing here yet.</p>
+        <p className={`text-sm ${tone === 'dark' ? 'text-steel-200' : 'text-ink-600'}`}>Nothing here yet.</p>
       ) : (
-        <ProductRow products={query.data.results} />
+        <Products products={query.data.results} tone={tone} layout={layout} />
       )}
-    </section>
+    </Section>
   )
 }

@@ -362,7 +362,7 @@ export function AdminOptionTypesPage() {
               ))}
               <button
                 type="button"
-                className="mt-2 text-sm font-semibold text-amber-600 hover:underline"
+                className="mt-2 text-sm font-semibold text-amber-700 hover:underline"
                 onClick={() => setDraft({ ...draft, values: [...draft.values, { value: '', used_by: 0 }] })}
               >
                 Add value

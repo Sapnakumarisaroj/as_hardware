@@ -90,7 +90,7 @@ export function ImageSearchResultView({ result }: { result: ImageSearchResult })
   const sure = result.status === 'identified'
   return (
     <section aria-labelledby="image-result-heading" className="space-y-4">
-      <div className="space-y-2 rounded-lg bg-white p-4 ring-1 ring-steel-200">
+      <div className="space-y-2 rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
         <h2 id="image-result-heading" className="text-lg font-bold">
           {HEADINGS[result.status](result)}
         </h2>
@@ -118,7 +118,7 @@ export function ImageSearchResultView({ result }: { result: ImageSearchResult })
         )}
         {result.search_query && result.status !== 'not_hardware' && (
           <p className="text-sm">
-            <Link to={`/search?q=${encodeURIComponent(result.search_query)}`} className="font-semibold text-amber-600 hover:underline">
+            <Link to={`/search?q=${encodeURIComponent(result.search_query)}`} className="font-semibold text-amber-700 hover:underline">
               Search the shop for “{result.search_query}”
             </Link>
           </p>
@@ -222,7 +222,7 @@ function History({ rows, onOpen }: { rows: ImageSearchHistoryRow[]; onOpen: (id:
   const remove = useDeleteImageSearch()
   if (rows.length === 0) return null
   return (
-    <section aria-labelledby="image-history-heading" className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
+    <section aria-labelledby="image-history-heading" className="rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
       <div className="mb-2 flex items-center justify-between">
         <h2 id="image-history-heading" className="text-base font-bold">
           Your recent photo searches
@@ -234,7 +234,7 @@ function History({ rows, onOpen }: { rows: ImageSearchHistoryRow[]; onOpen: (id:
       <ul className="divide-y divide-steel-100 text-sm">
         {rows.map((row) => (
           <li key={row.id} className="flex items-center justify-between gap-2 py-2">
-            <button type="button" className="min-w-0 flex-1 text-left hover:text-amber-600" onClick={() => onOpen(row.id)}>
+            <button type="button" className="min-w-0 flex-1 text-left hover:text-amber-700" onClick={() => onOpen(row.id)}>
               <span className="block truncate font-semibold">{row.label ? capitalise(row.label) : row.title}</span>
               <span className="block text-xs text-ink-600">
                 {formatDate(row.created_at)}
@@ -318,11 +318,11 @@ export function ImageSearchPage() {
       {status.isError && <ErrorState error={status.error} onRetry={() => void status.refetch()} title="Couldn’t open photo search" />}
 
       {off ? (
-        <div className="space-y-3 rounded-lg bg-white p-4 ring-1 ring-steel-200">
+        <div className="space-y-3 rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
           <h2 className="text-base font-bold">Photo search isn’t switched on in this shop yet</h2>
           <p className="text-sm text-ink-600">Describe what you need instead, or ask our assistant.</p>
           <TextSearch />
-          <Link to="/ai-assistant" className="text-sm font-semibold text-amber-600 hover:underline">
+          <Link to="/ai-assistant" className="text-sm font-semibold text-amber-700 hover:underline">
             Ask the hardware assistant
           </Link>
         </div>
@@ -371,7 +371,7 @@ export function ImageSearchPage() {
         />
       ) : (
         <p className="text-xs text-ink-600">
-          <Link to="/login?next=%2Fimage-search" className="font-semibold text-amber-600 hover:underline">
+          <Link to="/login?next=%2Fimage-search" className="font-semibold text-amber-700 hover:underline">
             Sign in
           </Link>{' '}
           to keep a history of your photo searches.

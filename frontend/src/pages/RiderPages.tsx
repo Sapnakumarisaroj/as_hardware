@@ -238,7 +238,7 @@ export function RiderDashboardPage() {
           <h2 id="active-heading" className="text-base font-bold">
             Active jobs
           </h2>
-          <Link to="/rider/history" className="text-sm font-semibold text-amber-600 hover:underline">
+          <Link to="/rider/history" className="text-sm font-semibold text-amber-700 hover:underline">
             Delivery history
           </Link>
         </div>

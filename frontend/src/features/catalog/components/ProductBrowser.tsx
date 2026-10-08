@@ -81,7 +81,7 @@ export function ProductBrowser({ fixed = {}, heading, categoryLinks = false, emp
 
       <div className="mt-5 grid gap-6 lg:grid-cols-[16rem_1fr]">
         <aside aria-label="Filters" className="hidden lg:block">
-          <div className="sticky top-32 max-h-[calc(100vh-9rem)] overflow-y-auto rounded-lg bg-white p-4 ring-1 ring-steel-200">
+          <div className="sticky top-32 max-h-[calc(100vh-9rem)] overflow-y-auto rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
             {panel}
           </div>
         </aside>
@@ -100,7 +100,7 @@ export function ProductBrowser({ fixed = {}, heading, categoryLinks = false, emp
               <button
                 type="button"
                 onClick={() => state.setParam('interpret', '0')}
-                className="font-semibold text-amber-600 hover:underline"
+                className="font-semibold text-amber-700 hover:underline"
               >
                 Search all products instead
               </button>
@@ -227,7 +227,7 @@ function ActiveFilters({ state, facets }: { state: ListingState; facets: Product
           <CloseIcon className="size-3.5" />
         </button>
       ))}
-      <button type="button" onClick={state.clearFilters} className="text-sm font-semibold text-amber-600 hover:underline">
+      <button type="button" onClick={state.clearFilters} className="text-sm font-semibold text-amber-700 hover:underline">
         Clear all
       </button>
     </div>

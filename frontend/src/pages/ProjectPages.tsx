@@ -86,7 +86,7 @@ export function ProjectsPage() {
         stock and delivery checked, ready to add to your cart in one go.
       </p>
 
-      <form onSubmit={onSubmit} className="mt-5 max-w-2xl rounded-lg bg-white p-4 ring-1 ring-steel-200">
+      <form onSubmit={onSubmit} className="mt-5 max-w-2xl rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
         <label htmlFor="project-description" className="label">
           What are you working on?
         </label>
@@ -128,7 +128,7 @@ export function ProjectsPage() {
                   type="button"
                   onClick={() => begin({ project_type: type.key })}
                   disabled={start.isPending}
-                  className="h-full w-full rounded-lg bg-white p-4 text-left ring-1 ring-steel-200 hover:ring-amber-500"
+                  className="h-full w-full rounded-2xl bg-white shadow-(--shadow-card) p-4 text-left ring-1 ring-steel-200 hover:ring-amber-500"
                 >
                   <span className="font-semibold text-ink-900">{type.name}</span>
                   <span className="mt-1 block text-xs text-ink-600">{type.summary}</span>
@@ -154,10 +154,10 @@ function MyProjects() {
       <h2 id="my-projects" className="text-lg font-bold">
         Your projects
       </h2>
-      <ul className="mt-3 divide-y divide-steel-100 rounded-lg bg-white ring-1 ring-steel-200">
+      <ul className="mt-3 divide-y divide-steel-100 rounded-2xl bg-white shadow-(--shadow-card) ring-1 ring-steel-200">
         {projects.data.results.map((project) => (
           <li key={project.id} className="flex items-center gap-3 p-3">
-            <Link to={`/projects/${project.id}`} className="min-w-0 flex-1 hover:text-amber-600">
+            <Link to={`/projects/${project.id}`} className="min-w-0 flex-1 hover:text-amber-700">
               <span className="block truncate font-semibold">{project.title}</span>
               <span className="text-xs text-ink-600">
                 {STATUS_LABEL[project.status]} · {pluralize(project.item_count, 'item')} · {formatDate(project.updated_at)}
@@ -211,7 +211,7 @@ function ProjectView({ plan, pin, onPin }: { plan: ProjectPlan; pin: string; onP
   const [editing, setEditing] = useState(false)
   return (
     <div className="container-page py-6">
-      <Link to="/projects" className="text-sm text-ink-600 hover:text-amber-600">
+      <Link to="/projects" className="text-sm text-ink-600 hover:text-amber-700">
         ← All projects
       </Link>
       <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-amber-700">{plan.type_name}</p>
@@ -254,7 +254,7 @@ function answerText(question: ProjectQuestion, value: AnswerValue | undefined): 
 function AnswersSummary({ plan, onEdit }: { plan: ProjectPlan; onEdit: () => void }) {
   const assumed = new Set(plan.assumptions.map((a) => a.key))
   return (
-    <section className="mt-5 max-w-3xl rounded-lg bg-white p-4 ring-1 ring-steel-200" aria-labelledby="answers">
+    <section className="mt-5 max-w-3xl rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200" aria-labelledby="answers">
       <div className="flex items-center justify-between gap-3">
         <h2 id="answers" className="font-bold">
           Your answers
@@ -305,7 +305,7 @@ function QuestionsForm({ plan, pin, onDone }: { plan: ProjectPlan; pin: string; 
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-5 max-w-3xl rounded-lg bg-white p-4 ring-1 ring-steel-200" aria-labelledby="questions">
+    <form onSubmit={onSubmit} className="mt-5 max-w-3xl rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200" aria-labelledby="questions">
       <h2 id="questions" className="font-bold">
         {plan.complete ? 'Change your answers' : 'A few details for the right amounts'}
       </h2>
@@ -412,7 +412,7 @@ function KitView({ plan, kit, pin, onPin }: { plan: ProjectPlan; kit: ProjectKit
           <h2 id="kit" className="text-lg font-bold">
             Your kit
           </h2>
-          <button type="button" className="text-sm text-ink-600 underline hover:text-amber-600" onClick={() => reset.mutate()} disabled={reset.isPending}>
+          <button type="button" className="text-sm text-ink-600 underline hover:text-amber-700" onClick={() => reset.mutate()} disabled={reset.isPending}>
             Back to the suggestions
           </button>
         </div>
@@ -435,7 +435,7 @@ function KitView({ plan, kit, pin, onPin }: { plan: ProjectPlan; kit: ProjectKit
         </ul>
       </div>
 
-      <aside className="h-fit space-y-3 rounded-lg bg-white p-4 ring-1 ring-steel-200 lg:sticky lg:top-20" aria-label="Kit total">
+      <aside className="h-fit space-y-3 rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200 lg:sticky lg:top-20" aria-label="Kit total">
         <PinForm pin={pin || kit.postal_code} onPin={onPin} />
         <p className={`text-sm ${kit.delivery.available ? 'text-ink-800' : 'text-danger-600'}`}>{kit.delivery.message}</p>
         <dl className="space-y-1 text-sm">
@@ -506,7 +506,7 @@ function KitItemRow({ projectId, item, pin }: { projectId: number; item: KitItem
   const nextTier = item.price?.next_tier
 
   return (
-    <li className={`rounded-lg bg-white p-3 ring-1 ${item.included ? 'ring-steel-200' : 'opacity-75 ring-steel-100'}`}>
+    <li className={`rounded-2xl bg-white shadow-(--shadow-card) p-3 ring-1 ${item.included ? 'ring-steel-200' : 'opacity-75 ring-steel-100'}`}>
       <div className="flex gap-3">
         <input
           type="checkbox"
@@ -530,7 +530,7 @@ function KitItemRow({ projectId, item, pin }: { projectId: number; item: KitItem
             {item.customer_set && !item.added_by_customer && <span className="rounded bg-amber-100 px-1.5 text-xs">Changed by you</span>}
           </div>
           {item.product ? (
-            <Link to={`/p/${item.product.slug}`} className="block text-sm text-ink-800 hover:text-amber-600">
+            <Link to={`/p/${item.product.slug}`} className="block text-sm text-ink-800 hover:text-amber-700">
               {item.product.name}
               {item.variant?.name && <span className="text-ink-600"> · {item.variant.name}</span>}
             </Link>

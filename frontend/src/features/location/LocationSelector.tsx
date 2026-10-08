@@ -54,7 +54,7 @@ export function LocationSelector({ tone = 'dark', align = 'left' }: { tone?: 'da
     setError('')
   }
 
-  const textTone = tone === 'dark' ? 'text-white hover:text-amber-500' : 'text-ink-900 hover:text-amber-600'
+  const textTone = tone === 'dark' ? 'text-white hover:text-amber-500' : 'text-ink-900 hover:text-amber-700'
   return (
     <div ref={wrapperRef} className="relative">
       <button
@@ -82,7 +82,7 @@ export function LocationSelector({ tone = 'dark', align = 'left' }: { tone?: 'da
       {open && (
         <div
           id={panelId}
-          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-full z-40 mt-2 w-72 rounded-lg bg-white p-4 text-ink-900 shadow-lg ring-1 ring-steel-200`}
+          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-full z-40 mt-2 w-72 rounded-2xl bg-white shadow-(--shadow-card) p-4 text-ink-900 shadow-lg ring-1 ring-steel-200`}
         >
           <form onSubmit={save} noValidate>
             <label htmlFor={`${panelId}-pin`} className="label">

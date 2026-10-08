@@ -130,7 +130,7 @@ export function LiveOffersStrip() {
         {offers.data.map((offer) => {
           const target = offer.categories[0] ?? null
           return (
-            <li key={offer.id} className="rounded-lg bg-white p-4 ring-1 ring-amber-500/40">
+            <li key={offer.id} className="rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-amber-500/40">
               <p className="text-lg font-bold text-ink-950">{offer.badge}</p>
               <p className="font-semibold">{offer.name}</p>
               {offer.description && <p className="mt-1 text-sm text-ink-600">{offer.description}</p>}
@@ -140,7 +140,7 @@ export function LiveOffersStrip() {
                 {offer.ends_at && ` · ends ${new Date(offer.ends_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
               </p>
               {target && (
-                <Link to={`/c/${target.slug}`} className="mt-2 inline-block text-sm font-semibold text-amber-600 hover:underline">
+                <Link to={`/c/${target.slug}`} className="mt-2 inline-block text-sm font-semibold text-amber-700 hover:underline">
                   Shop {target.name}
                   <span className="sr-only"> for offer {offer.name}</span>
                 </Link>

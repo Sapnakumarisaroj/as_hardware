@@ -49,7 +49,7 @@ export function AccountPage() {
   const { logout } = useAuth()
   const { gate, user } = useSignedIn('Sign in to view your account.', '/account')
   if (gate || !user) return gate
-  const tile = 'block h-full rounded-lg bg-white p-4 ring-1 ring-steel-200 hover:ring-amber-500'
+  const tile = 'block h-full rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200 hover:ring-amber-500'
   const tiles = [
     { to: '/account/orders', title: 'Orders', text: 'Track, cancel, return and buy again' },
     { to: '/account/returns', title: 'Returns', text: 'Return requests and refunds' },
@@ -61,7 +61,7 @@ export function AccountPage() {
   return (
     <div className="container-page max-w-3xl py-8">
       <h1 className="text-2xl font-bold">Hello, {user.full_name.split(' ')[0] || 'there'}</h1>
-      <dl className="mt-4 grid gap-2 rounded-lg bg-white p-5 text-sm ring-1 ring-steel-200 sm:grid-cols-2">
+      <dl className="mt-4 grid gap-2 rounded-2xl bg-white shadow-(--shadow-card) p-5 text-sm ring-1 ring-steel-200 sm:grid-cols-2">
         <div>
           <dt className="text-ink-600">Name</dt>
           <dd className="font-medium">{user.full_name}</dd>
@@ -105,7 +105,7 @@ export function OrdersPage() {
     body = (
       <ul aria-label="Loading orders" className="space-y-3">
         {Array.from({ length: 3 }, (_, i) => (
-          <li key={i} className="h-24 animate-pulse rounded-lg bg-white ring-1 ring-steel-200" />
+          <li key={i} className="h-24 animate-pulse rounded-2xl bg-white shadow-(--shadow-card) ring-1 ring-steel-200" />
         ))}
       </ul>
     )
@@ -132,7 +132,7 @@ export function OrdersPage() {
             <li key={order.order_number}>
               <Link
                 to={`/account/orders/${order.order_number}`}
-                className="flex gap-3 rounded-lg bg-white p-4 ring-1 ring-steel-200 hover:ring-amber-500"
+                className="flex gap-3 rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200 hover:ring-amber-500"
               >
                 <ProductImage src={order.image} alt="" className="size-16 shrink-0 rounded" />
                 <div className="min-w-0 flex-1 text-sm">
@@ -230,7 +230,7 @@ function OrderCredits({ order }: { order: OrderDetail }) {
   const live = loyalty.earned.filter((e) => e.status !== 'reversed')
   if (!used && !live.length) return null
   return (
-    <section aria-labelledby="credits-heading" className="rounded-lg bg-white p-5 text-sm ring-1 ring-steel-200">
+    <section aria-labelledby="credits-heading" className="rounded-2xl bg-white shadow-(--shadow-card) p-5 text-sm ring-1 ring-steel-200">
       <h2 id="credits-heading" className="mb-2 text-base font-bold">
         Credits & cashback
       </h2>
@@ -248,7 +248,7 @@ function OrderCredits({ order }: { order: OrderDetail }) {
           {entry.status === 'pending' && ' (usable after delivery and the return window)'}
         </p>
       ))}
-      <Link to="/account/wallet" className="mt-2 inline-block font-semibold text-amber-600 hover:underline">
+      <Link to="/account/wallet" className="mt-2 inline-block font-semibold text-amber-700 hover:underline">
         Your wallet
       </Link>
     </section>
@@ -319,7 +319,7 @@ export function OrderDetailPage() {
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-5">
-          <section aria-labelledby="progress-heading" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+          <section aria-labelledby="progress-heading" className="rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200">
             <h2 id="progress-heading" className="mb-3 text-base font-bold">
               Order status
             </h2>
@@ -328,7 +328,7 @@ export function OrderDetailPage() {
           </section>
           <DeliveryTracking order={data} />
           <OrderDeliveryCard order={data} statusLabel={orderStatusLabel(data)} headingId="delivery-heading" />
-          <section aria-labelledby="items-heading" className="rounded-lg bg-white px-5 py-4 ring-1 ring-steel-200">
+          <section aria-labelledby="items-heading" className="rounded-2xl bg-white shadow-(--shadow-card) px-5 py-4 ring-1 ring-steel-200">
             <h2 id="items-heading" className="text-base font-bold">
               Items
             </h2>
@@ -346,17 +346,17 @@ export function OrderDetailPage() {
           )}
         </div>
         <div className="space-y-5">
-          <div className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+          <div className="rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200">
             <PriceSummary totals={data} couponCode={data.coupon_code} offers={data.applied_offers} />
           </div>
-          <section aria-labelledby="payment-heading" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+          <section aria-labelledby="payment-heading" className="rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200">
             <h2 id="payment-heading" className="mb-2 text-base font-bold">
               Payment
             </h2>
             <PaymentInfo order={data} />
           </section>
           <OrderCredits order={data} />
-          <section aria-labelledby="address-heading" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+          <section aria-labelledby="address-heading" className="rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200">
             <h2 id="address-heading" className="mb-2 text-base font-bold">
               Delivery address
             </h2>

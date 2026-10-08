@@ -54,7 +54,7 @@ function Row({ note }: { note: Notification }) {
             <Link
               to={note.link}
               onClick={() => !note.is_read && read.mutate(note.id)}
-              className="font-semibold text-amber-600 hover:underline"
+              className="font-semibold text-amber-700 hover:underline"
             >
               Open
             </Link>
@@ -128,7 +128,7 @@ function Inbox({ categories }: { categories: { key: string; label: string }[] })
         </div>
       ) : (
         <>
-          <ul className="mt-3 divide-y divide-steel-100 rounded-lg bg-white ring-1 ring-steel-200" aria-label="Messages">
+          <ul className="mt-3 divide-y divide-steel-100 rounded-2xl bg-white shadow-(--shadow-card) ring-1 ring-steel-200" aria-label="Messages">
             {list.data.results.map((note) => (
               <Row key={note.id} note={note} />
             ))}
@@ -183,7 +183,7 @@ function Settings({ prefs }: { prefs: Preferences }) {
     needsPhone ? 'Add a mobile number to your account first.' : `Sent to ${prefs.phone}.`
 
   return (
-    <section aria-labelledby="settings-heading" className="mt-8 rounded-lg bg-white p-5 ring-1 ring-steel-200">
+    <section aria-labelledby="settings-heading" className="mt-8 rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200">
       <h2 id="settings-heading" className="text-lg font-bold">
         How we contact you
       </h2>

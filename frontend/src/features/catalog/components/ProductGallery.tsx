@@ -42,7 +42,7 @@ export function ProductGallery({
 
   return (
     <div className="flex flex-col gap-3 md:flex-row-reverse">
-      <div className="flex-1 overflow-hidden rounded-lg bg-white ring-1 ring-steel-200">
+      <div className="flex-1 overflow-hidden rounded-2xl bg-white shadow-(--shadow-card) ring-1 ring-steel-200">
         <ProductImage
           src={current?.image}
           alt={current?.alt_text || productName}

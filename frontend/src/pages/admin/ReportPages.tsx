@@ -372,7 +372,7 @@ function AnswerCard({ answer }: { answer: AssistantAnswer }) {
         </ul>
       )}
       {answer.link && (
-        <Link to={answer.link} className="mt-3 inline-block text-sm font-semibold text-amber-600 hover:underline">
+        <Link to={answer.link} className="mt-3 inline-block text-sm font-semibold text-amber-700 hover:underline">
           Open the full report
         </Link>
       )}
@@ -465,7 +465,7 @@ export function AdminAssistantPage() {
             <ul className="space-y-2 text-sm">
               {history.data.slice(0, 15).map((row) => (
                 <li key={row.id}>
-                  <button type="button" className="text-left hover:text-amber-600 hover:underline" onClick={() => send(row.question)}>
+                  <button type="button" className="text-left hover:text-amber-700 hover:underline" onClick={() => send(row.question)}>
                     {row.question}
                   </button>
                 </li>

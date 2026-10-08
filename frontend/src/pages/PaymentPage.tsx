@@ -197,7 +197,7 @@ export function PaymentPage() {
               </div>
             </section>
           ) : (
-            <p className="rounded-lg bg-white p-5 text-sm ring-1 ring-steel-200">
+            <p className="rounded-2xl bg-white shadow-(--shadow-card) p-5 text-sm ring-1 ring-steel-200">
               Online payment is not available right now. Please cancel this order and choose cash on delivery.
             </p>
           )
@@ -229,7 +229,7 @@ export function PaymentPage() {
         )}
 
         <p className="text-center text-sm">
-          <Link to={`/account/orders/${data.order_number}`} className="font-semibold text-amber-600 hover:underline">
+          <Link to={`/account/orders/${data.order_number}`} className="font-semibold text-amber-700 hover:underline">
             View order details
           </Link>
         </p>

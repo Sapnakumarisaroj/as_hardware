@@ -75,14 +75,14 @@ export function OrderConfirmationPage() {
           <OrderDeliveryCard order={data} statusLabel={orderStatusLabel(data)} headingId="confirm-delivery" />
         )}
 
-        <section aria-labelledby="confirm-items" className="rounded-lg bg-white px-5 py-4 ring-1 ring-steel-200">
+        <section aria-labelledby="confirm-items" className="rounded-2xl bg-white shadow-(--shadow-card) px-5 py-4 ring-1 ring-steel-200">
           <h2 id="confirm-items" className="text-base font-bold">
             Items ({data.items.length})
           </h2>
           <OrderItemsList items={data.items} />
         </section>
 
-        <section aria-labelledby="confirm-address" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+        <section aria-labelledby="confirm-address" className="rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200">
           <h2 id="confirm-address" className="mb-2 text-base font-bold">
             Delivering to
           </h2>

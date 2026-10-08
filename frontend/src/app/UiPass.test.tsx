@@ -109,7 +109,7 @@ describe('header bands and delivery', () => {
   it('has the opening-hours strip, then one row with logo, badge, Deliver to, search and icons', async () => {
     mockApi({ get: { ...shopGet, ...promise, '/categories/': approvedCategories } })
     renderRoute('/')
-    expect(screen.getByText('Open 8 am to 8 pm all days')).toBeInTheDocument()
+    expect(within(screen.getByRole('banner').previousElementSibling as HTMLElement).getByText('Open 8 am to 8 pm all days')).toBeInTheDocument()
     const banner = screen.getByRole('banner')
     const badge = await within(banner).findByTestId('fast-badge')
     expect(badge).toHaveTextContent('60 Mins')

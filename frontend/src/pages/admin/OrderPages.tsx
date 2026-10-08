@@ -430,7 +430,7 @@ export function AdminOrderDetailPage() {
             <Panel
               title="Returns"
               action={
-                <Link to={`/admin/returns?q=${order.order_number}`} className="text-sm font-semibold text-amber-600 hover:underline">
+                <Link to={`/admin/returns?q=${order.order_number}`} className="text-sm font-semibold text-amber-700 hover:underline">
                   Handle returns
                 </Link>
               }
@@ -456,7 +456,7 @@ export function AdminOrderDetailPage() {
               title="Payments and refunds"
               action={
                 order.refunds.length > 0 ? (
-                  <Link to={`/admin/refunds?q=${order.order_number}`} className="text-sm font-semibold text-amber-600 hover:underline">
+                  <Link to={`/admin/refunds?q=${order.order_number}`} className="text-sm font-semibold text-amber-700 hover:underline">
                     Handle refunds
                   </Link>
                 ) : undefined
@@ -501,7 +501,7 @@ export function AdminOrderDetailPage() {
               ]}
             />
             {session.is_admin && (
-              <Link to={`/admin/customers/${order.customer.id}`} className="mt-3 inline-block text-sm font-semibold text-amber-600 hover:underline">
+              <Link to={`/admin/customers/${order.customer.id}`} className="mt-3 inline-block text-sm font-semibold text-amber-700 hover:underline">
                 Open customer
               </Link>
             )}

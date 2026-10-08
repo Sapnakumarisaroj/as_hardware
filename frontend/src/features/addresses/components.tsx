@@ -188,7 +188,7 @@ export function AddressList({
           return (
             <li
               key={address.id}
-              className={`rounded-lg bg-white p-4 ring-1 ${selected ? 'ring-2 ring-amber-500' : 'ring-steel-200'}`}
+              className={`rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ${selected ? 'ring-2 ring-amber-500' : 'ring-steel-200'}`}
             >
               <div className="flex items-start gap-3">
                 {selectable && (
@@ -215,7 +215,7 @@ export function AddressList({
                 </label>
               </div>
               <div className={`mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm ${selectable ? 'pl-8' : ''}`}>
-                <button type="button" onClick={() => setEditing(address)} className="font-semibold text-amber-600 hover:underline">
+                <button type="button" onClick={() => setEditing(address)} className="font-semibold text-amber-700 hover:underline">
                   Edit<span className="sr-only"> address for {address.name}</span>
                 </button>
                 {!address.is_default && (

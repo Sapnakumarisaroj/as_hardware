@@ -61,7 +61,7 @@ function Options({ options, onUse, label = 'Compatible options' }: { options: Co
       <ul className="mt-1 space-y-1" aria-label={label}>
         {shown.map((option) => (
           <li key={option.product_id} className="flex flex-wrap items-center justify-between gap-2 rounded bg-white px-2 py-1 ring-1 ring-steel-200">
-            <Link to={`/p/${option.product!.slug}`} className="text-sm hover:text-amber-600">
+            <Link to={`/p/${option.product!.slug}`} className="text-sm hover:text-amber-700">
               {option.product!.name} · {formatPrice(option.product!.price)}
             </Link>
             {onUse && (

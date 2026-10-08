@@ -895,7 +895,7 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
                   ))}
                   <button
                     type="button"
-                    className="mt-2 text-sm font-semibold text-amber-600 underline-offset-2 hover:underline"
+                    className="mt-2 text-sm font-semibold text-amber-700 underline-offset-2 hover:underline"
                     onClick={() => setVariant(index, { price_tiers: [...(variant.price_tiers ?? []), { min_quantity: '', unit_price: '' }] })}
                   >
                     Add bulk price{' '}<span className="sr-only">to variant {index + 1}</span>
@@ -1086,7 +1086,7 @@ function ProductSummary({ product }: { product: AdminProduct }) {
             ))}
           </tbody>
         </table>
-        <Link to={`/admin/inventory?q=${encodeURIComponent(product.sku)}`} className="mt-3 inline-block text-sm font-semibold text-amber-600 hover:underline">
+        <Link to={`/admin/inventory?q=${encodeURIComponent(product.sku)}`} className="mt-3 inline-block text-sm font-semibold text-amber-700 hover:underline">
           Open inventory
         </Link>
       </Panel>

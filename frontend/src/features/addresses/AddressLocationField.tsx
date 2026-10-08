@@ -57,7 +57,7 @@ export function AddressLocationField({ initial }: { initial: LatLng | null }) {
         A pin gives a more accurate delivery time and helps the delivery partner find you.
       </p>
       <p role="status" className="mt-1 flex items-center gap-1.5 text-sm font-medium text-ink-900">
-        <PinIcon className="size-4 shrink-0 text-amber-600" />
+        <PinIcon className="size-4 shrink-0 text-amber-700" />
         {value ? `Pin set at ${fixed(value.latitude)}, ${fixed(value.longitude)}` : 'No pin set — we’ll use your PIN code area'}
       </p>
       <div className="mt-2 flex flex-wrap gap-2">

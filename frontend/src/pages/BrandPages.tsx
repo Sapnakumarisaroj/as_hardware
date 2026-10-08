@@ -58,7 +58,7 @@ export function BrandsPage() {
                   <li key={brand.id}>
                     <Link
                       to={`/brand/${brand.slug}`}
-                      className="flex items-center gap-3 rounded-lg bg-white p-3 ring-1 ring-steel-200 hover:ring-amber-500 focus-visible:ring-amber-500"
+                      className="flex items-center gap-3 rounded-2xl bg-white shadow-(--shadow-card) p-3 ring-1 ring-steel-200 hover:ring-amber-500 focus-visible:ring-amber-500"
                     >
                       <BrandMark brand={brand} />
                       <span>

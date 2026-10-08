@@ -45,7 +45,7 @@ function ItemLine({ item, children }: { item: KitItem; children?: React.ReactNod
       <div className="min-w-0 flex-1 text-sm">
         <p className="font-medium">
           {item.product ? (
-            <Link to={`/p/${item.product.slug}`} className="hover:text-amber-600">
+            <Link to={`/p/${item.product.slug}`} className="hover:text-amber-700">
               {item.product.name}
             </Link>
           ) : (
@@ -101,7 +101,7 @@ export function BudgetPage() {
         Describe the job and your budget. We work out the materials, pick real products with bulk prices and offers, and keep the cart within
         your budget, telling you what we swapped or left out.
       </p>
-      <form onSubmit={onSubmit} className="mt-5 grid max-w-2xl gap-3 rounded-lg bg-white p-4 ring-1 ring-steel-200 sm:grid-cols-[1fr_10rem]">
+      <form onSubmit={onSubmit} className="mt-5 grid max-w-2xl gap-3 rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200 sm:grid-cols-[1fr_10rem]">
         <div>
           <label htmlFor="budget-text" className="label">
             What do you need?
@@ -156,7 +156,7 @@ function BudgetResult({ plan, answers, onAnswer }: { plan: BudgetPlan; answers: 
       )}
       {asked.length > 0 && (
         <form
-          className="max-w-3xl rounded-lg bg-white p-4 ring-1 ring-steel-200"
+          className="max-w-3xl rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200"
           aria-label="A few details"
           onSubmit={(e) => {
             e.preventDefault()
@@ -245,7 +245,7 @@ function BudgetResult({ plan, answers, onAnswer }: { plan: BudgetPlan; answers: 
               </div>
             )}
           </div>
-          <aside className="h-fit space-y-2 rounded-lg bg-white p-4 ring-1 ring-steel-200" aria-label="Budget total">
+          <aside className="h-fit space-y-2 rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200" aria-label="Budget total">
             <KitTotals kit={plan.kit} label="Plan total" />
             <p className="text-sm">
               Budget {formatPrice(plan.budget)} · <span className="font-semibold">{formatPrice(plan.remaining)} left</span>
@@ -261,7 +261,7 @@ function BudgetResult({ plan, answers, onAnswer }: { plan: BudgetPlan; answers: 
           <ul className="mt-2 grid gap-2 sm:grid-cols-2" aria-label="Within your budget">
             {plan.best_for_budget!.map((row) => (
               <li key={row.product_id} className="rounded bg-white p-2 text-sm ring-1 ring-steel-200">
-                <Link to={`/p/${row.product.slug}`} className="font-medium hover:text-amber-600">
+                <Link to={`/p/${row.product.slug}`} className="font-medium hover:text-amber-700">
                   {row.product.name}
                 </Link>{' '}
                 · {formatPrice(row.product.price)}
@@ -327,7 +327,7 @@ export function BundlePage() {
   }
   return (
     <div className="container-page py-6">
-      <Link to="/bundles" className="text-sm text-ink-600 hover:text-amber-600">
+      <Link to="/bundles" className="text-sm text-ink-600 hover:text-amber-700">
         ← All kits
       </Link>
       <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-amber-700">{data.kind_label}</p>
@@ -353,7 +353,7 @@ export function BundlePage() {
             ))}
           </ul>
         </div>
-        <aside className="h-fit space-y-3 rounded-lg bg-white p-4 ring-1 ring-steel-200" aria-label="Kit total">
+        <aside className="h-fit space-y-3 rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200" aria-label="Kit total">
           <KitTotals kit={data.kit} label="Kit total" />
           {Number(data.savings.vs_mrp) > 0 && <p className="text-sm text-success-600">You save {formatPrice(data.savings.vs_mrp)} against MRP.</p>}
           <p className={`text-sm ${data.kit.delivery.available ? 'text-ink-800' : 'text-ink-600'}`}>

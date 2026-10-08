@@ -41,12 +41,12 @@ export function RecommendationRails({ data, order, titles = {} }: { data: Recomm
 
 export function BundleCard({ bundle }: { bundle: BundleSummary }) {
   return (
-    <li className="flex flex-col rounded-lg bg-white p-4 ring-1 ring-steel-200">
+    <li className="flex flex-col rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
       <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
         {bundle.kind_label}
         {bundle.promo_label && <span className="ml-2 rounded bg-amber-100 px-1.5 normal-case text-ink-900">{bundle.promo_label}</span>}
       </p>
-      <Link to={`/bundles/${bundle.slug}`} className="mt-1 font-bold hover:text-amber-600">
+      <Link to={`/bundles/${bundle.slug}`} className="mt-1 font-bold hover:text-amber-700">
         {bundle.name}
       </Link>
       <p className="mt-1 flex-1 text-sm text-ink-600">{bundle.description}</p>

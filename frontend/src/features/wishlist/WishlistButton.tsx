@@ -58,7 +58,7 @@ export function WishlistButton({ productId, productName, variant = 'icon' }: Pro
       aria-pressed={saved}
       aria-label={label}
       title={saved ? 'Remove from wishlist' : 'Save to wishlist'}
-      className="grid size-9 place-items-center rounded-full bg-white/95 text-ink-800 shadow-sm ring-1 ring-steel-200 hover:text-danger-600 disabled:opacity-60"
+      className="grid size-9 place-items-center rounded-full bg-white/95 text-ink-800 shadow-sm ring-1 ring-steel-200 backdrop-blur transition hover:scale-110 hover:text-danger-600 disabled:opacity-60"
     >
       <HeartIcon filled={saved} className={`size-5 ${saved ? 'text-danger-600' : ''}`} />
     </button>

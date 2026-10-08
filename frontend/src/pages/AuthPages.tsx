@@ -44,7 +44,7 @@ function AuthCard({
     <div className={`w-full ${wide ? 'max-w-lg' : 'max-w-md'}`}>
       <div className="rounded-2xl bg-white px-5 py-7 shadow-xl shadow-ink-900/5 ring-1 ring-steel-200 sm:px-8 sm:py-9">
         <div className="mb-6 text-center">
-          <span aria-hidden className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-amber-100 text-amber-600">
+          <span aria-hidden className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-amber-100 text-amber-700">
             {icon}
           </span>
           <h1 className="text-2xl font-extrabold tracking-tight text-ink-950">{title}</h1>
@@ -260,7 +260,7 @@ export function LoginPage() {
       footer={
         <>
           New here?{' '}
-          <Link to={`/register?next=${encodeURIComponent(next)}`} className="font-semibold text-amber-600 hover:underline">
+          <Link to={`/register?next=${encodeURIComponent(next)}`} className="font-semibold text-amber-700 hover:underline">
             Create an account
           </Link>
         </>
@@ -290,7 +290,7 @@ export function LoginPage() {
             error={validation.shown('password') ?? serverField('password')}
           />
           <div className="mt-2 text-right">
-            <Link to="/forgot-password" className="text-sm font-semibold text-amber-600 hover:underline">
+            <Link to="/forgot-password" className="text-sm font-semibold text-amber-700 hover:underline">
               Forgot password?
             </Link>
           </div>
@@ -347,7 +347,7 @@ export function RegisterPage() {
       footer={
         <>
           Already registered?{' '}
-          <Link to={`/login?next=${encodeURIComponent(next)}`} className="font-semibold text-amber-600 hover:underline">
+          <Link to={`/login?next=${encodeURIComponent(next)}`} className="font-semibold text-amber-700 hover:underline">
             Login
           </Link>
         </>
@@ -401,7 +401,7 @@ export function ForgotPasswordPage() {
       title="Reset your password"
       subtitle="We’ll email you a link to choose a new password."
       footer={
-        <Link to="/login" className="font-semibold text-amber-600 hover:underline">
+        <Link to="/login" className="font-semibold text-amber-700 hover:underline">
           Back to login
         </Link>
       }
@@ -452,7 +452,7 @@ export function ResetPasswordPage() {
       title="Choose a new password"
       subtitle="Your other sessions will be signed out."
       footer={
-        <Link to="/login" className="font-semibold text-amber-600 hover:underline">
+        <Link to="/login" className="font-semibold text-amber-700 hover:underline">
           Back to login
         </Link>
       }

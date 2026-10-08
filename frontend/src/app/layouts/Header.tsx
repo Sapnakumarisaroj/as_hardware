@@ -182,7 +182,9 @@ function NavMenu({ label, children }: { label: string; children: ReactNode }) {
       {open && (
         // Centred under the navigation row (the <ul> is the positioning box), so wide menus stay on screen.
         <div id={id} className="absolute left-1/2 top-full z-40 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 pt-1">
-          <div className="rounded-xl bg-white p-4 text-ink-900 shadow-xl ring-1 ring-steel-200">{children}</div>
+          <div className="animate-drop">
+          <div className="rounded-2xl bg-white p-5 text-ink-900 shadow-(--shadow-lift) ring-1 ring-steel-200">{children}</div>
+          </div>
         </div>
       )}
     </li>
@@ -196,7 +198,7 @@ function GroupPanel({ group }: { group: NavGroup }) {
     <div>
       <div className="mb-3 flex items-baseline justify-between gap-6 border-b border-steel-100 pb-2">
         <p className="whitespace-nowrap font-bold text-ink-950">{group.name}</p>
-        <Link to={group.href} className="flex items-center gap-0.5 whitespace-nowrap text-sm font-semibold text-amber-600 hover:underline">
+        <Link to={group.href} className="flex items-center gap-0.5 whitespace-nowrap text-sm font-semibold text-amber-700 hover:underline">
           View all
           <ChevronRightIcon className="size-4" />
         </Link>
@@ -207,7 +209,7 @@ function GroupPanel({ group }: { group: NavGroup }) {
             <Link to={entry.href} className="group flex items-center gap-2.5 rounded-lg">
               <Thumb src={entry.image} size="size-10" />
               <span>
-                <span className="block whitespace-nowrap text-sm font-bold leading-snug group-hover:text-amber-600">{entry.name}</span>{' '}
+                <span className="block whitespace-nowrap text-sm font-bold leading-snug group-hover:text-amber-700">{entry.name}</span>{' '}
                 {entry.productCount !== null && <span className="block text-xs text-ink-600">{pluralize(entry.productCount, 'product')}</span>}
               </span>
             </Link>
@@ -215,14 +217,14 @@ function GroupPanel({ group }: { group: NavGroup }) {
               <ul className="mt-2 space-y-1 pl-[50px]" aria-label={`In ${entry.name}`}>
                 {entry.subcategories.slice(0, 5).map((sub) => (
                   <li key={sub.slug}>
-                    <Link to={sub.href} className="block whitespace-nowrap text-sm text-ink-700 hover:text-amber-600">
+                    <Link to={sub.href} className="block whitespace-nowrap text-sm text-ink-700 hover:text-amber-700">
                       {sub.name}
                     </Link>
                   </li>
                 ))}
                 {entry.subcategories.length > 5 && (
                   <li>
-                    <Link to={entry.href} className="block whitespace-nowrap text-sm font-semibold text-amber-600 hover:underline">
+                    <Link to={entry.href} className="block whitespace-nowrap text-sm font-semibold text-amber-700 hover:underline">
                       +{entry.subcategories.length - 5} more
                     </Link>
                   </li>
@@ -241,7 +243,7 @@ function MainNav({ groups }: { groups: NavGroup[] }) {
   const link = ({ isActive }: { isActive: boolean }) =>
     `block whitespace-nowrap rounded-md px-2 py-2 text-[13px] font-semibold hover:text-amber-500 lg:px-3 lg:text-sm ${isActive ? 'text-amber-500' : ''}`
   return (
-    <div className="hidden border-t border-ink-800 bg-ink-900 md:block">
+    <div className="hidden border-t border-white/10 bg-ink-900 md:block">
       <div className="container-page flex h-11 items-center justify-center">
         <nav aria-label="Main" className="min-w-0">
           <ul className="relative flex items-center gap-0.5 lg:gap-2 xl:gap-4">
@@ -288,13 +290,13 @@ function MobileMenu({ open, onClose, groups }: { open: boolean; onClose: () => v
                   <ul className="mb-1 ml-[52px] mt-0.5 space-y-0.5 border-l border-steel-200 pl-2">
                     {group.entries.map((entry) => (
                       <li key={entry.slug}>
-                        <Link to={entry.href} onClick={onClose} className="block rounded px-2 py-1.5 text-sm text-ink-800 hover:bg-steel-50 hover:text-amber-600">
+                        <Link to={entry.href} onClick={onClose} className="block rounded px-2 py-1.5 text-sm text-ink-800 hover:bg-steel-50 hover:text-amber-700">
                           {entry.name}
                         </Link>
                       </li>
                     ))}
                     <li>
-                      <Link to={group.href} onClick={onClose} className="block rounded px-2 py-1.5 text-sm font-semibold text-amber-600 hover:bg-steel-50">
+                      <Link to={group.href} onClick={onClose} className="block rounded px-2 py-1.5 text-sm font-semibold text-amber-700 hover:bg-steel-50">
                         View all {group.name}
                       </Link>
                     </li>
@@ -308,7 +310,7 @@ function MobileMenu({ open, onClose, groups }: { open: boolean; onClose: () => v
           <h3 className={heading}>More ways to shop</h3>
           {MORE_LINKS.map(([label, to, icon]) => (
             <Link key={label} to={to} onClick={onClose} className={link}>
-              {icon && <span className="text-amber-600">{icon}</span>}
+              {icon && <span className="text-amber-700">{icon}</span>}
               {label}
             </Link>
           ))}
@@ -383,8 +385,8 @@ export function Header() {
   return (
     <>
       <TopStrip />
-      <header className="sticky top-0 z-30 bg-ink-900 text-white shadow">
-        <div className="container-page flex flex-wrap items-center gap-x-1.5 gap-y-2 py-2.5 sm:gap-x-3 md:h-16 md:flex-nowrap md:py-0 lg:gap-x-5">
+      <header className="sticky top-0 z-30 bg-ink-950 text-white shadow-lg shadow-ink-950/10">
+        <div className="container-page flex flex-wrap items-center gap-x-1.5 gap-y-2 py-2.5 sm:gap-x-3 md:h-[4.5rem] md:flex-nowrap md:py-0 lg:gap-x-5">
           <button
             type="button"
             onClick={() => setMenuOpen(true)}

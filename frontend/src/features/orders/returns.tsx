@@ -29,7 +29,7 @@ const NEXT_STEP: Record<ReturnStatus, string> = {
 }
 
 const STATUS_CLASSES: Record<ReturnStatus, string> = {
-  requested: 'bg-amber-100 text-amber-600',
+  requested: 'bg-amber-100 text-amber-700',
   approved: 'bg-amber-100 text-ink-900',
   rejected: 'bg-danger-600/10 text-danger-600',
   received: 'bg-success-600/10 text-success-600',
@@ -172,14 +172,14 @@ export function ReturnCard({ ret, showOrder = false }: { ret: ReturnRequest; sho
   }
 
   return (
-    <article aria-label={`Return ${ret.return_number}`} className="rounded-lg bg-white p-4 text-sm ring-1 ring-steel-200">
+    <article aria-label={`Return ${ret.return_number}`} className="rounded-2xl bg-white shadow-(--shadow-card) p-4 text-sm ring-1 ring-steel-200">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-semibold">
           Return {ret.return_number}
           {showOrder && (
             <>
               {' · '}
-              <Link to={`/account/orders/${ret.order_number}`} className="font-normal text-amber-600 hover:underline">
+              <Link to={`/account/orders/${ret.order_number}`} className="font-normal text-amber-700 hover:underline">
                 Order {ret.order_number}
               </Link>
             </>
@@ -197,7 +197,7 @@ export function ReturnCard({ ret, showOrder = false }: { ret: ReturnRequest; sho
           {ret.pickup.rider_phone && (
             <>
               {' · '}
-              <a href={`tel:${ret.pickup.rider_phone}`} className="font-semibold text-amber-600 hover:underline">
+              <a href={`tel:${ret.pickup.rider_phone}`} className="font-semibold text-amber-700 hover:underline">
                 Call {ret.pickup.rider_name}
               </a>
             </>

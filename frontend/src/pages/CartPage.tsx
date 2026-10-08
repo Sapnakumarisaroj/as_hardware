@@ -41,7 +41,7 @@ function StockMessage({ line }: { line: CartLine }) {
     )
   }
   if (line.available_quantity <= 5) {
-    return <p className="text-xs font-semibold text-amber-600">Only {line.available_quantity} left</p>
+    return <p className="text-xs font-semibold text-amber-700">Only {line.available_quantity} left</p>
   }
   return <p className="text-xs font-semibold text-success-600">In stock</p>
 }
@@ -78,7 +78,7 @@ function Line({ line }: { line: CartLine }) {
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
           <div className="min-w-0">
             {line.brand_name && <p className="text-xs uppercase tracking-wide text-ink-600">{line.brand_name}</p>}
-            <Link to={`/p/${line.product_slug}`} className="font-semibold text-ink-900 hover:text-amber-600">
+            <Link to={`/p/${line.product_slug}`} className="font-semibold text-ink-900 hover:text-amber-700">
               {line.product_name}
             </Link>
             {line.variant_name && <p className="text-sm text-ink-800">{line.variant_name}</p>}
@@ -116,7 +116,7 @@ function Line({ line }: { line: CartLine }) {
           </p>
         )}
         {line.price_changed && (
-          <p className="mt-1 text-xs font-medium text-amber-600">
+          <p className="mt-1 text-xs font-medium text-amber-700">
             Price changed since you added this (was {formatPrice(line.price_at_add)}).
           </p>
         )}
@@ -171,7 +171,7 @@ function CartDelivery({ cartVersion }: { cartVersion: string }) {
   // A saved address that can't be checked right now: checkout shows the estimate instead.
   if (saved && estimate.isError) return null
   return (
-    <section aria-labelledby="cart-delivery" className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+    <section aria-labelledby="cart-delivery" className="rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200">
       <h2 id="cart-delivery" className="mb-2 text-base font-bold">
         Delivery
       </h2>
@@ -280,12 +280,12 @@ export function CartPage() {
 
   return (
     <div className="container-page grid gap-6 pb-28 pt-6 lg:grid-cols-[1fr_22rem] lg:pb-6">
-      <section aria-labelledby="cart-heading" className="rounded-lg bg-white px-4 ring-1 ring-steel-200 sm:px-5">
+      <section aria-labelledby="cart-heading" className="rounded-2xl bg-white shadow-(--shadow-card) px-4 ring-1 ring-steel-200 sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-steel-100 py-4">
           <h1 id="cart-heading" className="text-xl font-bold">
             Cart ({units} {units === 1 ? 'item' : 'items'})
           </h1>
-          <Link to="/products" className="text-sm font-semibold text-amber-600 hover:underline">
+          <Link to="/products" className="text-sm font-semibold text-amber-700 hover:underline">
             Continue shopping
           </Link>
         </div>
@@ -317,7 +317,7 @@ export function CartPage() {
           threshold={totals.free_delivery_threshold}
         />
         <CartDelivery cartVersion={items.map((line) => `${line.variant_id}x${line.quantity}`).join(',')} />
-        <div className="rounded-lg bg-white p-5 ring-1 ring-steel-200">
+        <div className="rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200">
           <PriceSummary
             totals={totals}
             offers={offers.applied}

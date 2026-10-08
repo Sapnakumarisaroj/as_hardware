@@ -176,3 +176,58 @@ export const AlertIcon = (p: IconProps) => (
     <path d="M12 8v5M12 16h.01" />
   </Svg>
 )
+export const TruckIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 6h11v10H3z" />
+    <path d="M14 10h4l3 3v3h-7" />
+    <circle cx="7" cy="18" r="1.8" />
+    <circle cx="17" cy="18" r="1.8" />
+  </Svg>
+)
+export const ReturnIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9 14 4 9l5-5" />
+    <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+  </Svg>
+)
+export const LayersIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m12 3 9 5-9 5-9-5 9-5Z" />
+    <path d="m3 13 9 5 9-5" />
+  </Svg>
+)
+export const ReceiptIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" />
+    <path d="M9 8h6M9 12h6" />
+  </Svg>
+)
+export const CashIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="6" width="18" height="12" rx="2" />
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="M6 9v.01M18 15v.01" />
+  </Svg>
+)
+export const CalculatorIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="5" y="3" width="14" height="18" rx="2" />
+    <path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01" />
+  </Svg>
+)
+export const ClipboardIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="5" y="4" width="14" height="17" rx="2" />
+    <path d="M9 4V3h6v1M9 10h6M9 14h4" />
+  </Svg>
+)
+export const PuzzleIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10 4a2 2 0 1 1 4 0v2h4v4h-2a2 2 0 1 0 0 4h2v4h-4v-2a2 2 0 1 0-4 0v2H6v-4h2a2 2 0 1 0 0-4H6V6h4V4Z" />
+  </Svg>
+)
+export const ChatIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
+  </Svg>
+)

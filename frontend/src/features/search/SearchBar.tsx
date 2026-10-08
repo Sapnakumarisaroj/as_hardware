@@ -134,7 +134,7 @@ export function SearchBar({ initialQuery = '', autoFocus = false }: { initialQue
       <label htmlFor={`${listId}-input`} className="sr-only">
         Search products
       </label>
-      <div className="flex items-center rounded-md bg-white ring-1 ring-steel-200 focus-within:ring-2 focus-within:ring-amber-500">
+      <div className="flex items-center overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-steel-200 transition focus-within:ring-2 focus-within:ring-amber-500">
         <SearchIcon className="ml-3 size-4 shrink-0 text-ink-600" />
         <input
           id={`${listId}-input`}
@@ -159,7 +159,7 @@ export function SearchBar({ initialQuery = '', autoFocus = false }: { initialQue
           onKeyDown={onKeyDown}
           placeholder="Search plywood, hinges, locks, drills…"
           maxLength={100}
-          className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-sm text-ink-900 placeholder:text-steel-400 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+          className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-sm text-ink-900 md:py-3 placeholder:text-steel-400 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
         />
         {loading && (
           <span
@@ -186,7 +186,7 @@ export function SearchBar({ initialQuery = '', autoFocus = false }: { initialQue
           to="/voice"
           aria-label="Shop by voice"
           title="Shop by voice"
-          className="p-2 text-ink-600 hover:text-amber-600 focus-visible:text-amber-600"
+          className="p-2 text-ink-600 hover:text-amber-700 focus-visible:text-amber-700"
         >
           <MicIcon className="size-5" />
         </Link>
@@ -194,11 +194,11 @@ export function SearchBar({ initialQuery = '', autoFocus = false }: { initialQue
           to="/image-search"
           aria-label="Search by photo"
           title="Search by photo"
-          className="p-2 text-ink-600 hover:text-amber-600 focus-visible:text-amber-600"
+          className="p-2 text-ink-600 hover:text-amber-700 focus-visible:text-amber-700"
         >
           <CameraIcon className="size-5" />
         </Link>
-        <button type="submit" className="rounded-r-md bg-amber-500 px-3 py-2.5 text-ink-950 hover:bg-amber-600" aria-label="Search">
+        <button type="submit" className="self-stretch bg-amber-500 px-4 text-ink-950 transition hover:bg-amber-400" aria-label="Search">
           <SearchIcon className="size-4" />
         </button>
       </div>
@@ -212,7 +212,7 @@ export function SearchBar({ initialQuery = '', autoFocus = false }: { initialQue
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => clearRecent.mutate()}
-                className="font-semibold text-amber-600 hover:underline"
+                className="font-semibold text-amber-700 hover:underline"
               >
                 Clear
               </button>

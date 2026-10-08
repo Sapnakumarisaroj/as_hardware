@@ -69,7 +69,7 @@ export function SignInPrompt({ message, next }: { message: string; next: string 
 
 export function CardSkeleton() {
   return (
-    <div aria-hidden className="animate-pulse rounded-lg bg-white p-3 ring-1 ring-steel-200">
+    <div aria-hidden className="animate-pulse rounded-2xl bg-white shadow-(--shadow-card) p-3 ring-1 ring-steel-200">
       <div className="aspect-square rounded bg-steel-100" />
       <div className="mt-3 h-3 w-1/3 rounded bg-steel-100" />
       <div className="mt-2 h-4 w-5/6 rounded bg-steel-100" />

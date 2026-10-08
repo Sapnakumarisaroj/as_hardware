@@ -22,7 +22,7 @@ import { usePageMeta } from '@/lib/usePageMeta'
 
 function Step({ n, title, children, action }: { n: number; title: string; children: ReactNode; action?: ReactNode }) {
   return (
-    <section aria-labelledby={`step-${n}`} className="rounded-lg bg-white p-4 ring-1 ring-steel-200 sm:p-5">
+    <section aria-labelledby={`step-${n}`} className="rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200 sm:p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 id={`step-${n}`} className="flex items-center gap-2 text-base font-bold">
           <span aria-hidden className="grid size-6 place-items-center rounded-full bg-ink-900 text-xs text-white">
@@ -180,7 +180,7 @@ function CreditsBox({
       <p className="text-xs text-ink-600">
         Credits are not cash. Credits that expire soonest are used first. If you cancel or return items, the credits
         used on them come back with their original expiry date.{' '}
-        <Link to="/account/wallet" className="font-semibold text-amber-600 hover:underline">
+        <Link to="/account/wallet" className="font-semibold text-amber-700 hover:underline">
           Your wallet
         </Link>
       </p>
@@ -338,7 +338,7 @@ export function CheckoutPage() {
     <div className="container-page pb-32 pt-6 lg:pb-8">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Checkout</h1>
-        <Link to="/cart" className="text-sm font-semibold text-amber-600 hover:underline">
+        <Link to="/cart" className="text-sm font-semibold text-amber-700 hover:underline">
           Back to cart
         </Link>
       </div>
@@ -350,7 +350,7 @@ export function CheckoutPage() {
             title="Delivery address"
             action={
               list.length > 0 && (
-                <button type="button" onClick={() => setAddingAddress(true)} className="text-sm font-semibold text-amber-600 hover:underline">
+                <button type="button" onClick={() => setAddingAddress(true)} className="text-sm font-semibold text-amber-700 hover:underline">
                   + Add new
                 </button>
               )
@@ -388,7 +388,7 @@ export function CheckoutPage() {
               ))}
             </ul>
             {data.cart.items.some((l) => l.price_changed) && (
-              <p className="mt-2 text-xs font-medium text-amber-600">Some prices changed since you added them; totals use today’s prices.</p>
+              <p className="mt-2 text-xs font-medium text-amber-700">Some prices changed since you added them; totals use today’s prices.</p>
             )}
           </Step>
 
@@ -466,7 +466,7 @@ export function CheckoutPage() {
         </div>
 
         <aside className="h-fit space-y-3 lg:sticky lg:top-32">
-          <div className="rounded-lg bg-white p-5 ring-1 ring-steel-200" aria-busy={preview.isFetching}>
+          <div className="rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200" aria-busy={preview.isFetching}>
             <PriceSummary
               totals={data.totals}
               couponCode={data.coupon?.code}

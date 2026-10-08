@@ -10,7 +10,7 @@ import { useCompleteJob, useFailJob, useRejectJob, useUploadProof } from './api'
 import type { CodMethod, FailureCode, Job, JobLocation, JobStatus } from './types'
 
 const STATUS_CLASSES: Record<JobStatus, string> = {
-  assigned: 'bg-amber-100 text-amber-600',
+  assigned: 'bg-amber-100 text-amber-700',
   accepted: 'bg-amber-100 text-ink-900',
   picked_up: 'bg-amber-100 text-ink-900',
   out_for_delivery: 'bg-amber-100 text-ink-900',

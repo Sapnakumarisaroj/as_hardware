@@ -18,14 +18,14 @@ export function RecommendationCard({ product }: { product: RecommendedProduct })
   const outOfStock = product.stock_status === 'out_of_stock'
   const variantId = product.variant_id ?? product.default_variant_id
   return (
-    <li className="flex gap-3 rounded-lg bg-white p-3 ring-1 ring-steel-200">
+    <li className="flex gap-3 rounded-2xl bg-white shadow-(--shadow-card) p-3 ring-1 ring-steel-200">
       <Link to={href} tabIndex={-1} aria-hidden="true" className="shrink-0">
         <ProductImage src={product.image} alt={product.image_alt} className="size-20 rounded" />
       </Link>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         {product.brand && <p className="text-xs font-medium uppercase tracking-wide text-ink-600">{product.brand.name}</p>}
         <h3 className="text-sm font-semibold leading-snug">
-          <Link to={href} className="hover:text-amber-600">
+          <Link to={href} className="hover:text-amber-700">
             {product.name}
           </Link>
         </h3>
@@ -123,7 +123,7 @@ export function MessageBubble({
             </p>
           )}
           {message.estimate?.calculator_path && (
-            <Link to={message.estimate.calculator_path} className="inline-block text-sm font-semibold text-amber-600 hover:underline">
+            <Link to={message.estimate.calculator_path} className="inline-block text-sm font-semibold text-amber-700 hover:underline">
               Work it out with real products in the quantity calculator
             </Link>
           )}

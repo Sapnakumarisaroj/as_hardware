@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 
+import { ClockIcon } from '@/components/icons'
 import { QuantityStepper } from '@/components/QuantityStepper'
 import { AddToCartButton } from '@/features/cart/AddToCartButton'
 import { OfferBadge } from '@/features/offers/components'
@@ -28,13 +29,17 @@ export function ProductCard({ product }: { product: ProductSummary }) {
   const saving = percent && product.discount_amount && product.discount_amount !== '0.00' ? product.discount_amount : null
 
   return (
-    <article className="group relative flex h-full flex-col rounded-lg bg-white p-2.5 ring-1 ring-steel-200 transition-shadow hover:shadow-md sm:p-3">
-      <div className="relative">
-        <Link to={href} tabIndex={-1} aria-hidden="true">
-          <ProductImage src={product.image} alt={product.image_alt} className="aspect-square w-full rounded" />
+    <article className="card card-hover group relative flex h-full flex-col overflow-hidden">
+      <div className="relative bg-gradient-to-b from-steel-50 to-white">
+        <Link to={href} tabIndex={-1} aria-hidden="true" className="block overflow-hidden">
+          <ProductImage
+            src={product.image}
+            alt={product.image_alt}
+            className="aspect-square w-full bg-transparent p-3 transition-transform duration-300 ease-out group-hover:scale-[1.04] sm:p-4"
+          />
         </Link>
         {percent && (
-          <span className="absolute left-2 top-2 rounded bg-success-600 px-1.5 py-0.5 text-xs font-bold text-white">
+          <span className="absolute left-2.5 top-2.5 rounded-full bg-success-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
             {percent} off
           </span>
         )}
@@ -43,14 +48,12 @@ export function ProductCard({ product }: { product: ProductSummary }) {
         </div>
       </div>
 
-      <div className="mt-2.5 flex flex-1 flex-col gap-1.5">
+      <div className="flex flex-1 flex-col gap-1.5 border-t border-steel-100 p-3 sm:p-4">
         {product.brand && (
-          <p className="truncate text-[11px] font-medium uppercase tracking-wide text-ink-600 sm:text-xs">
-            {product.brand.name}
-          </p>
+          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-600">{product.brand.name}</p>
         )}
-        <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-ink-900">
-          <Link to={href} className="hover:text-amber-600 focus-visible:text-amber-600">
+        <h3 className="line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-ink-900">
+          <Link to={href} className="transition-colors hover:text-amber-700 focus-visible:text-amber-700">
             {product.name}
           </Link>
         </h3>
@@ -60,18 +63,30 @@ export function ProductCard({ product }: { product: ProductSummary }) {
           </p>
         )}
         <Rating average={product.rating_avg} count={product.rating_count} compact />
-        <PriceBlock price={product.price} mrp={product.mrp} discountPercent={product.discount_percent} />
-        {saving && <p className="-mt-1 text-xs font-medium text-success-600">Save {formatPrice(saving)}</p>}
-        {product.bulk_pricing && !outOfStock && <BulkPriceIndicator bulk={product.bulk_pricing} />}
-        {hasOptions && <p className="text-xs text-ink-600">{product.variant_count} options</p>}
+        <div className="mt-0.5">
+          <PriceBlock price={product.price} mrp={product.mrp} discountPercent={product.discount_percent} />
+          {saving && <p className="text-xs font-medium text-success-600">Save {formatPrice(saving)}</p>}
+        </div>
+        {(product.bulk_pricing && !outOfStock) || hasOptions ? (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {product.bulk_pricing && !outOfStock && <BulkPriceIndicator bulk={product.bulk_pricing} />}
+            {hasOptions && <p className="text-xs text-ink-600">{product.variant_count} options</p>}
+          </div>
+        ) : null}
 
-        <ul className="flex flex-wrap items-center gap-1.5" aria-label="Availability and delivery">
+        <ul className="flex flex-wrap items-center gap-x-2.5 gap-y-1" aria-label="Availability and delivery">
           <li>
-            <StockLabel status={product.stock_status} />
+            <StockLabel status={product.stock_status} compact />
           </li>
           {delivery?.fast && !outOfStock && (
             <li>
               <FastDeliveryBadge pincode={delivery.postal_code} />
+            </li>
+          )}
+          {delivery && delivery.deliverable && !delivery.fast && !outOfStock && (
+            <li className="inline-flex items-center gap-1 text-xs text-ink-600">
+              <ClockIcon className="size-3.5" />
+              Standard delivery
             </li>
           )}
           {product.offer && !outOfStock && (
@@ -82,7 +97,7 @@ export function ProductCard({ product }: { product: ProductSummary }) {
           {product.free_delivery && !outOfStock && (
             <li>
               <span
-                className="inline-flex rounded bg-steel-100 px-1.5 py-0.5 text-xs font-semibold text-ink-900"
+                className="inline-flex rounded-md bg-steel-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-800"
                 title={product.free_delivery.name}
                 data-testid="free-delivery-badge"
               >
@@ -97,7 +112,7 @@ export function ProductCard({ product }: { product: ProductSummary }) {
           </p>
         )}
 
-        <div className="mt-auto pt-2">
+        <div className="mt-auto pt-2.5">
           {hasOptions ? (
             <Link to={href} className="btn-secondary w-full">
               Choose options

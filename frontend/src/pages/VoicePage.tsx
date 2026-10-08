@@ -91,7 +91,7 @@ function LineCard({
   const quote = line.quote
   const href = product ? `/p/${product.slug}` : null
   return (
-    <li className="rounded-lg bg-white p-3 ring-1 ring-steel-200" data-testid="voice-line">
+    <li className="rounded-2xl bg-white shadow-(--shadow-card) p-3 ring-1 ring-steel-200" data-testid="voice-line">
       <div className="flex gap-3">
         {product && href && (
           <Link to={href} tabIndex={-1} aria-hidden="true" className="shrink-0">
@@ -102,7 +102,7 @@ function LineCard({
           <p className="text-xs text-ink-600">Heard: “{line.heard}”</p>
           {product && href ? (
             <h3 className="text-sm font-semibold leading-snug">
-              <Link to={href} className="hover:text-amber-600">
+              <Link to={href} className="hover:text-amber-700">
                 {product.name}
               </Link>
             </h3>
@@ -151,7 +151,7 @@ function LineCard({
           {quote?.next_tier?.reachable && line.status === 'ready' && (
             <button
               type="button"
-              className="text-left text-sm font-semibold text-amber-600 hover:underline"
+              className="text-left text-sm font-semibold text-amber-700 hover:underline"
               disabled={busy}
               onClick={() => onQuantity(line, quote.next_tier!.min_quantity)}
             >
@@ -171,7 +171,7 @@ function LineCard({
               {line.alternatives.map((alt, index) => (
                 <span key={alt.id}>
                   {index > 0 && ' · '}
-                  <Link to={`/p/${alt.slug}`} className="font-semibold text-amber-600 hover:underline">
+                  <Link to={`/p/${alt.slug}`} className="font-semibold text-amber-700 hover:underline">
                     {alt.name}
                   </Link>
                 </span>
@@ -203,7 +203,7 @@ function ResultView({
   const proposing = result.needs_confirmation && ready.length > 0
   return (
     <section aria-labelledby="voice-result-heading" className="space-y-4">
-      <div className="space-y-2 rounded-lg bg-white p-4 ring-1 ring-steel-200">
+      <div className="space-y-2 rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
         <h2 id="voice-result-heading" className="text-xs font-semibold uppercase tracking-wide text-ink-600">
           You said
         </h2>
@@ -258,7 +258,7 @@ function ResultView({
       )}
 
       {result.quantity && (
-        <Link to={result.quantity.path} className="inline-block text-sm font-semibold text-amber-600 hover:underline">
+        <Link to={result.quantity.path} className="inline-block text-sm font-semibold text-amber-700 hover:underline">
           Open the quantity calculator: {result.quantity.title}
         </Link>
       )}
@@ -271,7 +271,7 @@ function ResultView({
             ))}
           </ul>
           {result.search_path && (
-            <Link to={result.search_path} className="mt-2 inline-block text-sm font-semibold text-amber-600 hover:underline">
+            <Link to={result.search_path} className="mt-2 inline-block text-sm font-semibold text-amber-700 hover:underline">
               See all results
             </Link>
           )}
@@ -287,7 +287,7 @@ function History() {
   const rows = sessions.data?.results ?? []
   if (rows.length === 0) return null
   return (
-    <section aria-labelledby="voice-history-heading" className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
+    <section aria-labelledby="voice-history-heading" className="rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
       <div className="mb-2 flex items-center justify-between">
         <h2 id="voice-history-heading" className="text-base font-bold">
           Your recent voice sessions
@@ -559,7 +559,7 @@ export function VoicePage() {
         </div>
       </fieldset>
 
-      <div className="flex flex-col items-center gap-3 rounded-lg bg-white p-6 text-center ring-1 ring-steel-200">
+      <div className="flex flex-col items-center gap-3 rounded-2xl bg-white shadow-(--shadow-card) p-6 text-center ring-1 ring-steel-200">
         <button
           type="button"
           onClick={() => void toggleMicrophone()}
@@ -652,7 +652,7 @@ export function VoicePage() {
         <History />
       ) : (
         <p className="text-xs text-ink-600">
-          <Link to="/login?next=%2Fvoice" className="font-semibold text-amber-600 hover:underline">
+          <Link to="/login?next=%2Fvoice" className="font-semibold text-amber-700 hover:underline">
             Sign in
           </Link>{' '}
           to add items to your cart and keep a history of what you asked.

@@ -23,7 +23,7 @@ export function PriceBlock({
   return (
     <div>
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className={`font-bold text-ink-950 ${big ? 'text-3xl' : 'text-lg'}`}>
+        <span className={`font-bold tracking-tight text-ink-950 ${big ? 'text-3xl' : 'text-lg'}`}>
           <span className="sr-only">Price: </span>
           {formatPrice(price)}
         </span>
@@ -45,26 +45,37 @@ export function PriceBlock({
   )
 }
 
-export function StockLabel({ status, lowQuantity }: { status: StockStatus; lowQuantity?: number | null }) {
-  if (status === 'out_of_stock') return <span className="text-sm font-semibold text-danger-600">Out of stock</span>
-  if (status === 'low_stock') {
-    return (
-      <span className="text-sm font-semibold text-amber-600">
-        {lowQuantity ? `Only ${lowQuantity} left` : 'Limited stock'}
-      </span>
-    )
-  }
-  return <span className="text-sm font-semibold text-success-600">In stock</span>
+export function StockLabel({
+  status,
+  lowQuantity,
+  compact = false,
+}: {
+  status: StockStatus
+  lowQuantity?: number | null
+  compact?: boolean
+}) {
+  const [text, tone, dot] =
+    status === 'out_of_stock'
+      ? ['Out of stock', 'text-danger-600', 'bg-danger-600']
+      : status === 'low_stock'
+        ? [lowQuantity ? `Only ${lowQuantity} left` : 'Limited stock', 'text-amber-700', 'bg-amber-500']
+        : ['In stock', 'text-success-600', 'bg-success-600']
+  return (
+    <span className={`inline-flex items-center gap-1.5 font-semibold ${tone} ${compact ? 'text-xs' : 'text-sm'}`}>
+      <span aria-hidden className={`size-1.5 rounded-full ${dot}`} />
+      {text}
+    </span>
+  )
 }
 
 /** Only rendered when the server said fast delivery is possible to the shopper's PIN (Phase 16). */
 export function FastDeliveryBadge({ pincode }: { pincode?: string }) {
   return (
     <span
-      className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-ink-900"
+      className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-ink-900"
       data-testid="fast-badge"
     >
-      <BoltIcon className="size-3.5 text-amber-600" />
+      <BoltIcon className="size-3.5 text-amber-700" />
       Fast delivery
       {pincode && <span className="sr-only"> to {pincode}</span>}
     </span>

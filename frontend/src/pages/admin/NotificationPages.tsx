@@ -353,7 +353,7 @@ function Messages() {
                   <label htmlFor={`ev-${event.key}-${channel.channel}`}>{CHANNEL_NAMES[channel.channel]}</label>
                   <button
                     type="button"
-                    className="text-xs font-semibold text-amber-600 hover:underline"
+                    className="text-xs font-semibold text-amber-700 hover:underline"
                     aria-label={`${channel.templates.length ? 'Own words' : 'Words'} for ${event.label} by ${CHANNEL_NAMES[channel.channel]}`}
                     onClick={() => setEditing({ event, channel, language: 'en' })}
                   >

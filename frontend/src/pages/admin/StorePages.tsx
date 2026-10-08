@@ -770,7 +770,7 @@ function AdminStorePage({ mode }: { mode: Mode }) {
         <Panel
           title="Stock"
           action={
-            <Link to={`/admin/inventory?store=${store.id}`} className="text-sm font-semibold text-amber-600 hover:underline">
+            <Link to={`/admin/inventory?store=${store.id}`} className="text-sm font-semibold text-amber-700 hover:underline">
               Open inventory
             </Link>
           }
@@ -789,7 +789,7 @@ function AdminStorePage({ mode }: { mode: Mode }) {
           <Panel
             title="Orders and riders"
             action={
-              <Link to={`/admin/orders?store=${store.id}&status=open`} className="text-sm font-semibold text-amber-600 hover:underline">
+              <Link to={`/admin/orders?store=${store.id}&status=open`} className="text-sm font-semibold text-amber-700 hover:underline">
                 Open orders
               </Link>
             }

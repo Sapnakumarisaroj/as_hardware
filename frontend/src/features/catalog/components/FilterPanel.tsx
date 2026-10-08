@@ -64,7 +64,7 @@ export function FilterPanel({ facets, state, categoryLinks }: Props) {
               <Link
                 key={option.slug}
                 to={`/c/${option.slug}`}
-                className="flex items-center justify-between rounded px-1 py-0.5 text-sm text-ink-800 hover:bg-steel-50 hover:text-amber-600"
+                className="flex items-center justify-between rounded px-1 py-0.5 text-sm text-ink-800 hover:bg-steel-50 hover:text-amber-700"
               >
                 <span>{option.name}</span>
                 <span className="text-xs text-ink-600">{option.count}</span>
@@ -82,7 +82,7 @@ export function FilterPanel({ facets, state, categoryLinks }: Props) {
             ),
           )}
           {!categoryLinks && filters.category && (
-            <button type="button" onClick={() => setParam('category', null)} className="text-xs font-semibold text-amber-600">
+            <button type="button" onClick={() => setParam('category', null)} className="text-xs font-semibold text-amber-700">
               All categories
             </button>
           )}

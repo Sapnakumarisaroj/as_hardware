@@ -54,7 +54,7 @@ export function ShopGroupPage() {
                     )}
                   </Link>
                   <div className="min-w-0 flex-1 p-3">
-                    <Link to={entry.href} className="block font-bold leading-tight text-ink-950 hover:text-amber-600">
+                    <Link to={entry.href} className="block font-bold leading-tight text-ink-950 hover:text-amber-700">
                       {entry.name}
                     </Link>
                     {entry.productCount !== null && <p className="mt-0.5 text-xs text-ink-600">{pluralize(entry.productCount, 'product')}</p>}
@@ -64,7 +64,7 @@ export function ShopGroupPage() {
                           <li key={sub.slug}>
                             <Link
                               to={sub.href}
-                              className="inline-block whitespace-nowrap rounded-full bg-steel-50 px-2.5 py-1 text-xs text-ink-800 ring-1 ring-steel-200 hover:text-amber-600 hover:ring-amber-500"
+                              className="inline-block whitespace-nowrap rounded-full bg-steel-50 px-2.5 py-1 text-xs text-ink-800 ring-1 ring-steel-200 hover:text-amber-700 hover:ring-amber-500"
                             >
                               {sub.name}
                             </Link>

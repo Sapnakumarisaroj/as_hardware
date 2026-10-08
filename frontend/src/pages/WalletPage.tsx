@@ -26,7 +26,7 @@ const PAGE_SIZE = 20
 function Stat({ label, value, hint, tone = 'default' }: { label: string; value: string; hint?: string; tone?: 'default' | 'good' | 'muted' }) {
   const color = tone === 'good' ? 'text-success-600' : tone === 'muted' ? 'text-ink-600' : 'text-ink-950'
   return (
-    <div className="rounded-lg bg-white p-4 ring-1 ring-steel-200">
+    <div className="rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
       <dt className="text-xs font-medium uppercase tracking-wide text-ink-600">{label}</dt>
       <dd className={`mt-1 text-xl font-bold ${color}`}>{formatPrice(value)}</dd>
       {hint && <p className="mt-0.5 text-xs text-ink-600">{hint}</p>}
@@ -81,7 +81,7 @@ function History() {
         <p className="mt-4 text-sm text-ink-600">Nothing here yet.</p>
       ) : (
         <>
-          <ul className="mt-3 divide-y divide-steel-100 rounded-lg bg-white ring-1 ring-steel-200" aria-label="Credit history">
+          <ul className="mt-3 divide-y divide-steel-100 rounded-2xl bg-white shadow-(--shadow-card) ring-1 ring-steel-200" aria-label="Credit history">
             {ledger.data.results.map((entry) => {
               const credit = !entry.amount.startsWith('-')
               return (
@@ -94,7 +94,7 @@ function History() {
                       {entry.order_number && (
                         <>
                           {' · '}
-                          <Link to={`/account/orders/${entry.order_number}`} className="font-semibold text-amber-600 hover:underline">
+                          <Link to={`/account/orders/${entry.order_number}`} className="font-semibold text-amber-700 hover:underline">
                             Order {entry.order_number}
                           </Link>
                         </>
@@ -135,7 +135,7 @@ function Referral({ wallet }: { wallet: Wallet }) {
     })
   }
   return (
-    <section aria-labelledby="referral-heading" className="mt-8 rounded-lg bg-white p-5 ring-1 ring-steel-200">
+    <section aria-labelledby="referral-heading" className="mt-8 rounded-2xl bg-white shadow-(--shadow-card) p-5 ring-1 ring-steel-200">
       <h2 id="referral-heading" className="text-lg font-bold">
         Invite friends
       </h2>

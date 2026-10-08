@@ -207,7 +207,7 @@ export function AdminDashboardPage() {
         title="Last 14 days"
         className="mt-5"
         action={
-          <Link to="/admin/analytics" className="text-sm font-semibold text-amber-600 hover:underline">
+          <Link to="/admin/analytics" className="text-sm font-semibold text-amber-700 hover:underline">
             Open analytics
           </Link>
         }
