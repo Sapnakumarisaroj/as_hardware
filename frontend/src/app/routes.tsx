@@ -5,6 +5,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage'
 import { RouteErrorPage } from '@/pages/RouteErrorPage'
 
 import { AppProviders } from './AppProviders'
+import { AuthLayout } from './layouts/AuthLayout'
 import { CustomerLayout } from './layouts/CustomerLayout'
 import { RiderLayout } from './layouts/RiderLayout'
 
@@ -38,6 +39,17 @@ export const routes: RouteObject[] = [
   {
     element: <AppProviders />,
     children: [
+      {
+        // Sign-in pages stand alone: no storefront header, navigation or search.
+        element: <AuthLayout />,
+        errorElement: <RouteErrorPage />,
+        children: [
+          { path: 'login', lazy: async () => ({ Component: (await auth()).LoginPage }) },
+          { path: 'register', lazy: async () => ({ Component: (await auth()).RegisterPage }) },
+          { path: 'forgot-password', lazy: async () => ({ Component: (await auth()).ForgotPasswordPage }) },
+          { path: 'reset-password', lazy: async () => ({ Component: (await auth()).ResetPasswordPage }) },
+        ],
+      },
       {
         element: <CustomerLayout />,
         errorElement: <RouteErrorPage />,
@@ -81,8 +93,6 @@ export const routes: RouteObject[] = [
           { path: 'projects', lazy: async () => ({ Component: (await projects()).ProjectsPage }) },
           { path: 'projects/:id', lazy: async () => ({ Component: (await projects()).ProjectPage }) },
           { path: 'voice', lazy: async () => ({ Component: (await import('@/pages/VoicePage')).VoicePage }) },
-          { path: 'login', lazy: async () => ({ Component: (await auth()).LoginPage }) },
-          { path: 'register', lazy: async () => ({ Component: (await auth()).RegisterPage }) },
           { path: 'account', lazy: async () => ({ Component: (await account()).AccountPage }) },
           { path: 'account/orders', lazy: async () => ({ Component: (await account()).OrdersPage }) },
           { path: 'account/orders/:number', lazy: async () => ({ Component: (await account()).OrderDetailPage }) },

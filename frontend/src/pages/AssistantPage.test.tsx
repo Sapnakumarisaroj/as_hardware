@@ -89,8 +89,9 @@ describe('AI assistant page', () => {
     expect(screen.getByText(/Basic mode: answers use keyword matching/)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Help me repair a leaking tap' }))
-    await waitFor(() =>
-      expect(currentUrl(router)).toBe(`/login?next=${encodeURIComponent('/ai-assistant?ask=Help%20me%20repair%20a%20leaking%20tap')}`),
+    await waitFor(
+      () => expect(currentUrl(router)).toBe(`/login?next=${encodeURIComponent('/ai-assistant?ask=Help%20me%20repair%20a%20leaking%20tap')}`),
+      { timeout: 5000 }, // the login page is a separate chunk, loaded on first visit
     )
   })
 
@@ -261,7 +262,8 @@ describe('AI assistant page', () => {
 
   it('the header links to the assistant', async () => {
     mockApi({ get: { ...shopGet, '/ai/assistant/': status } })
-    renderRoute('/')
-    expect(await screen.findByRole('link', { name: 'Ask AI' })).toHaveAttribute('href', '/ai-assistant')
+    const { user } = renderRoute('/')
+    await user.click(await within(screen.getByRole('banner')).findByRole('button', { name: 'AI' }))
+    expect(screen.getByRole('link', { name: /^AI assistant/ })).toHaveAttribute('href', '/ai-assistant')
   })
 })

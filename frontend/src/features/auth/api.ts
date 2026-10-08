@@ -46,3 +46,12 @@ export async function register(input: RegisterInput): Promise<AuthResponse> {
 export async function logout(refresh: string | null): Promise<void> {
   if (refresh) await api.post('/auth/logout/', { refresh })
 }
+
+/** Always answers the same, whether or not the email has an account. */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await api.post('/auth/password/forgot/', { email })
+}
+
+export async function resetPassword(input: { uid: string; token: string; password: string; password_confirm: string }): Promise<void> {
+  await api.post('/auth/password/reset/', input)
+}

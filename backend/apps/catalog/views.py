@@ -1,5 +1,6 @@
 from collections import defaultdict
 
+from django.conf import settings
 from django.db.models import Count, Prefetch, Q
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
@@ -42,6 +43,29 @@ def category_product_counts() -> dict[int, int]:
     return counts
 
 
+def category_cover_images() -> dict[int, str]:
+    """Category id → the primary photo of one of its published products (featured first), for tiles and
+    menus when the category has no picture of its own. Parents get one of their children's photos."""
+    from .models import ProductImage
+
+    covers: dict[int, str] = {}
+    rows = (
+        ProductImage.objects.filter(product__is_active=True, product__is_published=True, product__is_deleted=False)
+        .order_by("-product__is_featured", "product__name", "-is_primary", "sort_order", "id")
+        .values_list("product__category_id", "product__subcategory_id", "image")
+    )
+    for category_id, subcategory_id, path in rows.iterator():
+        url = settings.MEDIA_URL + path
+        for pk in (subcategory_id, category_id):
+            if pk and pk not in covers:
+                covers[pk] = url
+    parents = dict(Category.objects.filter(parent__isnull=False).values_list("pk", "parent_id"))
+    for child, parent in parents.items():
+        if child in covers and parent not in covers:
+            covers[parent] = covers[child]
+    return covers
+
+
 class CategoryViewSet(viewsets.ModelViewSet):
     """Top-level categories (departments) with their categories and subcategories (up to three
     levels, Phase 15). Writes: admin only."""
@@ -68,7 +92,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 "sort_order", "name"
             ):
                 grandchildren[child.parent_id].append(child)
-            context.update(grandchildren=grandchildren, category_counts=self._counts())
+            context.update(
+                grandchildren=grandchildren, category_counts=self._counts(), cover_images=category_cover_images()
+            )
         return context
 
     def _counts(self) -> dict[int, int]:

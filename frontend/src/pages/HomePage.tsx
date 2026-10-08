@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 
 import { ErrorState } from '@/components/feedback'
-import { BoltIcon, CameraIcon, ChevronRightIcon, MicIcon, PinIcon, SparkIcon } from '@/components/icons'
+import { BoltIcon, CameraIcon, ChevronRightIcon, ImageIcon, MicIcon, PinIcon, SparkIcon } from '@/components/icons'
 import { useAuth } from '@/features/auth/context'
 import { useCategories, useCollections, useProducts } from '@/features/catalog/api'
 import { ProductRail, ProductStrip } from '@/features/catalog/components/ProductCollections'
@@ -11,7 +11,6 @@ import { useServiceability } from '@/features/delivery/api'
 import { isValidPincode, usePincode } from '@/features/delivery/location'
 import { LocationSelector } from '@/features/location/LocationSelector'
 import { LiveOffersStrip } from '@/features/offers/components'
-import { SearchBar } from '@/features/search/SearchBar'
 import { useWishlist } from '@/features/wishlist/api'
 import { env } from '@/lib/env'
 import { pluralize } from '@/lib/format'
@@ -54,7 +53,7 @@ function DeliverToBar() {
   )
 }
 
-/** 2. Search + AI search + photo search. */
+/** 2. Headline + AI, photo and voice search (the search box itself is the header's, so there is only one). */
 function SearchHero() {
   return (
     <section className="bg-ink-900 text-white">
@@ -65,10 +64,7 @@ function SearchHero() {
         <p className="mt-2 max-w-2xl text-sm text-steel-200 sm:text-base">
           Search by name, size, grade or job. Prices, stock and delivery times come straight from our stores.
         </p>
-        <div className="mt-5 max-w-2xl">
-          <SearchBar />
-        </div>
-        <ul className="mt-4 flex flex-wrap gap-2 text-sm" aria-label="Other ways to find products">
+        <ul className="mt-5 flex flex-wrap gap-2 text-sm" aria-label="Other ways to find products">
           <li>
             <Link
               to="/ai-assistant"
@@ -136,33 +132,47 @@ function Departments() {
       <h2 id="departments-heading" className="mb-4 text-xl font-bold text-ink-950">
         Shop by department
       </h2>
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {departments.map((department) => (
-          <li key={department.id} className="flex">
-            <Link
-              to={`/c/${department.slug}`}
-              className="group flex w-full flex-col rounded-lg bg-white p-3 ring-1 ring-steel-200 hover:ring-amber-500 focus-visible:ring-amber-500"
-            >
-              {department.image ? (
-                <img src={department.image} alt="" loading="lazy" className="mb-2 aspect-[4/3] w-full rounded object-cover" />
-              ) : (
-                <span aria-hidden className="mb-2 grid aspect-[4/3] w-full place-items-center rounded bg-steel-100 text-2xl font-extrabold text-ink-600">
-                  {department.name.charAt(0)}
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
+        {departments.map((department) => {
+          const cover = department.cover_image ?? department.image
+          const label = department.short_name || department.name
+          return (
+            <li key={department.id} className="flex">
+              <Link
+                to={`/c/${department.slug}`}
+                title={department.name}
+                className="group flex w-full flex-col overflow-hidden rounded-xl bg-white ring-1 ring-steel-200 transition-shadow hover:shadow-md hover:ring-amber-500 focus-visible:ring-2 focus-visible:ring-amber-500"
+              >
+                <span className="block aspect-[4/3] w-full overflow-hidden bg-steel-100">
+                  {cover ? (
+                    <img
+                      src={cover}
+                      alt={`${department.name}: example product`}
+                      loading="lazy"
+                      className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                    />
+                  ) : (
+                    <span aria-hidden className="grid size-full place-items-center text-steel-400">
+                      <ImageIcon className="size-10" />
+                    </span>
+                  )}
                 </span>
-              )}
-              <span className="font-bold text-ink-950 group-hover:text-amber-600">{department.name}</span>
-              <span className="text-xs text-ink-600">{pluralize(department.product_count ?? 0, 'product')}</span>
-              {department.children.length > 0 && (
-                <span className="mt-1 line-clamp-2 text-xs text-ink-600">
-                  {department.children
-                    .filter((c) => (c.product_count ?? 0) > 0)
-                    .map((c) => c.name)
-                    .join(' · ')}
+                <span className="flex flex-1 flex-col px-3 py-2.5">
+                  <span className="font-bold leading-tight text-ink-950 group-hover:text-amber-600">{label}</span>
+                  <span className="mt-0.5 text-xs text-ink-600">{pluralize(department.product_count ?? 0, 'product')}</span>
+                  {department.children.length > 0 && (
+                    <span className="mt-1 line-clamp-1 text-xs text-ink-600">
+                      {department.children
+                        .filter((c) => (c.product_count ?? 0) > 0)
+                        .map((c) => c.name)
+                        .join(' · ')}
+                    </span>
+                  )}
                 </span>
-              )}
-            </Link>
-          </li>
-        ))}
+              </Link>
+            </li>
+          )
+        })}
       </ul>
     </section>
   )

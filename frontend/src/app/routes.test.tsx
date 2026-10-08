@@ -108,10 +108,12 @@ describe('homepage', () => {
 describe('header', () => {
   it('logged out: offers Login / Register and loads categories into the navigation', async () => {
     mockApi({ get: catalogRoutes() })
-    renderRoute('/')
+    const { user } = renderRoute('/')
     expect(screen.getByRole('link', { name: /Login \/ Register/ })).toHaveAttribute('href', '/login')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Shop' })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: 'Shop' }))
     const nav = await screen.findByRole('navigation', { name: 'Product categories' })
-    expect(within(nav).getByRole('link', { name: 'Tools' })).toHaveAttribute('href', '/c/tools')
+    expect(await within(nav).findByRole('link', { name: /^Tools/ })).toHaveAttribute('href', '/c/tools')
     expect(within(nav).getByRole('link', { name: /Drills/ })).toHaveAttribute('href', '/c/drills')
     expect(within(screen.getByRole('banner')).getByRole('link', { name: 'Cart' })).toHaveAttribute('href', '/cart')
   })

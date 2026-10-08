@@ -26,14 +26,44 @@ class _ProductCountMixin:
         # Annotated by the category views (published, active products); absent on writes.
         return getattr(obj, "product_count", None)
 
+    def get_short_name(self, obj) -> str:
+        from .taxonomy import short_name
+
+        return short_name(obj.slug, obj.name)
+
+    def get_cover_image(self, obj) -> str | None:
+        """The category's own picture, else a photo of one of its published products; never a stand-in."""
+        return _cover_url(self.context, obj.pk, obj.image)
+
+
+def _cover_url(context, pk, own_image) -> str | None:
+    path = own_image.url if own_image else context.get("cover_images", {}).get(pk)
+    if not path:
+        return None
+    request = context.get("request")
+    return request.build_absolute_uri(path) if request else path
+
 
 class SubCategorySerializer(_ProductCountMixin, serializers.ModelSerializer):
     product_count = serializers.SerializerMethodField()
     children = serializers.SerializerMethodField()
+    short_name = serializers.SerializerMethodField()
+    cover_image = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
-        fields = ["id", "name", "slug", "description", "image", "sort_order", "product_count", "children"]
+        fields = [
+            "id",
+            "name",
+            "short_name",
+            "slug",
+            "description",
+            "image",
+            "cover_image",
+            "sort_order",
+            "product_count",
+            "children",
+        ]
 
     def get_children(self, obj) -> list[dict]:
         """Third level (Phase 15), e.g. Cement › Grey Cement. Empty for the deepest level."""
@@ -47,6 +77,8 @@ class SubCategorySerializer(_ProductCountMixin, serializers.ModelSerializer):
                     "slug": child.slug,
                     "description": child.description,
                     "image": child.image.url if child.image else None,
+                    "short_name": child.name,
+                    "cover_image": _cover_url(self.context, child.pk, child.image),
                     "sort_order": child.sort_order,
                     "product_count": counts.get(child.pk),
                     "children": [],
@@ -67,17 +99,21 @@ class CategorySerializer(_ProductCountMixin, serializers.ModelSerializer):
     parent_detail = _ParentRefSerializer(source="parent", read_only=True, allow_null=True)
     level = serializers.SerializerMethodField()
     breadcrumb = serializers.SerializerMethodField()
+    short_name = serializers.SerializerMethodField()
+    cover_image = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
         fields = [
             "id",
             "name",
+            "short_name",
             "slug",
             "parent",
             "parent_detail",
             "description",
             "image",
+            "cover_image",
             "sort_order",
             "is_active",
             "product_count",

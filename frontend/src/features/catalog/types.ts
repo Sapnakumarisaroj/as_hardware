@@ -228,6 +228,10 @@ export interface SubCategory {
   slug: string
   description: string
   image: string | null
+  /** Compact label for menus and tiles, e.g. "Plywood & Boards" (the full name stays on pages). */
+  short_name?: string
+  /** The category's own picture, else a photo of one of its real products; null when there is none. */
+  cover_image?: string | null
   sort_order: number
   product_count: number | null
   /** Third level (Phase 15), e.g. Cement › Grey Cement. Empty at the deepest level. */

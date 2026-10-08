@@ -84,6 +84,25 @@ APPROVED_TAXONOMY: dict[tuple[str, str], list[tuple[str, str]]] = {
 }
 
 
+# Compact labels for menus and tiles; pages and dropdowns keep the full name.
+SHORT_NAMES = {
+    "plywood-mdf-hdhmr": "Plywood & Boards",
+    "fevicol": "Fevicol",
+    "hinges-channels-handles": "Hinges & Handles",
+    "kitchen-systems": "Kitchen Accessories",
+    "wardrobe-bed-fittings": "Wardrobe & Bed",
+    "door-locks-hardware": "Door Hardware",
+    "power-tools": "Power Tools",
+    "general-hardware": "Hardware & Tools",
+    "safety": "Safety & Workwear",
+    "glass-door-hardware": "Glass Hardware",
+}
+
+
+def short_name(slug: str, name: str) -> str:
+    return SHORT_NAMES.get(slug, name)
+
+
 def approved_slugs() -> set[str]:
     slugs = set()
     for (slug, _name), children in APPROVED_TAXONOMY.items():
