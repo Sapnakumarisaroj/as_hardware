@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { cart, cartLine, categories, customer, productPage, productSummary } from '@/test/fixtures'
+import { approvedCategories, cart, cartLine, customer, productPage, productSummary } from '@/test/fixtures'
 import { httpError, mockApi, paramsSent } from '@/test/mockApi'
 import { renderRoute, signIn } from '@/test/utils'
 
@@ -9,7 +9,7 @@ const drill = productSummary()
 const tap = productSummary({ id: 2, name: 'Brass Pillar Tap', slug: 'brass-pillar-tap', default_variant_id: 102 })
 
 function catalogRoutes(products = [drill, tap]) {
-  return { '/categories/': categories, '/products/': productPage(products) }
+  return { '/categories/': approvedCategories, '/products/': productPage(products) }
 }
 
 describe('homepage', () => {
@@ -18,21 +18,20 @@ describe('homepage', () => {
     renderRoute('/')
 
     expect(screen.getByRole('heading', { level: 1, name: /find the right hardware/i })).toBeInTheDocument()
-    expect(screen.getByTestId('deliver-to-message')).toHaveTextContent('Choose your PIN code')
-    const departments = await screen.findByRole('region', { name: 'Shop by department' })
-    expect(await within(departments).findByRole('link', { name: /Electrical\s*14 products/ })).toHaveAttribute(
-      'href',
-      '/c/electrical',
-    )
-    expect(within(departments).getByRole('link', { name: /Tools/ })).toHaveTextContent('Drills')
+    // Delivery lives in the header's selector; there is no separate delivery bar on the page.
+    expect(within(screen.getByRole('banner')).getByRole('button', { name: /Deliver to\s*Select location/ })).toBeInTheDocument()
+    expect(screen.queryByTestId('deliver-to-message')).not.toBeInTheDocument()
+    const groups = await screen.findByRole('region', { name: 'Shop by category' })
+    expect(within(groups).getByRole('link', { name: 'Tools & Safety' })).toHaveAttribute('href', '/shop/tools-safety')
+    expect(within(groups).getByRole('link', { name: 'Hinges, Channels & Handles' })).toHaveAttribute('href', '/c/hinges-channels-handles')
 
     // Department rails are the catalogue's departments; curated-list fallbacks use live data.
-    for (const title of ['Electrical', 'Tools', 'Best sellers', 'New arrivals', 'Bulk buying']) {
+    for (const title of ['Plywood, MDF & HDHMR', 'Power Tools & Accessories', 'Best sellers', 'New arrivals', 'Bulk buying']) {
       expect(await screen.findByRole('region', { name: title })).toBeInTheDocument()
     }
     expect(screen.getByRole('region', { name: 'Not sure what you need?' })).toBeInTheDocument()
     const sent = paramsSent(api.get, '/products/')
-    expect(sent).toContainEqual(expect.objectContaining({ category: 'electrical', ordering: 'popular' }))
+    expect(sent).toContainEqual(expect.objectContaining({ category: 'plywood-mdf-hdhmr', ordering: 'popular' }))
     expect(sent).toContainEqual(expect.objectContaining({ bestseller: 'true', ordering: 'popular' }))
     expect(sent).toContainEqual(expect.objectContaining({ bulk_pricing: 'true' }))
     // No PIN: no fast-delivery section and no PIN sent; no history: no recently viewed / recommended.
@@ -61,7 +60,7 @@ describe('homepage', () => {
     expect(await screen.findByRole('region', { name: 'Deals of the week' })).toHaveTextContent('Brass Pillar Tap')
     expect(await screen.findByRole('region', { name: 'Bulk savings' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Bulk buying' })).not.toBeInTheDocument() // the shop's list replaces it
-    expect(await screen.findByTestId('deliver-to-message')).toHaveTextContent('Delivery in 18 minutes')
+    expect(await screen.findByTestId('pin-summary')).toHaveTextContent('Delivery in 18 minutes')
     expect(await screen.findByRole('region', { name: 'Fast delivery to you' })).toHaveTextContent('Delivery in 18 minutes to 411038')
     expect(paramsSent(api.get, '/products/')).toContainEqual(
       expect.objectContaining({ fast_delivery: 'true', postal_code: '411038' }),
@@ -85,9 +84,9 @@ describe('homepage', () => {
   it('hides product sections that have no products instead of padding them', async () => {
     mockApi({ get: catalogRoutes([]) })
     renderRoute('/')
-    await screen.findByRole('region', { name: 'Shop by department' })
+    await screen.findByRole('region', { name: 'Shop by category' })
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Best sellers' })).not.toBeInTheDocument())
-    expect(screen.queryByRole('region', { name: 'Electrical' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Plywood, MDF & HDHMR' })).not.toBeInTheDocument()
   })
 
   it('shows an error with retry when categories cannot load', async () => {
@@ -110,11 +109,12 @@ describe('header', () => {
     mockApi({ get: catalogRoutes() })
     const { user } = renderRoute('/')
     expect(screen.getByRole('link', { name: /Login \/ Register/ })).toHaveAttribute('href', '/login')
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Shop' })).toBeInTheDocument())
-    await user.click(screen.getByRole('button', { name: 'Shop' }))
-    const nav = await screen.findByRole('navigation', { name: 'Product categories' })
-    expect(await within(nav).findByRole('link', { name: /^Tools/ })).toHaveAttribute('href', '/c/tools')
-    expect(within(nav).getByRole('link', { name: /Drills/ })).toHaveAttribute('href', '/c/drills')
+    const main = await screen.findByRole('navigation', { name: 'Main' })
+    const tools = await within(main).findByRole('button', { name: 'Tools & Safety' })
+    await user.click(tools)
+    const panel = document.getElementById(tools.getAttribute('aria-controls')!)!
+    expect(within(panel).getByRole('link', { name: /^Power Tools\s/ })).toHaveAttribute('href', '/c/power-tools')
+    expect(within(panel).getByRole('link', { name: /^Safety Tools/ })).toHaveAttribute('href', '/c/safety')
     expect(within(screen.getByRole('banner')).getByRole('link', { name: 'Cart' })).toHaveAttribute('href', '/cart')
   })
 

@@ -213,14 +213,23 @@ class AdminProductDetailSerializer(AdminProductListSerializer):
         return AdminVariantSerializer(variants, many=True, context={**self.context, "stock": stock}).data
 
 
-class ImageUploadSerializer(serializers.Serializer):
+class _ImageSourceFields(serializers.Serializer):
+    """Where a picture came from (all optional; see ProductImage)."""
+
+    source_type = serializers.ChoiceField(choices=ProductImage.SourceType.choices, required=False, allow_blank=True)
+    image_type = serializers.ChoiceField(choices=ProductImage.ImageType.choices, required=False)
+    source_url = serializers.URLField(max_length=500, required=False, allow_blank=True)
+    licence = serializers.CharField(max_length=300, required=False, allow_blank=True)
+
+
+class ImageUploadSerializer(_ImageSourceFields):
     image = serializers.ImageField()
     alt_text = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
     variant = serializers.IntegerField(required=False, allow_null=True)
     is_primary = serializers.BooleanField(required=False, default=False)
 
 
-class ImageUpdateSerializer(serializers.Serializer):
+class ImageUpdateSerializer(_ImageSourceFields):
     alt_text = serializers.CharField(max_length=200, required=False, allow_blank=True)
     sort_order = serializers.IntegerField(min_value=0, required=False)
     is_primary = serializers.BooleanField(required=False)
@@ -397,6 +406,7 @@ class AdminProductViewSet(viewsets.ModelViewSet):
             alt_text=data["alt_text"],
             is_primary=data["is_primary"] or first,
             sort_order=product.images.count(),
+            **{field: data[field] for field in ("source_type", "image_type", "source_url", "licence") if field in data},
         )
         image.full_clean(exclude=["product", "variant"])  # extension and size validators
         image.save()

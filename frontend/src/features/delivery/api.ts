@@ -18,6 +18,16 @@ function targetParams(target: DeliveryTarget): Record<string, string | number> |
 // Estimates depend on riders and workload right now: keep them fresh, never retry in a loop.
 const LIVE = { staleTime: 60_000, retry: false } as const
 
+/** The shop-wide fast-delivery limit for the header badge; whether an order is fast is decided per PIN and cart. */
+export function useDeliveryPromise() {
+  return useQuery({
+    queryKey: ['delivery', 'promise'],
+    queryFn: async () => (await api.get<{ fast_delivery_max_minutes: number }>('/delivery/promise/')).data,
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  })
+}
+
 export function useServiceability(pincode: string) {
   return useQuery({
     queryKey: ['delivery', 'check', pincode],

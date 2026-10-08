@@ -1,10 +1,10 @@
 import { Link } from 'react-router'
 
-import { useCategories } from '@/features/catalog/api'
+import { useNavGroups } from '@/features/catalog/navGroups'
 import { env } from '@/lib/env'
 
 export function Footer() {
-  const categories = useCategories()
+  const { groups } = useNavGroups()
   const link = 'text-sm text-steel-200 hover:text-amber-500'
   return (
     <footer className="mt-12 bg-ink-900 text-white">
@@ -18,10 +18,10 @@ export function Footer() {
         <nav aria-label="Shop">
           <h2 className="text-sm font-bold uppercase tracking-wide text-steel-400">Shop</h2>
           <ul className="mt-3 space-y-2">
-            {categories.data?.filter((c) => c.product_count !== 0).slice(0, 6).map((category) => (
-              <li key={category.id}>
-                <Link to={`/c/${category.slug}`} className={link}>
-                  {category.name}
+            {groups.map((group) => (
+              <li key={group.slug}>
+                <Link to={group.href} className={link}>
+                  {group.name}
                 </Link>
               </li>
             ))}
@@ -33,6 +33,16 @@ export function Footer() {
             <li>
               <Link to="/brands" className={link}>
                 Brands
+              </Link>
+            </li>
+            <li>
+              <Link to="/products?ordering=discount" className={link}>
+                Deals
+              </Link>
+            </li>
+            <li>
+              <Link to="/products?ordering=newest" className={link}>
+                New arrivals
               </Link>
             </li>
           </ul>

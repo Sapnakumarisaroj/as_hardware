@@ -260,10 +260,11 @@ describe('AI assistant page', () => {
     expect(await drawer.findByRole('button', { name: /fix a leaking tap/ })).toBeInTheDocument()
   })
 
-  it('the header links to the assistant', async () => {
+  it('the menu links to the assistant (it is not a product navigation item)', async () => {
     mockApi({ get: { ...shopGet, '/ai/assistant/': status } })
     const { user } = renderRoute('/')
-    await user.click(await within(screen.getByRole('banner')).findByRole('button', { name: 'AI' }))
-    expect(screen.getByRole('link', { name: /^AI assistant/ })).toHaveAttribute('href', '/ai-assistant')
+    await user.click(screen.getByRole('button', { name: 'Open menu' }))
+    const menu = await screen.findByRole('navigation', { name: 'Mobile menu' })
+    expect(within(menu).getByRole('link', { name: 'AI assistant' })).toHaveAttribute('href', '/ai-assistant')
   })
 })

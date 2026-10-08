@@ -172,7 +172,18 @@ class _NamedRefSerializer(serializers.Serializer):
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductImage
-        fields = ["id", "image", "alt_text", "variant", "is_primary", "sort_order"]
+        fields = [
+            "id",
+            "image",
+            "alt_text",
+            "variant",
+            "is_primary",
+            "sort_order",
+            "source_type",
+            "image_type",
+            "source_url",
+            "licence",
+        ]
 
 
 class ProductSpecificationSerializer(serializers.ModelSerializer):

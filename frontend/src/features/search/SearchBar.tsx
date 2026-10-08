@@ -157,7 +157,7 @@ export function SearchBar({ initialQuery = '', autoFocus = false }: { initialQue
           onFocus={() => setOpen(true)}
           onBlur={() => setOpen(false)}
           onKeyDown={onKeyDown}
-          placeholder="Search drills, pipes, 1.5 sq mm wire…"
+          placeholder="Search plywood, hinges, locks, drills…"
           maxLength={100}
           className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-sm text-ink-900 placeholder:text-steel-400 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
         />

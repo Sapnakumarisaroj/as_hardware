@@ -322,12 +322,31 @@ class ProductVariant(TimeStampedModel):
 
 
 class ProductImage(TimeStampedModel):
+    class SourceType(models.TextChoices):
+        MANUFACTURER = "manufacturer", "Manufacturer (with permission)"
+        SUPPLIER = "supplier", "Supplier"
+        LICENSED = "licensed", "Licensed"
+        OWN = "own", "Our own photo"
+        GENERATED = "generated", "AI-generated"
+        PLACEHOLDER = "placeholder", "Placeholder"
+
+    class ImageType(models.TextChoices):
+        PHOTO = "photo", "Photo of the product"
+        ILLUSTRATION = "illustration", "Illustration (not a photo of the actual product)"
+
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="images")
     variant = models.ForeignKey(ProductVariant, null=True, blank=True, on_delete=models.CASCADE, related_name="images")
     image = models.ImageField(upload_to=product_image_path, validators=IMAGE_VALIDATORS)
     alt_text = models.CharField(max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(default=0)
     is_primary = models.BooleanField(default=False)
+    # Where the picture came from, so every image can be checked (blank = not recorded, e.g. older uploads).
+    source_type = models.CharField(max_length=20, choices=SourceType.choices, blank=True)
+    image_type = models.CharField(max_length=20, choices=ImageType.choices, default=ImageType.PHOTO)
+    source_url = models.URLField(max_length=500, blank=True)
+    licence = models.CharField(
+        max_length=300, blank=True, help_text="Licence or permission note; for generated images, the model and prompt."
+    )
 
     class Meta:
         ordering = ["-is_primary", "sort_order", "id"]

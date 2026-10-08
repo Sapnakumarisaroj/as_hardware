@@ -2,29 +2,17 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useSearchParams } from 'react-router'
 
 import { Drawer } from '@/components/Drawer'
-import {
-  CameraIcon,
-  CartIcon,
-  ChevronDownIcon,
-  HeartIcon,
-  ImageIcon,
-  MenuIcon,
-  MicIcon,
-  SparkIcon,
-  UserIcon,
-} from '@/components/icons'
+import { CameraIcon, CartIcon, ChevronDownIcon, ChevronRightIcon, ClockIcon, HeartIcon, ImageIcon, MenuIcon, MicIcon, SparkIcon, UserIcon } from '@/components/icons'
 import { useAuth } from '@/features/auth/context'
 import { useCartCount } from '@/features/cart/api'
-import { useCategories } from '@/features/catalog/api'
-import type { Category } from '@/features/catalog/types'
+import { useNavGroups, type NavGroup } from '@/features/catalog/navGroups'
+import { FastDeliveryBadge } from '@/features/delivery/FastDeliveryBadge'
 import { LocationSelector } from '@/features/location/LocationSelector'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { SearchBar } from '@/features/search/SearchBar'
 import { useWishlistIds } from '@/features/wishlist/api'
 import { env } from '@/lib/env'
-
-/** Compact menu label (from the API), the full name otherwise. */
-const shortName = (c: { name: string; short_name?: string }) => c.short_name || c.name
+import { pluralize } from '@/lib/format'
 
 const ACCOUNT_LINKS: [string, string][] = [
   ['My account', '/account'],
@@ -34,20 +22,15 @@ const ACCOUNT_LINKS: [string, string][] = [
   ['Notifications', '/notifications'],
 ]
 
-const TOOL_LINKS: [string, string, string][] = [
-  ['Quantity calculator', '/quantity', 'How many screws, plugs and more you need'],
-  ['Project builder', '/projects', 'A priced kit for your job'],
-  ['Compatibility check', '/ai-assistant', 'Ask whether two parts work together'],
-  ['Smart cart', '/cart', 'Tips, bulk prices and missing parts'],
-  ['Kits & bundles', '/bundles', 'Ready-made kits of real products'],
-  ['Shop within a budget', '/budget', 'A kit that fits your budget'],
-]
-
-const AI_LINKS: [string, string, string, ReactNode][] = [
-  ['AI assistant', '/ai-assistant', 'Ask in English, Hindi or Hinglish', <SparkIcon key="s" className="size-4" />],
-  ['Smart search', '/products', 'Search understands sizes, uses and Hindi words', <SparkIcon key="q" className="size-4" />],
-  ['Search with a photo', '/image-search', 'Take a photo of a part to find it', <CameraIcon key="c" className="size-4" />],
-  ['Shop by voice', '/voice', 'Say what you need and the quantity', <MicIcon key="m" className="size-4" />],
+/** Kept out of the main navigation (it is for products only); listed in the menu drawer and the footer. */
+const MORE_LINKS: [string, string, ReactNode?][] = [
+  ['AI assistant', '/ai-assistant', <SparkIcon key="s" className="size-4" />],
+  ['Search with a photo', '/image-search', <CameraIcon key="c" className="size-4" />],
+  ['Shop by voice', '/voice', <MicIcon key="m" className="size-4" />],
+  ['Project builder', '/projects'],
+  ['Quantity calculator', '/quantity'],
+  ['All products', '/products'],
+  ['Brands', '/brands'],
 ]
 
 function CountBadge({ count, label }: { count: number; label: string }) {
@@ -62,19 +45,19 @@ function CountBadge({ count, label }: { count: number; label: string }) {
 
 function Logo() {
   return (
-    <Link to="/" className="flex shrink-0 items-center gap-2 text-lg font-extrabold tracking-tight">
-      <img src="/favicon.svg" alt="" className="size-8" />
-      <span>{env.appName}</span>
+    <Link to="/" className="flex shrink-0 items-center gap-2 text-base font-extrabold tracking-tight sm:text-lg">
+      <img src="/favicon.svg" alt="" className="size-7 sm:size-8" />
+      <span className="whitespace-nowrap">{env.appName}</span>
     </Link>
   )
 }
 
-function CategoryThumb({ category, size = 'size-10' }: { category: { name: string; cover_image?: string | null }; size?: string }) {
-  return category.cover_image ? (
-    <img src={category.cover_image} alt="" loading="lazy" className={`${size} shrink-0 rounded-md bg-steel-100 object-cover`} />
+function Thumb({ src, size = 'size-9' }: { src: string | null; size?: string }) {
+  return src ? (
+    <img src={src} alt="" loading="lazy" className={`${size} shrink-0 rounded-md bg-steel-100 object-cover`} />
   ) : (
     <span aria-hidden className={`${size} grid shrink-0 place-items-center rounded-md bg-steel-100 text-steel-400`}>
-      <ImageIcon className="size-5" />
+      <ImageIcon className="size-4" />
     </span>
   )
 }
@@ -94,7 +77,7 @@ function AccountMenu() {
         aria-label="Login / Register"
         className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 py-1.5 text-sm font-semibold hover:text-amber-500"
       >
-        <UserIcon className="size-5 shrink-0" />
+        <UserIcon className="size-6 shrink-0" />
         <span className="hidden xl:inline">Login / Register</span>
         <span className="hidden sm:inline xl:hidden">Login</span>
       </Link>
@@ -105,7 +88,7 @@ function AccountMenu() {
   return (
     <details ref={detailsRef} className="relative">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md px-1.5 py-1.5 text-sm font-semibold hover:text-amber-500 [&::-webkit-details-marker]:hidden">
-        <UserIcon className="size-5 shrink-0" />
+        <UserIcon className="size-6 shrink-0" />
         <span className="hidden max-w-28 truncate xl:inline">{firstName}</span>
         <ChevronDownIcon className="hidden size-3.5 sm:block" />
         <span className="sr-only">Account menu</span>
@@ -143,16 +126,16 @@ function AccountMenu() {
 }
 
 /** A top-level menu with a dropdown: opens on hover, click or keyboard; Escape or a click outside closes it. */
-function NavMenu({ label, children, panelClass }: { label: string; children: ReactNode; panelClass: string }) {
+function NavMenu({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false)
   // Pointing at the menu opens it; the click that usually follows must not close it again.
   const hoverOpenedAt = useRef(0)
   const box = useRef<HTMLLIElement>(null)
   const button = useRef<HTMLButtonElement>(null)
   const id = useId()
-  const { pathname, search } = useLocation()
+  const { pathname, search, hash } = useLocation()
   // Close after navigating (reset during render, as elsewhere in the app, instead of in an effect).
-  const route = pathname + search
+  const route = pathname + search + hash
   const [seenRoute, setSeenRoute] = useState(route)
   if (seenRoute !== route) {
     setSeenRoute(route)
@@ -191,13 +174,14 @@ function NavMenu({ label, children, panelClass }: { label: string; children: Rea
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen((v) => (v && Date.now() - hoverOpenedAt.current < 400 ? true : !v))}
-        className={`flex items-center gap-1 whitespace-nowrap rounded-md px-3 py-2 text-sm font-semibold hover:text-amber-500 ${open ? 'text-amber-500' : ''}`}
+        className={`flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-2 text-[13px] font-semibold hover:text-amber-500 lg:px-3 lg:text-sm ${open ? 'text-amber-500' : ''}`}
       >
         {label}
-        <ChevronDownIcon className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDownIcon className={`size-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div id={id} className={`absolute top-full z-40 pt-1 ${panelClass}`}>
+        // Centred under the navigation row (the <ul> is the positioning box), so wide menus stay on screen.
+        <div id={id} className="absolute left-1/2 top-full z-40 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 pt-1">
           <div className="rounded-xl bg-white p-4 text-ink-900 shadow-xl ring-1 ring-steel-200">{children}</div>
         </div>
       )}
@@ -205,176 +189,126 @@ function NavMenu({ label, children, panelClass }: { label: string; children: Rea
   )
 }
 
-function ShopPanel({ categories }: { categories: Category[] }) {
+/** The dropdown of one group: one column per department (its exact catalogue name), each with a real
+ * product photo and its own subcategories from the catalogue. */
+function GroupPanel({ group }: { group: NavGroup }) {
   return (
-    <nav aria-label="Product categories">
-      <ul className="grid grid-cols-2 gap-x-6 gap-y-4 xl:grid-cols-5">
-        {categories.map((category) => (
-          <li key={category.id} className="min-w-0">
-            <Link to={`/c/${category.slug}`} className="group flex items-center gap-2.5" title={category.name}>
-              <CategoryThumb category={category} />
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-bold group-hover:text-amber-600">{shortName(category)}</span>
-                {category.product_count !== null && category.product_count !== undefined && (
-                  <span className="block text-xs text-ink-600">{category.product_count} products</span>
-                )}
+    <div>
+      <div className="mb-3 flex items-baseline justify-between gap-6 border-b border-steel-100 pb-2">
+        <p className="whitespace-nowrap font-bold text-ink-950">{group.name}</p>
+        <Link to={group.href} className="flex items-center gap-0.5 whitespace-nowrap text-sm font-semibold text-amber-600 hover:underline">
+          View all
+          <ChevronRightIcon className="size-4" />
+        </Link>
+      </div>
+      <ul className="flex flex-wrap gap-x-8 gap-y-5">
+        {group.entries.map((entry) => (
+          <li key={entry.slug} className="min-w-44">
+            <Link to={entry.href} className="group flex items-center gap-2.5 rounded-lg">
+              <Thumb src={entry.image} size="size-10" />
+              <span>
+                <span className="block whitespace-nowrap text-sm font-bold leading-snug group-hover:text-amber-600">{entry.name}</span>{' '}
+                {entry.productCount !== null && <span className="block text-xs text-ink-600">{pluralize(entry.productCount, 'product')}</span>}
               </span>
             </Link>
-            {category.children.length > 0 && (
-              <ul className="mt-1.5 space-y-0.5 pl-[50px]">
-                {category.children
-                  .filter((child) => child.product_count !== 0)
-                  .slice(0, 4)
-                  .map((child) => (
-                    <li key={child.id}>
-                      <Link to={`/c/${child.slug}`} className="block truncate text-xs text-ink-600 hover:text-amber-600">
-                        {child.name}
-                      </Link>
-                    </li>
-                  ))}
+            {entry.subcategories.length > 0 && (
+              <ul className="mt-2 space-y-1 pl-[50px]" aria-label={`In ${entry.name}`}>
+                {entry.subcategories.slice(0, 5).map((sub) => (
+                  <li key={sub.slug}>
+                    <Link to={sub.href} className="block whitespace-nowrap text-sm text-ink-700 hover:text-amber-600">
+                      {sub.name}
+                    </Link>
+                  </li>
+                ))}
+                {entry.subcategories.length > 5 && (
+                  <li>
+                    <Link to={entry.href} className="block whitespace-nowrap text-sm font-semibold text-amber-600 hover:underline">
+                      +{entry.subcategories.length - 5} more
+                    </Link>
+                  </li>
+                )}
               </ul>
             )}
           </li>
         ))}
       </ul>
-      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 border-t border-steel-100 pt-3 text-sm font-semibold">
-        <Link to="/products" className="text-amber-600 hover:underline">
-          All products
-        </Link>
-        <Link to="/brands" className="text-amber-600 hover:underline">
-          Shop by brand
-        </Link>
-      </div>
-    </nav>
+    </div>
   )
 }
 
-function LinkList({ links }: { links: [string, string, string, ReactNode?][] }) {
-  return (
-    <ul className="space-y-1">
-      {links.map(([label, to, hint, icon]) => (
-        <li key={label}>
-          <Link to={to} className="flex items-start gap-2.5 rounded-lg px-2 py-2 hover:bg-steel-50">
-            {icon && <span className="mt-0.5 text-amber-600">{icon}</span>}
-            <span>
-              <span className="block text-sm font-semibold">{label}</span>
-              <span className="block text-xs text-ink-600">{hint}</span>
-            </span>
-          </Link>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-function DesktopNav({ categories }: { categories: Category[] }) {
-  const { status } = useAuth()
+/** Row 2 (from 768px): Home and the four product groups, centred. */
+function MainNav({ groups }: { groups: NavGroup[] }) {
   const link = ({ isActive }: { isActive: boolean }) =>
-    `block whitespace-nowrap rounded-md px-3 py-2 text-sm font-semibold hover:text-amber-500 ${isActive ? 'text-amber-500' : ''}`
+    `block whitespace-nowrap rounded-md px-2 py-2 text-[13px] font-semibold hover:text-amber-500 lg:px-3 lg:text-sm ${isActive ? 'text-amber-500' : ''}`
   return (
-    <div className="hidden border-t border-ink-800 bg-ink-900 lg:block">
-      <div className="container-page relative flex h-11 items-center justify-between gap-4">
-        <nav aria-label="Main">
-          <ul className="flex items-center gap-0.5">
+    <div className="hidden border-t border-ink-800 bg-ink-900 md:block">
+      <div className="container-page flex h-11 items-center justify-center">
+        <nav aria-label="Main" className="min-w-0">
+          <ul className="relative flex items-center gap-0.5 lg:gap-2 xl:gap-4">
             <li>
               <NavLink to="/" end className={link}>
                 Home
               </NavLink>
             </li>
-            <NavMenu label="Shop" panelClass="left-0 right-0">
-              <ShopPanel categories={categories} />
-            </NavMenu>
-            <li>
-              <Link to="/products?ordering=discount" className={link({ isActive: false })}>
-                Deals
-              </Link>
-            </li>
-            <li>
-              <Link to="/products?ordering=newest" className={link({ isActive: false })}>
-                New
-              </Link>
-            </li>
-            <li>
-              <NavLink to="/brands" className={link}>
-                Brands
-              </NavLink>
-            </li>
-            <NavMenu label="Tools" panelClass="w-80">
-              <LinkList links={TOOL_LINKS} />
-            </NavMenu>
-            <NavMenu label="AI" panelClass="w-80">
-              <LinkList links={AI_LINKS} />
-            </NavMenu>
-            <li>
-              <NavLink to={status === 'authenticated' ? '/account/orders' : '/login?next=%2Faccount%2Forders'} className={link}>
-                Orders
-              </NavLink>
-            </li>
+            {groups.map((group) => (
+              <NavMenu key={group.slug} label={group.name}>
+                <GroupPanel group={group} />
+              </NavMenu>
+            ))}
           </ul>
         </nav>
-        <div className="shrink-0">
-          <LocationSelector />
-        </div>
       </div>
     </div>
   )
 }
 
-function MobileMenu({ open, onClose, categories }: { open: boolean; onClose: () => void; categories: Category[] }) {
+function MobileMenu({ open, onClose, groups }: { open: boolean; onClose: () => void; groups: NavGroup[] }) {
   const { status, logout } = useAuth()
   const link = 'flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-steel-50'
   const heading = 'px-2 text-xs font-bold uppercase tracking-wide text-ink-600'
   return (
     <Drawer open={open} onClose={onClose} title="Menu">
       <nav aria-label="Mobile menu" className="space-y-5">
-        <div className="rounded-lg bg-steel-50 p-3">
-          <LocationSelector tone="light" />
-        </div>
         <div>
           <h3 className={heading}>Shop by category</h3>
-          <ul className="mt-1">
-            {categories.map((category) => (
-              <li key={category.id}>
-                <Link to={`/c/${category.slug}`} onClick={onClose} className={link}>
-                  <CategoryThumb category={category} size="size-8" />
-                  <span className="font-semibold">{shortName(category)}</span>
-                </Link>
+          <ul className="mt-1 space-y-1">
+            <li>
+              <Link to="/" onClick={onClose} className={`${link} font-semibold`}>
+                Home
+              </Link>
+            </li>
+            {groups.map((group) => (
+              <li key={group.slug}>
+                <details className="group/acc rounded-md">
+                  <summary className="flex cursor-pointer list-none items-center gap-2.5 rounded-md px-2 py-2 text-sm font-semibold hover:bg-steel-50 [&::-webkit-details-marker]:hidden">
+                    <Thumb src={group.images[0] ?? null} size="size-8" />
+                    <span className="flex-1">{group.name}</span>
+                    <ChevronDownIcon className="size-4 shrink-0 transition-transform group-open/acc:rotate-180" />
+                  </summary>
+                  <ul className="mb-1 ml-[52px] mt-0.5 space-y-0.5 border-l border-steel-200 pl-2">
+                    {group.entries.map((entry) => (
+                      <li key={entry.slug}>
+                        <Link to={entry.href} onClick={onClose} className="block rounded px-2 py-1.5 text-sm text-ink-800 hover:bg-steel-50 hover:text-amber-600">
+                          {entry.name}
+                        </Link>
+                      </li>
+                    ))}
+                    <li>
+                      <Link to={group.href} onClick={onClose} className="block rounded px-2 py-1.5 text-sm font-semibold text-amber-600 hover:bg-steel-50">
+                        View all {group.name}
+                      </Link>
+                    </li>
+                  </ul>
+                </details>
               </li>
             ))}
-            <li>
-              <Link to="/products" onClick={onClose} className={link}>
-                All products
-              </Link>
-            </li>
-            <li>
-              <Link to="/brands" onClick={onClose} className={link}>
-                Brands
-              </Link>
-            </li>
           </ul>
         </div>
         <div>
-          <h3 className={heading}>Offers</h3>
-          <Link to="/products?ordering=discount" onClick={onClose} className={link}>
-            Deals
-          </Link>
-          <Link to="/products?ordering=newest" onClick={onClose} className={link}>
-            New arrivals
-          </Link>
-        </div>
-        <div>
-          <h3 className={heading}>Tools</h3>
-          {TOOL_LINKS.map(([label, to]) => (
+          <h3 className={heading}>More ways to shop</h3>
+          {MORE_LINKS.map(([label, to, icon]) => (
             <Link key={label} to={to} onClick={onClose} className={link}>
-              {label}
-            </Link>
-          ))}
-        </div>
-        <div>
-          <h3 className={heading}>AI</h3>
-          {AI_LINKS.map(([label, to, , icon]) => (
-            <Link key={label} to={to} onClick={onClose} className={link}>
-              <span className="text-amber-600">{icon}</span>
+              {icon && <span className="text-amber-600">{icon}</span>}
               {label}
             </Link>
           ))}
@@ -415,10 +349,25 @@ function MobileMenu({ open, onClose, categories }: { open: boolean; onClose: () 
   )
 }
 
+/** The slim strip above the header (opening hours; VITE_STORE_HOURS, empty hides it). */
+function TopStrip() {
+  if (!env.storeHours) return null
+  return (
+    <div className="bg-amber-500 text-ink-950">
+      <p className="container-page flex items-center justify-center gap-1.5 py-1.5 text-center text-xs font-semibold sm:text-sm">
+        <ClockIcon className="size-4 shrink-0" />
+        {env.storeHours}
+      </p>
+    </div>
+  )
+}
+
 /**
- * The storefront header: one row with the logo, the (only) search and the account icons; below 768px
- * the same search moves to its own full-width row. From 1024px a compact navigation row with
- * dropdowns follows; below that the navigation lives in the menu drawer.
+ * The storefront header, three bands: a slim strip (opening hours, scrolls away), then the sticky
+ * header. Row 1: logo, the fast-delivery badge and Deliver to, the one product search, wishlist, cart
+ * and account. Below 768px the search and then the badge + Deliver to take their own full-width lines
+ * (one element each, reordered with flex `order`, so nothing is rendered twice). Row 2 (from 768px):
+ * Home and the four product groups with dropdowns. Below 1024px the menu drawer holds the groups too.
  */
 export function Header() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -428,44 +377,56 @@ export function Header() {
   const [params] = useSearchParams()
   const urlQuery = location.pathname === '/search' ? (params.get('q') ?? '') : ''
   const { status } = useAuth()
-  const categoriesQuery = useCategories()
-  const categories = (categoriesQuery.data ?? []).filter((c) => c.product_count !== 0)
+  const { groups } = useNavGroups()
   const icon = 'relative grid size-10 shrink-0 place-items-center rounded-md hover:text-amber-500'
 
   return (
-    <header className="sticky top-0 z-30 bg-ink-900 text-white shadow">
-      <div className="container-page flex flex-wrap items-center gap-x-2 gap-y-2 py-2.5 sm:gap-x-3 md:h-16 md:flex-nowrap md:py-0 lg:gap-x-5">
-        <button
-          type="button"
-          onClick={() => setMenuOpen(true)}
-          className="-ml-2 grid size-10 shrink-0 place-items-center rounded-md lg:hidden"
-          aria-label="Open menu"
-        >
-          <MenuIcon className="size-6" />
-        </button>
-        <Logo />
-        <div className="order-last w-full md:order-none md:w-auto md:min-w-0 md:flex-1">
-          <SearchBar key={urlQuery} initialQuery={urlQuery} />
+    <>
+      <TopStrip />
+      <header className="sticky top-0 z-30 bg-ink-900 text-white shadow">
+        <div className="container-page flex flex-wrap items-center gap-x-1.5 gap-y-2 py-2.5 sm:gap-x-3 md:h-16 md:flex-nowrap md:py-0 lg:gap-x-5">
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            className="order-1 -ml-2 grid size-10 shrink-0 place-items-center rounded-md lg:hidden"
+            aria-label="Open menu"
+          >
+            <MenuIcon className="size-6" />
+          </button>
+          <div className="order-2">
+            <Logo />
+          </div>
+          <div className="order-6 flex w-full items-center gap-3 md:order-3 md:w-auto md:shrink-0 lg:gap-4">
+            {/* 768–1023px: no room for the badge in row 1; the PIN panel still says how fast. */}
+            <span className="md:hidden lg:contents">
+              <FastDeliveryBadge />
+            </span>
+            <LocationSelector />
+          </div>
+          <div className="order-5 w-full md:order-4 md:w-auto md:min-w-0 md:flex-1">
+            <SearchBar key={urlQuery} initialQuery={urlQuery} />
+          </div>
+          <div className="order-4 ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1 md:order-5 md:ml-0">
+            {status === 'authenticated' && (
+              <div className="grid size-10 place-items-center">
+                <NotificationBell />
+              </div>
+            )}
+            <Link to="/wishlist" className={icon} aria-label="Wishlist" title="Wishlist">
+              <HeartIcon className="size-6" />
+              <CountBadge count={wishlistCount} label="saved items" />
+            </Link>
+            <Link to="/cart" className={icon} aria-label="Cart" title="Cart">
+              <CartIcon className="size-6" />
+              <CountBadge count={cartCount} label="items in cart" />
+            </Link>
+            <AccountMenu />
+          </div>
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1 md:ml-0">
-          {status === 'authenticated' && (
-            <div className="grid size-10 place-items-center">
-              <NotificationBell />
-            </div>
-          )}
-          <Link to="/wishlist" className={`${icon} hidden sm:grid`} aria-label="Wishlist" title="Wishlist">
-            <HeartIcon className="size-6" />
-            <CountBadge count={wishlistCount} label="saved items" />
-          </Link>
-          <Link to="/cart" className={icon} aria-label="Cart" title="Cart">
-            <CartIcon className="size-6" />
-            <CountBadge count={cartCount} label="items in cart" />
-          </Link>
-          <AccountMenu />
-        </div>
-      </div>
-      <DesktopNav categories={categories} />
-      <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} categories={categories} />
-    </header>
+        <MainNav groups={groups} />
+      </header>
+      {/* Outside the header so the drawer does not inherit its white text. */}
+      <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} groups={groups} />
+    </>
   )
 }

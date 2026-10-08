@@ -3,6 +3,26 @@ import { useState } from 'react'
 import type { ProductImage as ProductImageType } from '../types'
 import { ProductImage } from './ProductImage'
 
+/** Says when a picture is only an illustration, and credits licensed photos. */
+function ImageCredit({ image }: { image: ProductImageType | undefined }) {
+  if (!image) return null
+  if (image.image_type === 'illustration') {
+    return (
+      <p className="border-t border-steel-100 px-3 py-1.5 text-xs text-ink-600" data-testid="image-note">
+        Illustration — not a photo of this exact product.
+      </p>
+    )
+  }
+  if (image.source_type === 'licensed' && image.licence) {
+    return (
+      <p className="border-t border-steel-100 px-3 py-1.5 text-xs text-ink-600" data-testid="image-note">
+        Photo: {image.source_url ? <a href={image.source_url} target="_blank" rel="noreferrer noopener" className="underline">{image.licence}</a> : image.licence}
+      </p>
+    )
+  }
+  return null
+}
+
 /** Main image + thumbnails. Images of the selected variant are shown first. */
 export function ProductGallery({
   images,
@@ -29,6 +49,7 @@ export function ProductGallery({
           eager
           className="aspect-square w-full"
         />
+        <ImageCredit image={current} />
       </div>
       {ordered.length > 1 && (
         <ul

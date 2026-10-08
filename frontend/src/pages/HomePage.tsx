@@ -1,15 +1,15 @@
 import { Link } from 'react-router'
 
 import { ErrorState } from '@/components/feedback'
-import { BoltIcon, CameraIcon, ChevronRightIcon, ImageIcon, MicIcon, PinIcon, SparkIcon } from '@/components/icons'
+import { BoltIcon, CameraIcon, ChevronRightIcon, ImageIcon, MicIcon, SparkIcon } from '@/components/icons'
 import { useAuth } from '@/features/auth/context'
 import { useCategories, useCollections, useProducts } from '@/features/catalog/api'
 import { ProductRail, ProductStrip } from '@/features/catalog/components/ProductCollections'
 import { useRecentlyViewed } from '@/features/catalog/recentlyViewed'
+import { useNavGroups, type NavGroup } from '@/features/catalog/navGroups'
 import type { Category, Collection, ProductSummary } from '@/features/catalog/types'
 import { useServiceability } from '@/features/delivery/api'
 import { isValidPincode, usePincode } from '@/features/delivery/location'
-import { LocationSelector } from '@/features/location/LocationSelector'
 import { LiveOffersStrip } from '@/features/offers/components'
 import { useWishlist } from '@/features/wishlist/api'
 import { env } from '@/lib/env'
@@ -23,35 +23,6 @@ import { usePageMeta } from '@/lib/usePageMeta'
  * collections (in the shop's order and with its names), delivery messages are the Phase 9 engine's for
  * the chosen PIN. No product, category or number is written into this page.
  */
-
-/** 1. Deliver to — the PIN and what the delivery engine says about it right now. */
-function DeliverToBar() {
-  const pincode = usePincode()
-  const check = useServiceability(pincode)
-  let message = 'Choose your PIN code to see delivery times, fees and fast delivery near you.'
-  let tone = 'text-steel-200'
-  if (isValidPincode(pincode)) {
-    if (check.isPending) message = `Checking delivery to ${pincode}…`
-    else if (check.isError) message = 'Couldn’t check delivery right now. The time is confirmed at checkout.'
-    else if (check.data) {
-      message = check.data.message
-      tone = check.data.serviceable ? 'text-white' : 'text-amber-500'
-    }
-  }
-  return (
-    <section aria-label="Delivery location" className="border-b border-ink-700 bg-ink-800 text-white">
-      <div className="container-page flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-sm">
-        <div className="md:hidden">
-          <LocationSelector />
-        </div>
-        <p className={`flex items-center gap-1.5 ${tone}`} role="status" data-testid="deliver-to-message">
-          <PinIcon className="hidden size-4 shrink-0 text-amber-500 md:block" />
-          {message}
-        </p>
-      </div>
-    </section>
-  )
-}
 
 /** 2. Headline + AI, photo and voice search (the search box itself is the header's, so there is only one). */
 function SearchHero() {
@@ -110,69 +81,84 @@ function departmentsWithProducts(categories: Category[] | undefined): Category[]
   return (categories ?? []).filter((c) => (c.product_count ?? 0) > 0)
 }
 
-/** 3. Main categories — the shop's departments with their categories. */
-function Departments() {
-  const categories = useCategories()
+/** A card's pictures: up to three real product photos of the group's own categories. */
+function GroupCollage({ group }: { group: NavGroup }) {
+  const [first, ...rest] = group.images
+  const img = 'size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]'
+  if (!first) {
+    return (
+      <span aria-hidden className="grid size-full place-items-center text-steel-400">
+        <ImageIcon className="size-10" />
+      </span>
+    )
+  }
+  if (rest.length < 2) return <img src={first} alt={`${group.name}: example product`} loading="lazy" className={img} />
+  return (
+    <span className="grid size-full grid-cols-3 grid-rows-2 gap-0.5">
+      <span className="col-span-2 row-span-2 overflow-hidden">
+        <img src={first} alt={`${group.name}: example product`} loading="lazy" className={img} />
+      </span>
+      {rest.slice(0, 2).map((src) => (
+        <span key={src} className="overflow-hidden">
+          <img src={src} alt="" loading="lazy" className={img} />
+        </span>
+      ))}
+    </span>
+  )
+}
+
+/** 3. Shop by category — the four groups of the shop's ten departments (same as the header). */
+function ShopByGroup() {
+  const { groups, categories } = useNavGroups()
   if (categories.isError) {
     return <ErrorState error={categories.error} onRetry={() => categories.refetch()} title="Couldn’t load categories" />
   }
   if (categories.isPending) {
     return (
-      <ul aria-label="Loading categories" className="grid grid-cols-2 gap-3 py-6 sm:grid-cols-3 lg:grid-cols-6">
-        {Array.from({ length: 6 }, (_, i) => (
-          <li key={i} className="h-24 animate-pulse rounded-lg bg-white ring-1 ring-steel-200" />
+      <ul aria-label="Loading categories" className="grid grid-cols-1 gap-4 py-6 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }, (_, i) => (
+          <li key={i} className="h-72 animate-pulse rounded-xl bg-white ring-1 ring-steel-200" />
         ))}
       </ul>
     )
   }
-  const departments = departmentsWithProducts(categories.data)
-  if (!departments.length) return null
+  if (!groups.length) return null
   return (
     <section id="categories" aria-labelledby="departments-heading" className="scroll-mt-32 py-6">
       <h2 id="departments-heading" className="mb-4 text-xl font-bold text-ink-950">
-        Shop by department
+        Shop by category
       </h2>
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
-        {departments.map((department) => {
-          const cover = department.cover_image ?? department.image
-          const label = department.short_name || department.name
-          return (
-            <li key={department.id} className="flex">
-              <Link
-                to={`/c/${department.slug}`}
-                title={department.name}
-                className="group flex w-full flex-col overflow-hidden rounded-xl bg-white ring-1 ring-steel-200 transition-shadow hover:shadow-md hover:ring-amber-500 focus-visible:ring-2 focus-visible:ring-amber-500"
-              >
-                <span className="block aspect-[4/3] w-full overflow-hidden bg-steel-100">
-                  {cover ? (
-                    <img
-                      src={cover}
-                      alt={`${department.name}: example product`}
-                      loading="lazy"
-                      className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                    />
-                  ) : (
-                    <span aria-hidden className="grid size-full place-items-center text-steel-400">
-                      <ImageIcon className="size-10" />
-                    </span>
-                  )}
-                </span>
-                <span className="flex flex-1 flex-col px-3 py-2.5">
-                  <span className="font-bold leading-tight text-ink-950 group-hover:text-amber-600">{label}</span>
-                  <span className="mt-0.5 text-xs text-ink-600">{pluralize(department.product_count ?? 0, 'product')}</span>
-                  {department.children.length > 0 && (
-                    <span className="mt-1 line-clamp-1 text-xs text-ink-600">
-                      {department.children
-                        .filter((c) => (c.product_count ?? 0) > 0)
-                        .map((c) => c.name)
-                        .join(' · ')}
-                    </span>
-                  )}
-                </span>
+      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {groups.map((group) => (
+          <li key={group.slug} className="flex">
+            <article className="group flex w-full flex-col overflow-hidden rounded-xl bg-white ring-1 ring-steel-200 transition-shadow hover:shadow-md hover:ring-amber-500">
+              <Link to={group.href} tabIndex={-1} aria-hidden className="block aspect-[4/3] w-full overflow-hidden bg-steel-100">
+                <GroupCollage group={group} />
               </Link>
-            </li>
-          )
-        })}
+              <div className="flex flex-1 flex-col px-4 py-3">
+                <h3 className="text-lg font-extrabold leading-tight text-ink-950 lg:text-[15px] xl:text-lg">
+                  <Link to={group.href} className="hover:text-amber-600">
+                    {group.name}
+                  </Link>
+                </h3>
+                {group.productCount !== null && <p className="mt-0.5 text-xs text-ink-600">{pluralize(group.productCount, 'product')}</p>}
+                <ul className="mt-2 flex flex-wrap gap-1.5" aria-label={`${group.name} categories`}>
+                  {group.entries.map((entry) => (
+                    <li key={entry.slug}>
+                      <Link to={entry.href} className="inline-block whitespace-nowrap rounded-full bg-steel-50 px-2.5 py-1 text-xs text-ink-800 ring-1 ring-steel-200 hover:text-amber-600 hover:ring-amber-500">
+                        {entry.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+                <Link to={group.href} className="mt-auto flex items-center gap-0.5 pt-3 text-sm font-semibold text-amber-600 hover:underline">
+                  Shop {group.name}
+                  <ChevronRightIcon className="size-4" />
+                </Link>
+              </div>
+            </article>
+          </li>
+        ))}
       </ul>
     </section>
   )
@@ -380,10 +366,9 @@ export function HomePage() {
   const recent = useRecentProducts()
   return (
     <>
-      <DeliverToBar />
       <SearchHero />
       <div className="container-page">
-        <Departments />
+        <ShopByGroup />
         <FastDeliveryRail />
         {collections.isSuccess && <CollectionSections collections={lists} />}
         {!collections.isPending && <FallbackRails collections={lists} />}

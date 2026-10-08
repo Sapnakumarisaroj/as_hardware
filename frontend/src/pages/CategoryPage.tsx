@@ -86,8 +86,8 @@ export function CategoryPage() {
                       to={`/c/${child.slug}`}
                       className="flex w-full items-center gap-2 rounded-lg bg-steel-50 p-2 ring-1 ring-steel-200 hover:ring-amber-500 focus-visible:ring-amber-500"
                     >
-                      {child.image ? (
-                        <img src={child.image} alt="" loading="lazy" className="size-10 shrink-0 rounded object-cover" />
+                      {child.cover_image || child.image ? (
+                        <img src={child.cover_image || child.image || ''} alt="" loading="lazy" className="size-10 shrink-0 rounded object-cover" />
                       ) : (
                         <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded bg-white font-bold text-ink-600">
                           {child.name.charAt(0)}

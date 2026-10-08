@@ -168,6 +168,63 @@ export const categories: Category[] = [
   },
 ]
 
+type ChildSpec = [id: number, name: string, slug: string, count: number, cover?: string]
+
+function department(id: number, name: string, slug: string, children: ChildSpec[], cover: string | null = null): Category {
+  const kids = children.map(([cid, cname, cslug, count, ccover], i) => ({
+    id: cid,
+    name: cname,
+    slug: cslug,
+    description: '',
+    image: null,
+    cover_image: ccover ?? null,
+    sort_order: i,
+    product_count: count,
+  }))
+  return {
+    id,
+    name,
+    slug,
+    description: '',
+    image: null,
+    cover_image: cover ?? kids.find((k) => k.cover_image)?.cover_image ?? null,
+    sort_order: id,
+    product_count: kids.reduce((total, k) => total + k.product_count, 0),
+    parent: null,
+    parent_detail: null,
+    is_active: true,
+    children: kids,
+  }
+}
+
+/** A slice of the shop's approved tree (backend apps/catalog/taxonomy.py) for the four header groups;
+ * Workwear has no products, Electrical is not an approved department. */
+export const approvedCategories: Category[] = [
+  department(101, 'Plywood, MDF & HDHMR', 'plywood-mdf-hdhmr', [
+    [111, 'Plywood', 'plywood', 6, '/media/products/plywood.jpg'],
+    [112, 'MDF Boards', 'mdf', 2, '/media/products/mdf.jpg'],
+  ]),
+  department(102, 'Fevicol', 'fevicol', [[121, 'Wood Adhesives', 'fevicol-wood-adhesives', 3, '/media/products/fevicol.jpg']]),
+  department(103, 'Hinges, Channels & Handles', 'hinges-channels-handles', [
+    [131, 'Hinges', 'hinges', 5, '/media/products/hinge.jpg'],
+    [132, 'Drawer Channels', 'drawer-channels', 2],
+  ]),
+  department(104, 'Door Locks & Hardware', 'door-locks-hardware', [[141, 'Door Locks', 'door-locks', 4, '/media/products/lock.jpg']]),
+  department(105, 'Power Tools & Accessories', 'power-tools', [
+    [151, 'Drills', 'drills', 3, '/media/products/drill.jpg'],
+    [152, 'Drill Bits', 'drill-bits', 2],
+  ]),
+  department(106, 'General Hardware & Tools', 'general-hardware', [
+    [161, 'Screwdrivers', 'screwdrivers', 2, '/media/products/screwdriver.jpg'],
+    [162, 'Hammers', 'hammers', 1],
+  ]),
+  department(107, 'Safety Tools & Workwear', 'safety', [
+    [171, 'Gloves', 'gloves', 2],
+    [172, 'Workwear', 'workwear', 0],
+  ]),
+  department(20, 'Electrical', 'electrical', [[21, 'Switches', 'switches', 4]]),
+]
+
 export function productPage(results: ProductSummary[], count = results.length): ProductPage {
   return { count, next: null, previous: null, results }
 }

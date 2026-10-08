@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_SUPPORT_WHATSAPP?: string
   readonly VITE_MAP_TILE_URL?: string
   readonly VITE_MAP_CENTER?: string
+  readonly VITE_STORE_HOURS?: string
 }
 
 interface ImportMeta {

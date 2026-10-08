@@ -82,7 +82,17 @@ class SpecificationInline(admin.TabularInline):
 
 class ImageInline(admin.TabularInline):
     model = ProductImage
-    fields = ("image", "alt_text", "variant", "is_primary", "sort_order")
+    fields = (
+        "image",
+        "alt_text",
+        "variant",
+        "is_primary",
+        "sort_order",
+        "source_type",
+        "image_type",
+        "source_url",
+        "licence",
+    )
     extra = 0
 
 

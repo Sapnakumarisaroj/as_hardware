@@ -4,6 +4,7 @@ from rest_framework.routers import SimpleRouter
 from .api import (
     CartDeliveryEstimateView,
     CodCollectionViewSet,
+    DeliveryPromiseView,
     DeliveryZonesView,
     PartnerAvailabilityView,
     ProductDeliveryEstimateView,
@@ -25,6 +26,7 @@ urlpatterns = [
     path("delivery/partners/", PartnerAvailabilityView.as_view(), name="delivery-partners"),
     path("delivery/zones/", DeliveryZonesView.as_view(), name="delivery-zones"),
     path("delivery/check/", ServiceabilityView.as_view(), name="delivery-check"),
+    path("delivery/promise/", DeliveryPromiseView.as_view(), name="delivery-promise"),
     path("delivery/estimate/", ProductDeliveryEstimateView.as_view(), name="delivery-estimate"),
     path("delivery/cart-estimate/", CartDeliveryEstimateView.as_view(), name="delivery-cart-estimate"),
     path("stores/availability/", StoreAvailabilityView.as_view(), name="store-availability"),

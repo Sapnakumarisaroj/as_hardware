@@ -1,8 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { categories, customer, productPage } from '@/test/fixtures'
-import { httpError, mockApi, type RequestInfo } from '@/test/mockApi'
+import { approvedCategories, categories, customer, productPage } from '@/test/fixtures'
+import { httpError, mockApi, paramsSent, type RequestInfo } from '@/test/mockApi'
 import { renderRoute } from '@/test/utils'
 
 /* UI pass (2026-10-07): standalone sign-in pages with validation that mirrors the server, and a
@@ -11,50 +11,199 @@ import { renderRoute } from '@/test/utils'
 const shopGet = { '/categories/': categories, '/products/': productPage([]) }
 
 describe('storefront header', () => {
+  const groupNames = ['Wood & Adhesives', 'Furniture Hardware', 'Door & Glass Hardware', 'Tools & Safety']
+  const approvedGet = { ...shopGet, '/categories/': approvedCategories }
+
   it('has exactly one search box, also on the home page', async () => {
-    mockApi({ get: shopGet })
+    mockApi({ get: approvedGet })
     renderRoute('/')
-    await screen.findByRole('region', { name: 'Shop by department' })
+    await screen.findByRole('region', { name: 'Shop by category' })
     expect(screen.getAllByRole('combobox', { name: 'Search products' })).toHaveLength(1)
     expect(screen.getAllByRole('search')).toHaveLength(1)
   })
 
-  it('groups the navigation into compact menus that open and close', async () => {
-    mockApi({ get: shopGet })
-    const { user } = renderRoute('/')
+  it('main navigation is Home and the four product groups only', async () => {
+    mockApi({ get: approvedGet })
+    renderRoute('/')
     const main = await screen.findByRole('navigation', { name: 'Main' })
-    for (const name of ['Home', 'Deals', 'New', 'Brands', 'Orders']) {
-      expect(within(main).getByRole('link', { name })).toBeInTheDocument()
+    await within(main).findByRole('button', { name: 'Tools & Safety' })
+    const items = [...main.querySelectorAll(':scope > ul > li')].map((li) => li.querySelector('a, button')?.textContent)
+    expect(items).toEqual(['Home', ...groupNames])
+    for (const gone of ['Deals', 'New', 'Brands', 'Orders', 'AI', 'Tools', 'Shop', 'Electrical']) {
+      expect(within(main).queryByRole('link', { name: gone })).not.toBeInTheDocument()
+      expect(within(main).queryByRole('button', { name: gone })).not.toBeInTheDocument()
     }
-    const tools = within(main).getByRole('button', { name: 'Tools' })
-    expect(tools).toHaveAttribute('aria-expanded', 'false')
-    await user.click(tools)
-    expect(tools).toHaveAttribute('aria-expanded', 'true')
-    const panelId = tools.getAttribute('aria-controls')!
-    const panel = document.getElementById(panelId)!
-    expect(within(panel).getByRole('link', { name: /^Quantity calculator/ })).toHaveAttribute('href', '/quantity')
-    expect(within(panel).getByRole('link', { name: /^Project builder/ })).toHaveAttribute('href', '/projects')
-    await user.keyboard('{Escape}')
-    expect(tools).toHaveAttribute('aria-expanded', 'false')
-    expect(document.getElementById(panelId)).toBeNull()
-
-    await user.click(within(main).getByRole('button', { name: 'Shop' }))
-    const shop = await screen.findByRole('navigation', { name: 'Product categories' })
-    expect(await within(shop).findByRole('link', { name: /^Electrical/ })).toHaveAttribute('href', '/c/electrical')
-    expect(within(shop).getByRole('link', { name: 'All products' })).toHaveAttribute('href', '/products')
   })
 
-  it('shows short category names from the API and full names on hover', async () => {
+  it('shows the four groups and their departments even when the category API is unreachable', async () => {
+    mockApi({ get: { ...shopGet, '/categories/': httpError(503, 'Cannot reach the server.') } })
+    const { user } = renderRoute('/')
+    const main = screen.getByRole('navigation', { name: 'Main' })
+    const items = [...main.querySelectorAll(':scope > ul > li')].map((li) => li.querySelector('a, button')?.textContent)
+    expect(items).toEqual(['Home', ...groupNames])
+    const wood = within(main).getByRole('button', { name: 'Wood & Adhesives' })
+    await user.click(wood)
+    const panel = document.getElementById(wood.getAttribute('aria-controls')!)!
+    expect(within(panel).getByRole('link', { name: 'Plywood, MDF & HDHMR' })).toHaveAttribute('href', '/c/plywood-mdf-hdhmr')
+    expect(within(panel).getByRole('link', { name: 'Fevicol' })).toHaveAttribute('href', '/c/fevicol')
+  })
+
+  it('a group opens a dropdown of its departments, by their exact names, with their own subcategories', async () => {
+    mockApi({ get: approvedGet })
+    const { user } = renderRoute('/')
+    const main = await screen.findByRole('navigation', { name: 'Main' })
+    const furniture = await within(main).findByRole('button', { name: 'Furniture Hardware' })
+    expect(furniture).toHaveAttribute('aria-expanded', 'false')
+    await user.click(furniture)
+    expect(furniture).toHaveAttribute('aria-expanded', 'true')
+    const panelId = furniture.getAttribute('aria-controls')!
+    const panel = document.getElementById(panelId)!
+    expect(within(panel).getByRole('link', { name: /^Hinges, Channels & Handles\s+7 products/ })).toHaveAttribute('href', '/c/hinges-channels-handles')
+    expect(within(panel).getByRole('link', { name: 'Hinges' })).toHaveAttribute('href', '/c/hinges')
+    expect(within(panel).getByRole('link', { name: 'Drawer Channels' })).toHaveAttribute('href', '/c/drawer-channels')
+    expect(within(panel).getByRole('link', { name: /View all/ })).toHaveAttribute('href', '/shop/furniture-hardware')
+    expect(panel.querySelector('img')).toHaveAttribute('src', '/media/products/hinge.jpg')
+    // Departments the shop has no products in are not offered; nothing is made up.
+    expect(within(panel).queryByRole('link', { name: /Kitchen|Wardrobe|Electrical/ })).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(furniture).toHaveAttribute('aria-expanded', 'false')
+    expect(document.getElementById(panelId)).toBeNull()
+  })
+
+  it('Tools & Safety lists its three departments; empty subcategories are hidden', async () => {
+    mockApi({ get: approvedGet })
+    const { user } = renderRoute('/')
+    const main = await screen.findByRole('navigation', { name: 'Main' })
+    const tools = await within(main).findByRole('button', { name: 'Tools & Safety' })
+    await user.click(tools)
+    const panel = document.getElementById(tools.getAttribute('aria-controls')!)!
+    const departments = [...panel.querySelectorAll(':scope ul > li > a .font-bold')].map((el) => el.textContent)
+    expect(departments).toEqual(['Power Tools & Accessories', 'General Hardware & Tools', 'Safety Tools & Workwear'])
+    expect(within(panel).getByRole('link', { name: 'Drill Bits' })).toHaveAttribute('href', '/c/drill-bits')
+    expect(within(panel).getByRole('link', { name: 'Gloves' })).toHaveAttribute('href', '/c/gloves')
+    expect(within(panel).queryByRole('link', { name: 'Workwear' })).not.toBeInTheDocument()
+  })
+
+  it('the menu drawer lists the four groups with their subcategories', async () => {
+    mockApi({ get: approvedGet })
+    const { user } = renderRoute('/')
+    await within(await screen.findByRole('navigation', { name: 'Main' })).findByRole('button', { name: 'Tools & Safety' })
+    await user.click(screen.getByRole('button', { name: 'Open menu' }))
+    const drawer = await screen.findByRole('navigation', { name: 'Mobile menu' })
+    for (const name of groupNames) expect(within(drawer).getByText(name)).toBeInTheDocument()
+    await user.click(within(drawer).getByText('Wood & Adhesives'))
+    expect(within(drawer).getByRole('link', { name: 'Plywood, MDF & HDHMR' })).toHaveAttribute('href', '/c/plywood-mdf-hdhmr')
+    expect(within(drawer).getByRole('link', { name: 'Fevicol' })).toHaveAttribute('href', '/c/fevicol')
+    expect(within(drawer).getByRole('link', { name: 'View all Wood & Adhesives' })).toHaveAttribute('href', '/shop/wood-adhesives')
+    expect(within(drawer).getByRole('link', { name: 'AI assistant' })).toHaveAttribute('href', '/ai-assistant')
+  })
+})
+
+describe('header bands and delivery', () => {
+  const fastCheck = {
+    serviceable: true, postal_code: '411038', location_precision: 'pin', fast_delivery_available: true,
+    label: 'Delivery in 18 minutes', fast_unavailable_reason: '', message: '⚡ Fast delivery available · Delivery in 18 minutes', stores: [],
+  }
+  const promise = { '/delivery/promise/': { fast_delivery_max_minutes: 60 } }
+
+  it('has the opening-hours strip, then one row with logo, badge, Deliver to, search and icons', async () => {
+    mockApi({ get: { ...shopGet, ...promise, '/categories/': approvedCategories } })
+    renderRoute('/')
+    expect(screen.getByText('Open 8 am to 8 pm all days')).toBeInTheDocument()
+    const banner = screen.getByRole('banner')
+    const badge = await within(banner).findByTestId('fast-badge')
+    expect(badge).toHaveTextContent('60 Mins')
+    expect(badge).toHaveAttribute('data-state', 'neutral') // no PIN yet: a service indicator, not a promise
+    expect(within(banner).getAllByRole('button', { name: /Deliver to/ })).toHaveLength(1)
+    expect(within(banner).getAllByRole('combobox', { name: 'Search products' })).toHaveLength(1)
+    expect(within(banner).getByRole('combobox', { name: 'Search products' })).toHaveAttribute('placeholder', 'Search plywood, hinges, locks, drills…')
+    for (const name of ['Shop by voice', 'Search by photo']) {
+      expect(within(banner).getByRole('link', { name })).toBeInTheDocument()
+    }
+    expect(within(banner).getByRole('link', { name: 'Wishlist' })).toHaveAttribute('href', '/wishlist')
+    expect(within(banner).getByRole('link', { name: 'Cart' })).toHaveAttribute('href', '/cart')
+    expect(within(banner).getByRole('link', { name: /Login \/ Register/ })).toHaveAttribute('href', '/login')
+  })
+
+  it('the badge follows the delivery engine for the chosen PIN', async () => {
+    window.localStorage.setItem('boltrun.delivery-pincode', '411038')
+    mockApi({ get: { ...shopGet, ...promise, '/delivery/check/': fastCheck } })
+    renderRoute('/')
+    await waitFor(() => expect(screen.getByTestId('fast-badge')).toHaveAttribute('data-state', 'available'))
+    expect(screen.getByTestId('fast-badge')).toHaveTextContent('Delivery in 18 minutes')
+  })
+
+  it('dims the badge where fast delivery is not available right now', async () => {
+    window.localStorage.setItem('boltrun.delivery-pincode', '411038')
     mockApi({
       get: {
         ...shopGet,
-        '/categories/': [{ ...categories[0], name: 'Plywood, MDF & HDHMR', short_name: 'Plywood & Boards', slug: 'plywood-mdf-hdhmr' }],
+        ...promise,
+        '/delivery/check/': { ...fastCheck, fast_delivery_available: false, label: 'Delivery tomorrow', fast_unavailable_reason: 'no rider free' },
       },
     })
-    const { user } = renderRoute('/')
-    await user.click(await screen.findByRole('button', { name: 'Shop' }))
-    const link = await within(await screen.findByRole('navigation', { name: 'Product categories' })).findByRole('link', { name: /^Plywood & Boards/ })
-    expect(link).toHaveAttribute('title', 'Plywood, MDF & HDHMR')
+    renderRoute('/')
+    await waitFor(() => expect(screen.getByTestId('fast-badge')).toHaveAttribute('data-state', 'unavailable'))
+    expect(screen.getByTestId('fast-badge')).toHaveTextContent('isn’t available to 411038 right now (no rider free)')
+  })
+
+  it('a failed delivery check stays quiet: no error bar, neutral badge', async () => {
+    window.localStorage.setItem('boltrun.delivery-pincode', '411038')
+    mockApi({ get: { ...shopGet, ...promise, '/delivery/check/': httpError(503, 'Unavailable.') } })
+    renderRoute('/')
+    expect(await screen.findByTestId('fast-badge')).toHaveAttribute('data-state', 'neutral')
+    await waitFor(() => expect(screen.getByRole('button', { name: /Deliver to\s*411038/ })).toBeInTheDocument())
+    expect(screen.queryByText(/Couldn’t check delivery/)).not.toBeInTheDocument()
+  })
+
+  it('no badge when the shop’s promise cannot be loaded', async () => {
+    mockApi({ get: shopGet })
+    renderRoute('/')
+    await screen.findByRole('navigation', { name: 'Main' })
+    await waitFor(() => expect(screen.queryByTestId('fast-badge')).not.toBeInTheDocument())
+  })
+})
+
+describe('home page categories', () => {
+  it('shows the four groups as cards with real product photos', async () => {
+    mockApi({ get: { ...shopGet, '/categories/': approvedCategories } })
+    renderRoute('/')
+    const section = await screen.findByRole('region', { name: 'Shop by category' })
+    const cards = within(section).getAllByRole('article')
+    expect(cards.map((card) => within(card).getByRole('heading').textContent)).toEqual([
+      'Wood & Adhesives',
+      'Furniture Hardware',
+      'Door & Glass Hardware',
+      'Tools & Safety',
+    ])
+    const wood = cards[0]!
+    expect(within(wood).getByRole('link', { name: 'Wood & Adhesives' })).toHaveAttribute('href', '/shop/wood-adhesives')
+    expect(within(wood).getByRole('link', { name: 'Plywood, MDF & HDHMR' })).toHaveAttribute('href', '/c/plywood-mdf-hdhmr')
+    expect(within(wood).getByRole('link', { name: 'Fevicol' })).toHaveAttribute('href', '/c/fevicol')
+    const photos = [...wood.querySelectorAll('img')].map((img) => img.getAttribute('src'))
+    expect(photos).toEqual(['/media/products/plywood.jpg', '/media/products/fevicol.jpg', '/media/products/mdf.jpg'])
+  })
+})
+
+describe('group page', () => {
+  it('shows the group’s departments with their own subcategories and a rail per department', async () => {
+    const api = mockApi({ get: { ...shopGet, '/categories/': approvedCategories } })
+    renderRoute('/shop/tools-safety')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Tools & Safety' })).toBeInTheDocument()
+    const tiles = screen.getByRole('navigation', { name: 'Shop Tools & Safety' })
+    expect(within(tiles).getByRole('link', { name: 'Power Tools & Accessories' })).toHaveAttribute('href', '/c/power-tools')
+    const hardware = within(tiles).getByRole('list', { name: 'In General Hardware & Tools' })
+    expect(within(hardware).getByRole('link', { name: 'Screwdrivers' })).toHaveAttribute('href', '/c/screwdrivers')
+    expect(within(hardware).getByRole('link', { name: 'Hammers' })).toHaveAttribute('href', '/c/hammers')
+    await waitFor(() =>
+      expect(paramsSent(api.get, '/products/')).toContainEqual(expect.objectContaining({ category: 'general-hardware' })),
+    )
+  })
+
+  it('an unknown group is a 404', async () => {
+    mockApi({ get: { ...shopGet, '/categories/': approvedCategories } })
+    renderRoute('/shop/electrical')
+    expect(await screen.findByRole('heading', { name: /not found/i })).toBeInTheDocument()
   })
 })
 

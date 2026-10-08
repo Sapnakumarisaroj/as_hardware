@@ -2,9 +2,10 @@
 staff side of rider assignment. Every estimate comes from the fulfilment engine; nothing here
 promises a fixed time."""
 
+from django.conf import settings
 from django.db.models import Prefetch
-from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema
-from rest_framework import mixins, status, viewsets
+from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema, inline_serializer
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotAuthenticated
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -90,6 +91,20 @@ class DeliveryZonesView(APIView):
     def get(self, request):
         zones = DeliveryZone.objects.filter(is_active=True, store__in=fulfilment_stores()).select_related("store")
         return Response(ZoneSerializer(zones, many=True).data)
+
+
+class DeliveryPromiseView(APIView):
+    """The shop-wide fast-delivery promise for the storefront badge ("60 Mins"). Only a service
+    indicator: whether an order is fast is decided per PIN, zone, stock, store, rider and travel time
+    (eta.py), and a zone may promise less than this."""
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        responses=inline_serializer("DeliveryPromise", {"fast_delivery_max_minutes": serializers.IntegerField()})
+    )
+    def get(self, request):
+        return Response({"fast_delivery_max_minutes": settings.FAST_DELIVERY_MAX_MINUTES})
 
 
 class ServiceabilityView(APIView):

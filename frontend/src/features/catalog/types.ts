@@ -134,6 +134,12 @@ export interface ProductImage {
   variant: number | null
   is_primary: boolean
   sort_order: number
+  /** Where the picture came from ('' = not recorded). */
+  source_type?: '' | 'manufacturer' | 'supplier' | 'licensed' | 'own' | 'generated' | 'placeholder'
+  /** 'illustration' = not a photo of the actual product (e.g. AI-generated); the page says so. */
+  image_type?: 'photo' | 'illustration'
+  source_url?: string
+  licence?: string
 }
 
 export interface ProductDetail extends ProductSummary {

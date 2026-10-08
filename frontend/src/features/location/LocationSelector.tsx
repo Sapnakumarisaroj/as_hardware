@@ -8,7 +8,7 @@ import { isValidPincode, savePincode, usePincode } from '@/features/delivery/loc
  * The shopper's delivery PIN code (remembered in this browser). The backend says whether we
  * deliver there and how fast; product pages and the cart use the same PIN for their estimates.
  */
-export function LocationSelector({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
+export function LocationSelector({ tone = 'dark', align = 'left' }: { tone?: 'dark' | 'light'; align?: 'left' | 'right' }) {
   const pincode = usePincode()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(pincode)
@@ -80,7 +80,7 @@ export function LocationSelector({ tone = 'dark' }: { tone?: 'dark' | 'light' })
       {open && (
         <div
           id={panelId}
-          className="absolute left-0 top-full z-40 mt-2 w-72 rounded-lg bg-white p-4 text-ink-900 shadow-lg ring-1 ring-steel-200"
+          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-full z-40 mt-2 w-72 rounded-lg bg-white p-4 text-ink-900 shadow-lg ring-1 ring-steel-200`}
         >
           <form onSubmit={save} noValidate>
             <label htmlFor={`${panelId}-pin`} className="label">
