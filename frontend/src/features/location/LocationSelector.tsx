@@ -20,7 +20,9 @@ export function LocationSelector({ tone = 'dark', align = 'left' }: { tone?: 'da
   const summary = !pincode || !check.data
     ? ''
     : !check.data.serviceable
-      ? 'Not delivering here yet'
+      ? check.data.service_area
+        ? 'No store open for orders'
+        : 'Outside our delivery area'
       : check.data.fast_delivery_available
         ? `⚡ ${check.data.label}`
         : check.data.label
@@ -97,7 +99,7 @@ export function LocationSelector({ tone = 'dark', align = 'left' }: { tone?: 'da
                 aria-invalid={Boolean(error)}
                 aria-describedby={`${panelId}-note`}
                 className="input"
-                placeholder="e.g. 411038"
+                placeholder="e.g. 560041"
               />
               <button type="submit" className="btn-primary px-3">
                 Check

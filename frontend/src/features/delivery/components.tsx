@@ -140,7 +140,7 @@ export function PincodeForm({ current = '', label = 'Check delivery to your PIN 
           onChange={(e) => setDraft(e.target.value.replace(/\D/g, ''))}
           aria-invalid={Boolean(error)}
           className="input"
-          placeholder="e.g. 411038"
+          placeholder="e.g. 560041"
         />
         <button type="submit" className="btn-secondary shrink-0 px-3">
           Check

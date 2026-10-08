@@ -19,7 +19,7 @@ from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError
 from apps.core.permissions import IsAdminOrStaffReadOnly, IsStaffRole, is_admin, managed_store_ids
 from apps.delivery.fulfillment import FeeRule
-from apps.delivery.models import DeliveryPartner, DeliveryZone, PinCode
+from apps.delivery.models import DeliveryPartner, DeliveryZone, PinCode, ServiceArea
 from apps.inventory.models import Inventory
 from apps.orders.models import Order, OrderStatus
 from apps.stores.models import Store
@@ -59,6 +59,7 @@ class ZoneSerializer(serializers.ModelSerializer):
     effective_fee = serializers.SerializerMethodField()
     effective_free_from = serializers.SerializerMethodField()
     pin_codes = serializers.SerializerMethodField()
+    service_area_name = serializers.CharField(source="service_area.name", read_only=True, default=None)
 
     class Meta:
         model = DeliveryZone
@@ -67,6 +68,8 @@ class ZoneSerializer(serializers.ModelSerializer):
             "store",
             "store_name",
             "name",
+            "service_area",
+            "service_area_name",
             "radius_km",
             "postal_codes",
             "pin_codes",
@@ -395,3 +398,18 @@ class AdminPinCodeViewSet(viewsets.ModelViewSet):
         if term := (self.request.query_params.get("q") or "").strip():
             qs = qs.filter(Q(postal_code__icontains=term) | Q(area__icontains=term) | Q(city__icontains=term))
         return qs
+
+
+class ServiceAreaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceArea
+        fields = ["id", "name", "city_names", "postal_code_prefixes", "is_active"]
+
+
+class AdminServiceAreaViewSet(viewsets.ReadOnlyModelViewSet):
+    """City-wide service areas (e.g. Bengaluru) a zone can cover; edited in Django admin."""
+
+    permission_classes = [IsStaffRole]
+    serializer_class = ServiceAreaSerializer
+    pagination_class = None
+    queryset = ServiceArea.objects.order_by("name")

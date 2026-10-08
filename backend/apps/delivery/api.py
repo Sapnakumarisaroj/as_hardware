@@ -57,6 +57,7 @@ from .serializers import (
     UnassignSerializer,
     ZoneSerializer,
 )
+from .service_areas import area_for, not_covered_message
 from .views import proof_response
 
 KIND = DeliveryAssignment.Kind
@@ -66,6 +67,7 @@ LOCATION_PARAMS = [
     OpenApiParameter("latitude", float),
     OpenApiParameter("longitude", float),
     OpenApiParameter("address_id", int, description="A saved address (signed-in customers only)"),
+    OpenApiParameter("city", str, description="City as typed, e.g. Bengaluru (used when there is no PIN code)"),
 ]
 
 
@@ -78,7 +80,10 @@ def _location(request, data):
             raise NotFoundError("Address not found.")
         return resolve_location(address=address)
     return resolve_location(
-        postal_code=data.get("postal_code", ""), latitude=data.get("latitude"), longitude=data.get("longitude")
+        postal_code=data.get("postal_code", ""),
+        latitude=data.get("latitude"),
+        longitude=data.get("longitude"),
+        city=data.get("city", ""),
     )
 
 
@@ -120,10 +125,11 @@ class ServiceabilityView(APIView):
         estimates = [estimate(store, zone, location, line_count=1) for store, zone in covering_candidates(location)]
         estimates.sort(key=lambda e: e.sort_key())
         best = estimates[0] if estimates else None
-        where = f"PIN {location.postal_code}" if location.postal_code else "this location"
+        area = area_for(location)
         payload = {
             "serviceable": best is not None,
             "postal_code": location.postal_code,
+            "service_area": area.name if area else None,
             "location_precision": location.precision,
             "fast_delivery_available": bool(best and best.fast_available),
             "label": best.label if best else "",
@@ -131,7 +137,7 @@ class ServiceabilityView(APIView):
             "message": (
                 ("⚡ Fast delivery available" if best.fast_available else "🚚 Standard delivery") + f" · {best.label}"
                 if best
-                else f"We don't deliver to {where} yet."
+                else not_covered_message(location)
             ),
             "stores": [
                 {

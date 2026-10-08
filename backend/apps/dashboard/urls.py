@@ -12,7 +12,7 @@ from .offers import AdminCouponViewSet, AdminOfferViewSet
 from .orders import AdminOrderViewSet
 from .people import AdminCustomerViewSet, AdminJobViewSet, AdminRiderViewSet, AdminSupportViewSet
 from .search_index import SearchExplainView, SearchIndexProductView, SearchIndexRebuildView, SearchIndexView
-from .stores import AdminPinCodeViewSet, AdminStoreViewSet, AdminZoneViewSet
+from .stores import AdminPinCodeViewSet, AdminServiceAreaViewSet, AdminStoreViewSet, AdminZoneViewSet
 from .views import AnalyticsView, SessionView, SummaryView
 
 router = SimpleRouter()
@@ -24,6 +24,7 @@ router.register("admin/brands", AdminBrandViewSet, basename="admin-brand")
 router.register("admin/stores", AdminStoreViewSet, basename="admin-store")
 router.register("admin/zones", AdminZoneViewSet, basename="admin-zone")
 router.register("admin/pincodes", AdminPinCodeViewSet, basename="admin-pincode")
+router.register("admin/service-areas", AdminServiceAreaViewSet, basename="admin-service-area")
 router.register("admin/offers", AdminOfferViewSet, basename="admin-offer")
 router.register("admin/coupons", AdminCouponViewSet, basename="admin-coupon")
 router.register("admin/customers", AdminCustomerViewSet, basename="admin-customer")

@@ -16,6 +16,7 @@ from django.core.cache import cache
 from .eta import estimate
 from .fulfillment import covering_candidates
 from .locations import resolve_location
+from .service_areas import not_covered_message
 
 CACHE_SECONDS = 60
 PIN_PATTERN_LENGTH = 6
@@ -55,7 +56,7 @@ def _compute(postal_code: str) -> PinContext:
     location = resolve_location(postal_code=postal_code)
     estimates = [estimate(store, zone, location, line_count=1) for store, zone in covering_candidates(location)]
     if not estimates:
-        return PinContext(postal_code, False, False, message=f"We don't deliver to PIN {postal_code} yet.")
+        return PinContext(postal_code, False, False, message=not_covered_message(location))
     estimates.sort(key=lambda e: e.sort_key())
     best = estimates[0]
     lead = "⚡ Fast delivery available" if best.fast_available else "🚚 Standard delivery"

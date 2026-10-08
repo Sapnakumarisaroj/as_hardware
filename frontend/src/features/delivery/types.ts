@@ -47,6 +47,8 @@ export interface DeliveryQuote {
 export interface Serviceability {
   serviceable: boolean
   postal_code: string
+  /** The city service area the location is in (e.g. Bengaluru), null outside every area. */
+  service_area?: string | null
   location_precision: 'exact' | 'pin' | 'unknown'
   fast_delivery_available: boolean
   label: string

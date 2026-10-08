@@ -531,6 +531,23 @@ describe('stores and warehouses', () => {
     )
   })
 
+  it('an administrator makes a zone cover all of Bengaluru', async () => {
+    signIn()
+    const bengaluru = { id: 3, name: 'Bengaluru', city_names: 'Bengaluru, Bangalore', postal_code_prefixes: '560', is_active: true }
+    const api = mockApi({
+      get: staffGet('admin', { '/admin/stores/1/': storeDetail(), '/admin/service-areas/': [bengaluru] }),
+      patch: { '/admin/zones/8/': zone({ service_area: 3, service_area_name: 'Bengaluru' }) },
+    })
+    const { user } = renderRoute('/admin/stores/1')
+    await user.click(await screen.findByRole('button', { name: 'Edit zone Kothrud 5 km' }))
+    const dialog = within(screen.getByRole('dialog', { name: 'Edit delivery zone' }))
+    const coverage = dialog.getByLabelText('City-wide coverage')
+    await waitFor(() => expect(within(coverage).getByRole('option', { name: 'All of Bengaluru' })).toBeInTheDocument())
+    await user.selectOptions(coverage, 'All of Bengaluru')
+    await user.click(dialog.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(lastBody(api.patch, '/admin/zones/8/')).toMatchObject({ service_area: 3, radius_km: '5.00' }))
+  })
+
   it('a store manager changes only how the store runs', async () => {
     signIn()
     const api = mockApi({

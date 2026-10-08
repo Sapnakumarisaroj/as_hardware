@@ -478,11 +478,22 @@ export interface StoreRow {
   can_edit: 'all' | 'operations' | 'none'
 }
 
+export interface ServiceArea {
+  id: number
+  name: string
+  city_names: string
+  postal_code_prefixes: string
+  is_active: boolean
+}
+
 export interface Zone {
   id: number
   store: number
   store_name: string
   name: string
+  /** City-wide coverage (e.g. all of Bengaluru); null = radius / PIN list only. */
+  service_area?: number | null
+  service_area_name?: string | null
   radius_km: string
   postal_codes: string
   pin_codes: string[]

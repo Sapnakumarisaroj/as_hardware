@@ -155,6 +155,11 @@ def travel(store, location, zone) -> tuple[float | None, float, str]:
     if location.postal_code and location.postal_code == store.postal_code:
         distance = float(settings.SAME_PIN_DISTANCE_KM)
         return distance, distance / speed * 60, "pin"
+    area = getattr(zone, "service_area", None) if zone else None
+    if area is not None and not (location.postal_code and location.postal_code in zone.postal_code_set):
+        # Served only because the address is in the city: the distance is a guess (standard delivery only).
+        distance = float(area.assumed_distance_km) * float(settings.ROAD_DISTANCE_FACTOR)
+        return distance, distance / speed * 60, "area"
     # Served by the zone's PIN list but no coordinates anywhere: assume the zone's full radius.
     distance = (
         float(zone.radius_km) * float(settings.ROAD_DISTANCE_FACTOR) if zone else float(settings.SAME_PIN_DISTANCE_KM)
@@ -173,6 +178,8 @@ def estimate(store, zone, location, *, line_count: int, now: datetime | None = N
     wait = 0
     if zone is None or not zone.fast_delivery_enabled:
         reason = "Fast delivery isn't offered in this area."
+    elif source == "area":
+        reason = "Pin your location on the map (or choose a saved address) to check fast delivery."
     elif not is_open(store, now):
         reason = "The store is closed right now."
     elif capacity.available_riders > capacity.queue:

@@ -21,11 +21,75 @@ LAT_VALIDATORS = [MinValueValidator(-90), MaxValueValidator(90)]
 LNG_VALIDATORS = [MinValueValidator(-180), MaxValueValidator(180)]
 
 
+def _codes(text: str) -> set[str]:
+    return {code for code in (text or "").replace(",", " ").split() if code.isdigit()}
+
+
+class ServiceArea(TimeStampedModel):
+    """A city the shop delivers to as a whole (e.g. Bengaluru), decided by a rule, not a PIN list.
+
+    An address is inside when its PIN code starts with one of `postal_code_prefixes` (or is listed in
+    `extra_postal_codes`) and isn't in `excluded_postal_codes`. The PIN decides when there is one;
+    without a PIN, a map pin inside `polygon` or a city name in `city_names` does. Zones linked to
+    the area (`DeliveryZone.service_area`) serve every address inside it; whether an order can be
+    delivered, and how fast, is still the engine's call (stock, store hours, riders, ETA).
+
+    While any area is active (and DELIVERY_RESTRICT_TO_SERVICE_AREAS is on), addresses outside every
+    active area are not delivered to at all.
+    """
+
+    name = models.CharField(max_length=80, unique=True, help_text="Shown to customers, e.g. Bengaluru.")
+    city_names = models.CharField(
+        max_length=255, help_text="Names customers type for this city, comma separated, e.g. Bengaluru, Bangalore."
+    )
+    postal_code_prefixes = models.CharField(
+        max_length=120, help_text="PIN codes starting with these digits are inside, e.g. 560."
+    )
+    extra_postal_codes = models.TextField(blank=True, help_text="Further PIN codes inside the area.")
+    excluded_postal_codes = models.TextField(blank=True, help_text="PIN codes to leave out even if they match.")
+    # Optional [[lat, lng], ...] ring for addresses known only by their map pin.
+    polygon = models.JSONField(null=True, blank=True)
+    assumed_distance_km = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("12.00"),
+        validators=[MinValueValidator(Decimal("0.1"))],
+        help_text="Road distance assumed when an address has no map pin or PIN centre (standard delivery only).",
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+    @property
+    def city_name_set(self) -> set[str]:
+        return {_city_key(name) for name in self.city_names.split(",") if name.strip()}
+
+    def covers_postal_code(self, postal_code: str) -> bool:
+        postal_code = (postal_code or "").strip()
+        if not postal_code or postal_code in _codes(self.excluded_postal_codes):
+            return False
+        prefixes = [p for p in self.postal_code_prefixes.replace(",", " ").split() if p.isdigit()]
+        return any(postal_code.startswith(p) for p in prefixes) or postal_code in _codes(self.extra_postal_codes)
+
+    def covers_city(self, city: str) -> bool:
+        return bool(city) and _city_key(city) in self.city_name_set
+
+
+def _city_key(name: str) -> str:
+    """'Bengaluru Urban', 'bangalore.' -> comparable keys."""
+    return " ".join("".join(ch for ch in name.lower() if ch.isalnum() or ch.isspace()).split())
+
+
 class DeliveryZone(TimeStampedModel):
     """Service area of a store (Phase 9 rules, apps/delivery/fulfillment.py):
 
     An address is inside the zone if its PIN code is listed in `postal_codes`, or its location is
-    within `radius_km` (straight line) of the store and, when a `polygon` is set, inside it.
+    within `radius_km` (straight line) of the store and, when a `polygon` is set, inside it, or the
+    zone is linked to a city-wide `service_area` that contains the address.
     Fee: `delivery_fee_override` / `free_delivery_min_order` replace the global defaults.
     Fast delivery: only if enabled here and the calculated ETA ≤ `fast_delivery_max_minutes`
     (or FAST_DELIVERY_MAX_MINUTES).
@@ -33,6 +97,14 @@ class DeliveryZone(TimeStampedModel):
 
     store = models.ForeignKey("stores.Store", on_delete=models.CASCADE, related_name="delivery_zones")
     name = models.CharField(max_length=120)
+    service_area = models.ForeignKey(
+        ServiceArea,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="zones",
+        help_text="Serve every address in this city (radius and PIN list still apply as well).",
+    )
     radius_km = models.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal("5.00"), validators=[MinValueValidator(Decimal("0.1"))]
     )
@@ -68,7 +140,7 @@ class DeliveryZone(TimeStampedModel):
 
     @property
     def postal_code_set(self) -> set[str]:
-        return {code for code in self.postal_codes.replace(",", " ").split() if code.isdigit()}
+        return _codes(self.postal_codes)
 
 
 class FreeDeliveryRule(TimeStampedModel):

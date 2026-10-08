@@ -23,6 +23,7 @@ class Location:
     postal_code: str
     precision: str  # exact | pin | unknown
     label: str = ""
+    city: str = ""  # typed, from the saved address, or from the PIN table (service areas use it)
 
     @property
     def known(self) -> bool:
@@ -59,22 +60,30 @@ def pin_centroid(postal_code: str) -> Point | None:
     return _cached_geocode(f"pin:{postal_code}", postal_code=postal_code)
 
 
-def resolve_location(*, address=None, postal_code: str = "", latitude=None, longitude=None) -> Location:
+def resolve_location(*, address=None, postal_code: str = "", latitude=None, longitude=None, city: str = "") -> Location:
+    city = (city or "").strip()
     if latitude is not None and longitude is not None:
-        return Location(Point.of(latitude, longitude), (postal_code or "").strip(), "exact")
+        return Location(Point.of(latitude, longitude), (postal_code or "").strip(), "exact", city=city)
     if address is not None:
         label = ", ".join(filter(None, [address.area, address.city, address.postal_code]))
+        city = address.city
         if address.latitude is not None and address.longitude is not None:
-            return Location(Point.of(address.latitude, address.longitude), address.postal_code, "exact", label)
+            return Location(
+                Point.of(address.latitude, address.longitude), address.postal_code, "exact", label, city=city
+            )
         query = ", ".join(
             filter(
                 None, [address.address_line1, address.area, address.city, address.state, address.postal_code, "India"]
             )
         )
         if point := _cached_geocode(f"addr:{query.lower()}", query=query):
-            return Location(point, address.postal_code, "exact", label)
+            return Location(point, address.postal_code, "exact", label, city=city)
         postal_code = address.postal_code
     postal_code = (postal_code or "").strip()
+    if not city and postal_code:
+        city = (
+            PinCode.objects.filter(postal_code=postal_code, is_active=True).values_list("city", flat=True).first() or ""
+        )
     if point := pin_centroid(postal_code):
-        return Location(point, postal_code, "pin", postal_code)
-    return Location(None, postal_code, "unknown", postal_code)
+        return Location(point, postal_code, "pin", postal_code, city=city)
+    return Location(None, postal_code, "unknown", postal_code, city=city)

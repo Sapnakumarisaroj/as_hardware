@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { ErrorState, PageSpinner, Spinner } from '@/components/feedback'
 import { FormField } from '@/components/FormField'
 import { useToast } from '@/components/toast'
-import { useCustomers, useStore, useStoreCrud, useStores, useZoneCrud } from '@/features/admin/api'
+import { useCustomers, useServiceAreas, useStore, useStoreCrud, useStores, useZoneCrud } from '@/features/admin/api'
 import { useSession } from '@/features/admin/session'
 import type { Day, OpeningHours, StoreDetail, StoreKind, StoreRow, Zone } from '@/features/admin/types'
 import {
@@ -405,6 +405,7 @@ function StoreEditor({ store, mode }: { store: StoreDetail | null; mode: Mode })
 interface ZoneForm {
   id?: number
   name: string
+  service_area: string
   radius_km: string
   postal_codes: string
   fast_delivery_enabled: boolean
@@ -417,6 +418,7 @@ interface ZoneForm {
 
 function Zones({ store }: { store: StoreDetail }) {
   const { save, remove } = useZoneCrud()
+  const areas = useServiceAreas()
   const toast = useToast()
   const [form, setForm] = useState<ZoneForm | null>(null)
   const [deleting, setDeleting] = useState<Zone | null>(null)
@@ -428,6 +430,7 @@ function Zones({ store }: { store: StoreDetail }) {
     setForm({
       id: zone?.id,
       name: zone?.name ?? '',
+      service_area: zone?.service_area ? String(zone.service_area) : '',
       radius_km: zone?.radius_km ?? '5.00',
       postal_codes: zone?.pin_codes.join(', ') ?? '',
       fast_delivery_enabled: zone?.fast_delivery_enabled ?? true,
@@ -461,7 +464,7 @@ function Zones({ store }: { store: StoreDetail }) {
                   {zone.name} {!zone.is_active && <Badge>Inactive</Badge>}
                 </p>
                 <p className="text-ink-600">
-                  Within {zone.radius_km} km
+                  {zone.service_area_name ? `All of ${zone.service_area_name} · ` : ''}Within {zone.radius_km} km
                   {zone.pin_codes.length > 0 && ` · PIN codes ${zone.pin_codes.join(', ')}`}
                   {zone.polygon && ' · drawn area'}
                 </p>
@@ -503,6 +506,7 @@ function Zones({ store }: { store: StoreDetail }) {
               data: {
                 store: store.id,
                 name: form.name.trim(),
+                service_area: form.service_area ? Number(form.service_area) : null,
                 radius_km: form.radius_km,
                 postal_codes: form.postal_codes,
                 fast_delivery_enabled: form.fast_delivery_enabled,
@@ -525,6 +529,21 @@ function Zones({ store }: { store: StoreDetail }) {
         {form && (
           <>
             <FormField id="zone-name" label="Name" required maxLength={120} value={form.name} onChange={(e) => set('name', e.target.value)} />
+            <SelectField
+              id="zone-area"
+              label="City-wide coverage"
+              value={form.service_area}
+              onChange={(e) => set('service_area', e.target.value)}
+              hint="Serve every address in the city. Delivery time is still worked out per address; fast delivery only where the estimate allows."
+            >
+              <option value="">None (radius and PIN codes only)</option>
+              {(areas.data ?? []).map((area) => (
+                <option key={area.id} value={area.id} disabled={!area.is_active}>
+                  All of {area.name}
+                  {area.is_active ? '' : ' (inactive)'}
+                </option>
+              ))}
+            </SelectField>
             <FormField
               id="zone-radius"
               label="Radius (km)"

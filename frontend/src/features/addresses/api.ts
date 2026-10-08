@@ -86,7 +86,7 @@ export function useSetDefaultAddress() {
   return useAddressMutation(async (id: number) => (await api.post<Address>(`/addresses/${id}/set-default/`)).data)
 }
 
-/** "12 MG Road, Kothrud, Pune 411001" */
+/** "12 MG Road, Ashok Nagar, Bengaluru 560001" */
 export function formatAddressLine(address: Pick<Address, 'address_line1' | 'address_line2' | 'area' | 'city' | 'postal_code'>) {
   return [address.address_line1, address.address_line2, address.area, `${address.city} ${address.postal_code}`]
     .filter(Boolean)

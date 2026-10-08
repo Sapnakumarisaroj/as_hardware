@@ -331,12 +331,13 @@ class LocationQuerySerializer(serializers.Serializer):
     postal_code = serializers.RegexField(r"^\d{6}$", required=False, allow_blank=True)
     latitude = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, min_value=-90, max_value=90)
     longitude = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, min_value=-180, max_value=180)
+    city = serializers.CharField(max_length=80, required=False, allow_blank=True)
 
     def validate(self, attrs):
         if ("latitude" in attrs) != ("longitude" in attrs):
             raise serializers.ValidationError("Send both latitude and longitude.")
-        if not (attrs.get("address_id") or attrs.get("postal_code") or "latitude" in attrs):
-            raise serializers.ValidationError("Send an address_id, a postal_code or latitude/longitude.")
+        if not (attrs.get("address_id") or attrs.get("postal_code") or "latitude" in attrs or attrs.get("city")):
+            raise serializers.ValidationError("Send an address_id, a postal_code, latitude/longitude or a city.")
         return attrs
 
 
@@ -401,6 +402,9 @@ class _NearbyStoreSerializer(serializers.Serializer):
 class ServiceabilitySerializer(serializers.Serializer):
     serviceable = serializers.BooleanField()
     postal_code = serializers.CharField(allow_blank=True)
+    service_area = serializers.CharField(
+        allow_null=True, help_text="The city service area containing the location (e.g. Bengaluru), if any."
+    )
     location_precision = serializers.CharField(help_text="exact | pin | unknown")
     fast_delivery_available = serializers.BooleanField()
     label = serializers.CharField(

@@ -29,7 +29,7 @@ from apps.catalog.models import (
 from apps.catalog.services import set_accessories, set_price_tiers, set_variant_options
 from apps.catalog.taxonomy import apply_taxonomy, approved_slugs
 from apps.catalog.tree import breadcrumb
-from apps.delivery.models import DeliveryZone, FreeDeliveryRule, PinCode
+from apps.delivery.models import DeliveryZone, FreeDeliveryRule, PinCode, ServiceArea
 from apps.inventory.models import Inventory, StockMovement
 from apps.inventory.services import apply_movement
 from apps.offers.models import Coupon, Offer
@@ -43,6 +43,7 @@ from ..demo_data import (
     COUPONS,
     FREE_DELIVERY_RULES,
     LAUNCHES,
+    LEGACY_STORE_CODES,
     OFFERS,
     OFFERS_PHASE15,
     OPTION_TYPES,
@@ -51,6 +52,7 @@ from ..demo_data import (
     PRODUCT_PAGE_CONTENT,
     PRODUCTS,
     RECOMMENDATION_RULES,
+    STORE_CITY,
     STORE_DELIVERY,
     STORES,
     VARIANT_OPTIONS,
@@ -95,7 +97,7 @@ class Command(BaseCommand):
             user=user,
             phone="9000000001",
             vehicle_number="DEMO-0001",
-            home_store=Store.objects.filter(code="DEMO-PUN-KTH").first(),
+            home_store=Store.objects.filter(code=STORES[0][0]).first(),
             is_verified=True,
         )
         self.stdout.write(self.style.WARNING(f"Demo rider created: {email} / password: {password}  (shown once)"))
@@ -238,8 +240,8 @@ class Command(BaseCommand):
                     "kind": kind,
                     "address_line1": f"{area} (demo address)",
                     "area": area,
-                    "city": "Pune",
-                    "state": "Maharashtra",
+                    "city": STORE_CITY[0],
+                    "state": STORE_CITY[1],
                     "postal_code": pin,
                     "latitude": Decimal(lat),
                     "longitude": Decimal(lng),
@@ -249,12 +251,14 @@ class Command(BaseCommand):
                 },
             )
             stores.append(store)
+        Store.all_objects.filter(code__in=LEGACY_STORE_CODES).update(is_active=False, accepts_orders=False)
         by_code = {store.code: store for store in stores}
-        for code, name, radius, pins, fast, fast_max, fee, free_min in ZONES:
+        for code, name, radius, pins, fast, fast_max, fee, free_min, area in ZONES:
             DeliveryZone.objects.update_or_create(
                 store=by_code[code],
                 name=name,
                 defaults={
+                    "service_area": ServiceArea.objects.filter(name=area).first() if area else None,
                     "radius_km": Decimal(radius),
                     "postal_codes": pins,
                     "fast_delivery_enabled": fast,
@@ -268,8 +272,8 @@ class Command(BaseCommand):
                 postal_code=postal_code,
                 defaults={
                     "area": area,
-                    "city": "Pune",
-                    "state": "Maharashtra",
+                    "city": STORE_CITY[0],
+                    "state": STORE_CITY[1],
                     "latitude": Decimal(lat),
                     "longitude": Decimal(lng),
                 },

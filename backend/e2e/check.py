@@ -24,7 +24,7 @@ BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8026/api"
 if not BASE.startswith(("http://", "https://")):
     sys.exit("The base URL must be http(s).")
 PASSWORD = "E2e-check-26!"  # noqa: S105 — test accounts on a database copy
-KTH_LAT, KTH_LNG = "18.507400", "73.807700"
+KTH_LAT, KTH_LNG = "12.925000", "77.593800"
 results = []
 S = {}  # shared state between sections
 
@@ -173,9 +173,9 @@ def accounts():
                 "name": f"E2E {who}",
                 "phone": "9812300011",
                 "address_line1": "1 Test Lane",
-                "city": "Pune",
-                "state": "Maharashtra",
-                "postal_code": "411038",
+                "city": "Bengaluru",
+                "state": "Karnataka",
+                "postal_code": "560041",
                 "latitude": KTH_LAT,
                 "longitude": KTH_LNG,
             },
@@ -471,13 +471,13 @@ def delivery():
     r1, _ = login("e2e-rider1@example.com")
     r2, _ = login("e2e-rider2@example.com")
     S.update(admin=admin, mgr_k=mgr_k, mgr_b=mgr_b, r1=r1, r2=r2)
-    status, chk = call("GET", "/delivery/check/", params={"postal_code": "411038"})
-    check("delivery check for PIN 411038", status == 200 and chk.get("serviceable", True), chk)
+    status, chk = call("GET", "/delivery/check/", params={"postal_code": "560041"})
+    check("delivery check for PIN 560041", status == 200 and chk.get("serviceable", True), chk)
     number = S["cod_order"]
     status, order = call("GET", f"/admin/orders/{number}/", token=mgr_k)
-    check("Kothrud manager sees the order", status == 200, status)
+    check("Jayanagar manager sees the order", status == 200, status)
     status, _ = call("GET", f"/admin/orders/{number}/", token=mgr_b)
-    check("Baner manager can't (404)", status == 404, status)
+    check("Indiranagar manager can't (404)", status == 404, status)
     for step in ("processing", "packed"):
         status, res = call("POST", f"/orders/{number}/transition/", {"status": step}, mgr_k)
         check(f"store moves the order to {step}", status == 200, (status, res))
@@ -672,7 +672,7 @@ def admin():
     check("coupons list", status == 200, status)
     status, inv = call("GET", "/inventory/", token=mgr_k)
     stores = {r["store_name"] if "store_name" in r else r.get("store") for r in rows(inv)}
-    check("manager's inventory is Kothrud only", status == 200 and len(stores) == 1, stores)
+    check("manager's inventory is Jayanagar only", status == 200 and len(stores) == 1, stores)
     row = rows(inv)[0]
     status, res = call(
         "POST",

@@ -33,6 +33,7 @@ from integrations.maps import point_in_polygon
 from .eta import Estimate, estimate, store_capacity, straight_line_km
 from .locations import Location
 from .models import DeliveryZone
+from .service_areas import area_contains, area_for, not_covered_message, restricted_areas
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,9 @@ class Plan:
 def zone_covers(zone: DeliveryZone, store: Store, location: Location) -> bool:
     if location.postal_code and location.postal_code in zone.postal_code_set:
         return True
+    area = zone.service_area
+    if area is not None and area.is_active and area_contains(area, location):
+        return True
     distance = straight_line_km(store, location)
     if distance is not None:
         if distance > float(zone.radius_km):
@@ -123,9 +127,16 @@ def fulfilment_stores():
 
 
 def covering_candidates(location: Location) -> list[tuple[Store, DeliveryZone]]:
-    """(store, best covering zone) for every store that delivers to `location`."""
+    """(store, best covering zone) for every store that delivers to `location`.
+
+    With city service areas active (DELIVERY_RESTRICT_TO_SERVICE_AREAS), nothing outside them is served.
+    """
+    if (areas := restricted_areas()) and area_for(location, areas) is None:
+        return []
     zones = defaultdict(list)
-    for zone in DeliveryZone.objects.filter(is_active=True, store__in=fulfilment_stores()).select_related("store"):
+    for zone in DeliveryZone.objects.filter(is_active=True, store__in=fulfilment_stores()).select_related(
+        "store", "service_area"
+    ):
         zones[zone.store_id].append(zone)
     result = []
     for store_zones in zones.values():
@@ -164,8 +175,7 @@ def plan_fulfillment(requirements: dict[int, int], location: Location | None, *,
             if not location.known and not location.postal_code:
                 return Plan(False, location, reason_code="location_unknown",
                             message="Add a delivery address or PIN code to check delivery.")  # fmt: skip
-            where = f"PIN {location.postal_code}" if location.postal_code else "this address"
-            return Plan(False, location, reason_code="out_of_zone", message=f"We don't deliver to {where} yet.")
+            return Plan(False, location, reason_code="out_of_zone", message=not_covered_message(location))
 
     stock = stock_levels([s.pk for s, _ in candidates], list(requirements))
     capacities: dict[int, object] = {}

@@ -27,6 +27,8 @@ from pathlib import Path as _Path  # noqa: E402
 PRIVATE_MEDIA_ROOT = _Path(_tempfile.gettempdir()) / "boltrun_test_private_media"
 # Never call OpenStreetMap services from tests (providers are exercised with fakes).
 GEOCODING_PROVIDER = "none"
+# Engine tests use their own stores and zones; city service-area tests switch the restriction on.
+DELIVERY_RESTRICT_TO_SERVICE_AREAS = False
 ROUTING_PROVIDER = "haversine"
 
 # WhiteNoise isn't needed under the test client (and warns when staticfiles/ is absent).

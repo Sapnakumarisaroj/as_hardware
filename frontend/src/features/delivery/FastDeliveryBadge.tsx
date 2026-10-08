@@ -26,7 +26,7 @@ export function FastDeliveryBadge() {
     state = 'unavailable'
     detail = data.serviceable
       ? `Fast delivery isn’t available to ${pincode} right now${data.fast_unavailable_reason ? ` (${data.fast_unavailable_reason})` : ''}. ${data.label}.`
-      : `We don’t deliver to ${pincode} yet.`
+      : data.message
   }
   const tone = {
     neutral: 'bg-amber-500/15 text-amber-400 ring-amber-500/40',

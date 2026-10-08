@@ -54,7 +54,7 @@ def test_demo_rider_is_opt_in_with_a_random_password_shown_once(settings, capsys
     out = capsys.readouterr().out
     partner = DeliveryPartner.objects.select_related("user", "home_store").get()
     assert partner.user.email == "demo-rider@example.com" and partner.user.role == "delivery_partner"
-    assert partner.is_verified and partner.status == "offline" and partner.home_store.code == "DEMO-PUN-KTH"
+    assert partner.is_verified and partner.status == "offline" and partner.home_store.code == "DEMO-BLR-JYN"
     password = out.split("password: ")[1].split()[0]
     assert len(password) >= 12 and partner.user.check_password(password)
 

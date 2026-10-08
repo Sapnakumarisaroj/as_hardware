@@ -54,6 +54,7 @@ import type {
   SearchExplanation,
   SearchIndexStatus,
   SearchRebuildResult,
+  ServiceArea,
   StaffRefund,
   StaffShipment,
   StockMovement,
@@ -512,6 +513,9 @@ export const useFreeDeliveryRules = (filters: Filters = {}) =>
   useAll<FreeDeliveryRuleRow>('free-delivery', '/admin/free-delivery-rules/', filters)
 export const useFreeDeliveryRuleCrud = () =>
   useCrud<FreeDeliveryRuleInput, FreeDeliveryRuleRow>('/admin/free-delivery-rules/', ['free-delivery'])
+
+/** City service areas (e.g. Bengaluru) a zone can cover as a whole; edited in Django admin. */
+export const useServiceAreas = () => useAll<ServiceArea>('service-areas', '/admin/service-areas/')
 
 /** Zones of every store, for choosing where a free-delivery rule applies. */
 export const useAllZones = () => useAll<Zone>('zones', '/admin/zones/')

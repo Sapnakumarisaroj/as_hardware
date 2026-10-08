@@ -9,8 +9,8 @@ from apps.stores.models import Store
 assert "e2e" in str(connection.settings_dict["NAME"]), connection.settings_dict["NAME"]
 User = get_user_model()
 PASSWORD = "E2e-check-26!"  # noqa: S105 — test accounts on a database copy
-kothrud = Store.objects.get(code="DEMO-PUN-KTH")
-baner = Store.objects.get(code="DEMO-PUN-BNR")
+jayanagar = Store.objects.get(code="DEMO-BLR-JYN")
+indiranagar = Store.objects.get(code="DEMO-BLR-IND")
 
 
 def user(email, **extra):
@@ -18,13 +18,14 @@ def user(email, **extra):
 
 
 user("e2e-admin@example.com", role="admin", full_name="E2E Admin")
-k = user("e2e-mgr-k@example.com", role="store_manager", full_name="Kothrud Manager")
-kothrud.managers.add(k)
-b = user("e2e-mgr-b@example.com", role="store_manager", full_name="Baner Manager")
-baner.managers.add(b)
+k = user("e2e-mgr-k@example.com", role="store_manager", full_name="Jayanagar Manager")
+jayanagar.managers.add(k)
+b = user("e2e-mgr-b@example.com", role="store_manager", full_name="Indiranagar Manager")
+indiranagar.managers.add(b)
 for i, name in enumerate(("Ravi Rider", "Meera Rider"), start=1):
     r = user(f"e2e-rider{i}@example.com", role="delivery_partner", full_name=name, phone=f"91234567{80 + i}")
     DeliveryPartner.objects.get_or_create(
-        user=r, defaults={"phone": f"91234567{80 + i}", "home_store": kothrud, "status": "offline", "is_verified": True}
+        user=r,
+        defaults={"phone": f"91234567{80 + i}", "home_store": jayanagar, "status": "offline", "is_verified": True},
     )
-print("setup ok", kothrud.pk, baner.pk, kothrud.latitude, kothrud.longitude)
+print("setup ok", jayanagar.pk, indiranagar.pk, jayanagar.latitude, jayanagar.longitude)

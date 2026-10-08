@@ -17,6 +17,7 @@ from .models import (
     FreeDeliveryRule,
     GeocodeCache,
     PinCode,
+    ServiceArea,
 )
 from .serializers import latest_delivery
 
@@ -236,11 +237,41 @@ class ShipmentAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(ServiceArea)
+class ServiceAreaAdmin(admin.ModelAdmin):
+    list_display = ("name", "postal_code_prefixes", "city_names", "zone_count", "is_active")
+    list_editable = ("is_active",)
+    fieldsets = (
+        (None, {"fields": ("name", "is_active")}),
+        (
+            "Which addresses are inside",
+            {
+                "fields": (
+                    "postal_code_prefixes",
+                    "extra_postal_codes",
+                    "excluded_postal_codes",
+                    "city_names",
+                    "polygon",
+                ),
+                "description": "The PIN code decides when an address has one (prefix rule, plus extra, minus "
+                "excluded codes). Without a PIN, a map pin inside the polygon, else the city name. While any "
+                "area is active, addresses outside all of them are not delivered to.",
+            },
+        ),
+        ("Estimates", {"fields": ("assumed_distance_km",)}),
+    )
+
+    @admin.display(description="Zones")
+    def zone_count(self, obj) -> int:
+        return obj.zones.count()
+
+
 @admin.register(DeliveryZone)
 class DeliveryZoneAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "store",
+        "service_area",
         "radius_km",
         "pin_count",
         "fee",
@@ -249,18 +280,19 @@ class DeliveryZoneAdmin(admin.ModelAdmin):
         "fast_cutoff",
         "is_active",
     )
-    list_filter = ("is_active", "fast_delivery_enabled", "store")
+    list_filter = ("is_active", "fast_delivery_enabled", "service_area", "store")
     list_editable = ("fast_delivery_enabled", "is_active")
     search_fields = ("name", "store__name", "postal_codes")
-    list_select_related = ("store",)
+    list_select_related = ("store", "service_area")
     fieldsets = (
         (None, {"fields": ("store", "name", "is_active")}),
         (
             "Area served",
             {
-                "fields": ("radius_km", "postal_codes", "polygon"),
-                "description": "An address is served if its PIN code is listed, or it lies within the radius of "
-                "the store (and inside the polygon, when one is set).",
+                "fields": ("service_area", "radius_km", "postal_codes", "polygon"),
+                "description": "An address is served if it is anywhere in the chosen city (service area), or its "
+                "PIN code is listed, or it lies within the radius of the store (and inside the polygon, when one is "
+                "set). How fast is still decided per order (stock, store hours, riders, travel time).",
             },
         ),
         ("Delivery fee", {"fields": ("delivery_fee_override", "free_delivery_min_order")}),

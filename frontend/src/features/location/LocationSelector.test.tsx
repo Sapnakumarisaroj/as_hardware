@@ -30,7 +30,14 @@ const REPLIES: Record<string, Serviceability> = {
     fast_unavailable_reason: 'Fast delivery isn’t offered in this area.',
     message: '🚚 Standard delivery · Tomorrow, 10:00 AM – 12:00 PM',
   }),
-  '411014': check({ postal_code: '411014', serviceable: false, fast_delivery_available: false, label: '', message: 'We don’t deliver to PIN 411014 yet.' }),
+  '411014': check({
+    postal_code: '411014',
+    serviceable: false,
+    service_area: null,
+    fast_delivery_available: false,
+    label: '',
+    message: 'Currently we deliver only within Bengaluru.',
+  }),
 }
 
 function routes() {
@@ -74,7 +81,8 @@ describe('delivery location selector', () => {
     await user.clear(input)
     await user.type(input, '411014')
     await user.click(screen.getByRole('button', { name: 'Check' }))
-    expect(await screen.findByText('We don’t deliver to PIN 411014 yet.')).toBeInTheDocument()
+    expect(await screen.findByText('Currently we deliver only within Bengaluru.')).toBeInTheDocument()
+    expect(screen.getByTestId('pin-summary')).toHaveTextContent('Outside our delivery area')
     await waitFor(() =>
       expect(paramsSent(api.get, '/delivery/check/')).toEqual([
         { postal_code: '411038' },

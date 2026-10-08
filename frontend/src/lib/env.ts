@@ -6,7 +6,7 @@ function mapCenter() {
   if (Number.isFinite(latitude) && Number.isFinite(longitude) && latitude !== undefined && longitude !== undefined) {
     return { latitude, longitude }
   }
-  return { latitude: 18.5204, longitude: 73.8567 } // Pune
+  return { latitude: 12.9716, longitude: 77.5946 } // Bengaluru
 }
 
 export const env = {

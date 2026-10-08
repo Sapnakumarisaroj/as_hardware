@@ -249,6 +249,8 @@ SPECTACULAR_SETTINGS = {
 # Fast delivery is *offered* only when the calculated ETA is at most this (zones may set a lower/higher
 # cutoff). It is a threshold, not a promise: customers see the calculated minutes.
 FAST_DELIVERY_MAX_MINUTES = env.int("FAST_DELIVERY_MAX_MINUTES", default=60)
+# Deliver only inside the active city service areas (Bengaluru); off = store zones alone decide.
+DELIVERY_RESTRICT_TO_SERVICE_AREAS = env.bool("DELIVERY_RESTRICT_TO_SERVICE_AREAS", default=True)
 # Default fee rule; delivery zones can override both (Phase 9).
 DELIVERY_FEE = Decimal(env.str("DELIVERY_FEE", default="") or "40.00")
 FREE_DELIVERY_MIN_ORDER = Decimal(env.str("FREE_DELIVERY_MIN_ORDER", default="") or "499.00")

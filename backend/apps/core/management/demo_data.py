@@ -588,47 +588,59 @@ PRODUCTS = [
     ),
 ]
 
-# code, name, kind, area, postal code, lat, lng
+# code, name, kind, area, postal code, lat, lng (Bengaluru, the shop's delivery city)
 STORES = [
-    ("DEMO-PUN-KTH", "Demo Store — Kothrud", "store", "Kothrud", "411038", "18.507400", "73.807700"),
-    ("DEMO-PUN-BNR", "Demo Dark Store — Baner", "dark_store", "Baner", "411045", "18.559000", "73.786800"),
-    ("DEMO-PUN-WH1", "Demo Warehouse — Chakan", "warehouse", "Chakan", "410501", "18.760600", "73.863600"),
+    ("DEMO-BLR-JYN", "Demo Store — Jayanagar", "store", "Jayanagar", "560041", "12.925000", "77.593800"),
+    ("DEMO-BLR-IND", "Demo Dark Store — Indiranagar", "dark_store", "Indiranagar", "560038", "12.971900", "77.641200"),
+    ("DEMO-BLR-WH1", "Demo Warehouse — Peenya", "warehouse", "Peenya", "560058", "13.028500", "77.519700"),
 ]
+STORE_CITY = ("Bengaluru", "Karnataka")
+# Earlier demo stores (Pune). Re-seeding switches them off (never deletes: old orders point at them).
+LEGACY_STORE_CODES = ("DEMO-PUN-KTH", "DEMO-PUN-BNR", "DEMO-PUN-WH1")
 
-# Delivery settings of the demo stores (Phase 9). Opening hours {} = always open.
-_DAILY_8_TO_21 = {day: ["08:00", "21:00"] for day in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")}
+# Delivery settings of the demo stores (Phase 9): the store is open 8 am to 8 pm like the header strip says.
+_DAILY_8_TO_20 = {day: ["08:00", "20:00"] for day in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")}
 STORE_DELIVERY = {
-    "DEMO-PUN-KTH": {
+    "DEMO-BLR-JYN": {
         "avg_prep_minutes": 10,
         "prep_minutes_per_item": 2,
         "own_riders": 2,
-        "opening_hours": _DAILY_8_TO_21,
+        "opening_hours": _DAILY_8_TO_20,
     },
-    "DEMO-PUN-BNR": {"avg_prep_minutes": 8, "prep_minutes_per_item": 1, "own_riders": 1, "opening_hours": {}},
+    # A dark store picks orders round the clock ({} = always open).
+    "DEMO-BLR-IND": {"avg_prep_minutes": 8, "prep_minutes_per_item": 1, "own_riders": 1, "opening_hours": {}},
 }
 
 # store code, zone name, radius km, PIN codes always served, fast delivery, fast cutoff (min), fee, free from
-# (None = global setting). The nearer zone offers fast delivery; the extended one is standard only.
+# (None = global setting), city-wide service area (None = radius / PIN list only). Both stores serve all of
+# Bengaluru; whether an order is fast is decided per address by the ETA engine (distance, riders, hours).
 ZONES = [
-    ("DEMO-PUN-KTH", "Kothrud 5 km", "5", "411038 411029 411052", True, None, None, None),
-    ("DEMO-PUN-KTH", "Kothrud extended 10 km", "10", "", False, None, "60", "999"),
-    ("DEMO-PUN-BNR", "Baner 5 km", "5", "411045 411057", True, 45, "30", "399"),
+    ("DEMO-BLR-JYN", "Bengaluru city-wide (Jayanagar)", "6", "", True, None, None, None, "Bengaluru"),
+    ("DEMO-BLR-IND", "Bengaluru city-wide (Indiranagar)", "6", "", True, 45, "30", "399", "Bengaluru"),
 ]
 
-# Approximate centres of some Pune PIN codes (demo values for distance estimates, not survey data).
+# Approximate centres of some Bengaluru PIN codes (demo values for distance estimates, not survey data).
+# Coverage doesn't depend on this list: every 560xxx PIN is inside the Bengaluru service area.
 # postal code, area, lat, lng
 PIN_CODES = [
-    ("411001", "Pune Camp", "18.519600", "73.879300"),
-    ("411004", "Deccan Gymkhana", "18.516700", "73.841400"),
-    ("411007", "Aundh", "18.558000", "73.807500"),
-    ("411014", "Viman Nagar", "18.567900", "73.914300"),
-    ("411021", "Pashan / Bavdhan", "18.520400", "73.778600"),
-    ("411028", "Hadapsar", "18.508900", "73.926000"),
-    ("411029", "Kothrud (Ideal Colony)", "18.501800", "73.816500"),
-    ("411038", "Kothrud", "18.507400", "73.807700"),
-    ("411045", "Baner", "18.559000", "73.786800"),
-    ("411052", "Karve Nagar", "18.490000", "73.818000"),
-    ("411057", "Hinjawadi", "18.591300", "73.738900"),
+    ("560001", "MG Road / Bengaluru GPO", "12.976600", "77.599300"),
+    ("560009", "Gandhinagar (Majestic)", "12.977000", "77.572000"),
+    ("560025", "Richmond Town", "12.965000", "77.600000"),
+    ("560024", "Hebbal", "13.035800", "77.597000"),
+    ("560064", "Yelahanka", "13.100700", "77.596300"),
+    ("560092", "Sahakar Nagar", "13.062300", "77.587100"),
+    ("560041", "Jayanagar", "12.925000", "77.593800"),
+    ("560011", "Jayanagar 3rd Block", "12.932000", "77.583000"),
+    ("560070", "Banashankari", "12.925500", "77.546800"),
+    ("560078", "JP Nagar", "12.906300", "77.585700"),
+    ("560100", "Electronic City", "12.845200", "77.660200"),
+    ("560038", "Indiranagar", "12.971900", "77.641200"),
+    ("560008", "HAL / Old Airport Road", "12.960000", "77.648000"),
+    ("560037", "Marathahalli", "12.956900", "77.701100"),
+    ("560066", "Whitefield", "12.969800", "77.750000"),
+    ("560010", "Rajajinagar", "12.991000", "77.552000"),
+    ("560040", "Vijayanagar", "12.971900", "77.537600"),
+    ("560058", "Peenya", "13.028500", "77.519700"),
 ]
 
 # Automatic offers (Phase 6). name, description, type, value, max_discount, min_order, priority, category slugs
