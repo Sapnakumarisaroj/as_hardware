@@ -49,7 +49,7 @@ class Result:
             "verdict": self.verdict,
             "reason": self.reason,
             "product_a": {"id": self.product_a.pk, "name": self.product_a.name, "slug": self.product_a.slug, "kind": self.kinds[0]},
-            "product_b": {"id": self.product_b.pk, "name": self.product_b.name, "slug": self.product_b.slug, "kind": self.kinds[1]},
+            "product_b": {"id": self.product_b.pk, "name": self.product_b.name, "slug": self.product_b.slug, "kind": self.kinds[1]} if self.product_b is not None else None,
             "variant_a": self.variant_a.pk if self.variant_a else None,
             "variant_b": self.variant_b.pk if self.variant_b else None,
             "checks": [{"name": c.name, "status": c.status, "detail": c.detail} for c in self.checks],
@@ -149,6 +149,38 @@ class CompatibilityService:
                 )
         result.reason = result.reason.strip()
         return result
+
+    # --- One product against the customer's measurements ---------------------------------------------------
+
+    @staticmethod
+    def check_measurements(product, variant=None, measures: dict | None = None) -> Result | None:
+        """Will this product fit the customer's own sizes ({board_mm, door_mm, glass_mm, depth_mm})? None when no
+        rule for its kind reads any of them. A size the listing doesn't state → INSUFFICIENT_INFORMATION."""
+        profile = profiles.build(product, variant)
+        finding = rules.check_measures(profile, measures or {})
+        if finding is None:
+            return None
+        return Result(
+            finding.verdict, finding.reason, product, None, variant, None, finding.checks,
+            sources=[f"measure:{profile.kind}"], kinds=(profile.kind, None),
+        )  # fmt: skip
+
+    def fitting_variants(self, product, variants: list, measures: dict | None) -> list:
+        """The variants that fit the measurements for certain (COMPATIBLE); all of them when none does or no
+        rule applies — the line's own check then says why."""
+        kind = profiles.kind_of(product)
+        if not measures or rules.MEASURE_RULES.get(kind) is None:
+            return variants
+        fitting = []
+        for variant in variants:
+            profile = profiles.build(product, variant)
+            finding = rules.check_measures(profile, measures)
+            if finding is not None and finding.verdict == COMPATIBLE:
+                fitting.append((variant, profile))
+        if fitting and (best := rules.MEASURE_BEST.get(kind)):
+            top = max(best(p) for _, p in fitting)
+            fitting = [(v, p) for v, p in fitting if best(p) == top]
+        return [v for v, _ in fitting] or variants
 
     @staticmethod
     def _rule_finding(pa, pb) -> tuple[Finding, str] | None:

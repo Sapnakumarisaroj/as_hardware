@@ -20,6 +20,7 @@ from apps.catalog.compatibility.service import CompatibilityService
 from integrations.llm import ChatOptions, LLMError, LLMUnavailable
 
 from ..projects.kit import names_the_need
+from . import grounding
 from .catalog_match import choose_variant, find_products
 from .schemas import AssistantReply, Intent, ProductMatch
 
@@ -53,7 +54,21 @@ KIND_WORDS = {
     "socket": r"socket",
     "drill": r"\bdrills?\b",
     "spanner": r"spanners?",
+    "glass_fitting": r"patch\s+fittings?|floor\s+springs?|glass\s+(clamps?|connectors?|door\s+handles?)",
+    "hinge": r"\bhinges?\b|\bkab[jz][aeo]\w*|कब्ज़?[ाे]",
+    "drawer_channel": r"\bchannels?\b|\bslides?\b",
+    "handle": r"\bhandles?\b|\bhandal\b|\bhendal\b",
+    "door_lock": r"\blocks?\b|\bta+la\b|ताला",
+    "board": r"\bply\w*\b|\bplai\b|\bmdf\b|\bhdhmr\b|\bboards?\b|प्लाई",
 }
+# "18 mm ply", "10 mm glass", "35 mm door", "500 mm deep": the customer's own size for a measurement check
+MEASURE_WORDS = {
+    "glass_mm": r"\bglass\b|\bka+nch\b|काँच|कांच",
+    "door_mm": r"\bdoors?\b|\bdarwaz\w*|दरवाज़?",
+    "depth_mm": r"\bdeep\b|\bdepth\b|\bgehra\w*|\bgehrai\b|गहर",
+    "board_mm": r"\bply\w*\b|\bplai\b|\bmdf\b|\bhdhmr\b|\bboards?\b|\bshutters?\b|प्लाई",
+}
+SIZE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:mm|मिमी)\b", re.IGNORECASE)
 
 VERDICT_TEXT = {
     "en": {
@@ -108,6 +123,18 @@ def t(language: str, key: str, **values) -> str:
 
 def is_question(text: str) -> bool:
     return bool(QUESTION.search(text or ""))
+
+
+def measures_in(text: str) -> dict:
+    """The customer's own sizes: a millimetre value and the word for what it measures ("18 mm ply" → board_mm 18,
+    "10 mm glass" → glass_mm 10). Only with exactly one size, so a number is never paired with the wrong thing."""
+    text = grounding.normalise_digits(text or "")
+    sizes = SIZE.findall(text)
+    if len(sizes) != 1:
+        return {}
+    lowered = text.lower()
+    key = next((k for k, pattern in MEASURE_WORDS.items() if re.search(pattern, lowered)), None)
+    return {key: float(sizes[0])} if key else {}
 
 
 def _product(part: str):
@@ -210,6 +237,13 @@ class CompatibilityAssistant:
             (a, variant_a), (b, variant_b) = found[0], found[1]
             return self._pair(reply, a, b, language, variant_a, variant_b)
         if len(found) == 1:
+            measures = measures_in(text)
+            if measures:
+                result = self.service.check_measurements(
+                    *self.service.load(found[0][0].pk, getattr(found[0][1], "pk", None)), measures
+                )
+                if result is not None:
+                    return self._measured(reply, result, language, measures)
             return self._for_one(reply, found[0][0], text, language)
         # "Will this drill bit work with this drill?" without saying which: ask, and show the candidates
         kinds = [kind for kind, pattern in KIND_WORDS.items() if re.search(pattern, (text or "").lower())]
@@ -244,6 +278,18 @@ class CompatibilityAssistant:
         reply.products = [_match(a, "compatibility: product A"), _match(b, "compatibility: product B")]
         rows = {p.pk: p for p in selectors.product_queryset().filter(pk__in=[o["product_id"] for o in options])}
         reply.products += [_match(rows[o["product_id"]], "works with it") for o in options if o["product_id"] in rows]
+        return reply
+
+    def _measured(self, reply, result, language: str, measures: dict) -> AssistantReply:
+        """ "Will this hinge fit 18 mm ply?": the product against the customer's own size."""
+        data = result.as_dict() | {"measures": measures}
+        verdict = VERDICT_TEXT.get(language, VERDICT_TEXT["en"])[result.verdict]
+        name = result.product_a.name + (
+            f" ({result.variant_a.name})" if result.variant_a is not None and result.variant_a.name else ""
+        )
+        reply.message = "\n\n".join([f"{verdict}: {name}.", result.reason])
+        reply.compatibility = data
+        reply.products = [_match(result.product_a, "compatibility: product A")]
         return reply
 
     def _for_one(self, reply, product, text: str, language: str) -> AssistantReply:
@@ -301,8 +347,8 @@ class CompatibilityAssistant:
                 ChatOptions(json=True, max_tokens=160, temperature=0.1),
             ).json()
             text = str(answer.get("explanation") or "").strip()
-            numbers_ok = set(re.findall(r"\d+(?:\.\d+)?", text)) <= set(re.findall(r"\d+(?:\.\d+)?", json.dumps(facts)))
-            if text and numbers_ok:
+            # only numbers from the facts, and never money: the verdict and its sizes are the listings'
+            if text and grounding.grounded(text, json.dumps(facts, ensure_ascii=False)):
                 return text[:400], True
         except (LLMUnavailable, LLMError) as exc:
             logger.info("Compatibility explanation by model skipped: %s", exc)

@@ -13,6 +13,7 @@ Two kinds of answers:
 
 import base64
 import io
+import re
 from dataclasses import dataclass, field
 
 from integrations.llm import LLMError, LLMUnavailable
@@ -87,7 +88,7 @@ Look at the photo and answer with ONE JSON object and nothing else:
   "alternatives": ["up to 3 other things it could be"],
   "search_terms": ["2-4 short words a shop would list it under"],
   "confidence": a number from 0 to 1 for how sure you are,
-  "description": "one short sentence about what you see"}}
+  "description": "one short sentence about what you see, with no prices, sizes, numbers or availability"}}
 Prefer one of these names when one fits: {kinds}.
 If the photo is unclear or not a hardware item, say so with a low confidence. Never guess brands, prices or sizes."""
 
@@ -112,6 +113,24 @@ def _number(value, default: float = 0.0) -> float:
     return max(0.0, min(1.0, number))
 
 
+# What a description of a photo must never contain: prices, stock or delivery claims, product codes, or numbers
+# (sizes, quantities) — the catalogue is the only source of those. Devanagari digits count as digits.
+_DESCRIPTION_FORBIDDEN = re.compile(
+    r"[0-9०-९]|₹|\brs\b|\binr\b|\brupees?\b|\brupaye\b|रुपये|रुपए|/-|\bprice[sd]?\b|\bcosts?\b|\bmrp\b|\bcheap\w*\b|"
+    r"\bexpensive\b|\bdiscount\w*\b|\boffer\w*\b|\bstock\b|\bin\s+store\b|\bavailab\w+\b|\bdeliver\w*\b|\bsku\b|"
+    r"\bmodel\s+(no|number)\b|\bpart\s+(no|number)\b|कीमत|दाम|स्टॉक|उपलब्ध",
+    re.IGNORECASE,
+)
+
+
+def clean_description(text: str) -> str:
+    """The model's description, keeping only the sentences that describe what is seen (no prices, stock, codes or
+    numbers). "" when nothing is left."""
+    text = " ".join(str(text or "").split())[:300]
+    sentences = re.split(r"(?<=[.!?।])\s+", text)
+    return " ".join(s for s in sentences if s and not _DESCRIPTION_FORBIDDEN.search(s)).strip()
+
+
 def parse_answer(data: dict, *, provider: str, model: str) -> VisionResult:
     """A vision-language model's JSON answer → VisionResult (labels trimmed, numbers clamped)."""
     item = str(data.get("item") or "").strip()[:80]
@@ -127,7 +146,7 @@ def parse_answer(data: dict, *, provider: str, model: str) -> VisionResult:
     hardware = data.get("is_hardware")
     return VisionResult(
         guesses=guesses,
-        description=str(data.get("description") or "").strip()[:300],
+        description=clean_description(data.get("description")),
         is_hardware=hardware if isinstance(hardware, bool) else None,
         calibrated=False,
         provider=provider,

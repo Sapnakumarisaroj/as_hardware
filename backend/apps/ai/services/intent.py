@@ -18,6 +18,7 @@ from decimal import Decimal
 
 from integrations.llm import ChatOptions, LLMError, LLMUnavailable, get_llm_provider
 
+from . import grounding
 from . import vocabulary as V
 from .schemas import LANGUAGES, Intent, Understanding
 
@@ -459,6 +460,8 @@ class IntentService:
         messages.append({"role": "user", "content": text[:1000]})
         reply = self.provider.chat(messages, ChatOptions(json=True, max_tokens=250, temperature=0.1))
         data = reply.json()
+        # What the customer said (this message and their earlier ones): the only source of numbers.
+        said = " ".join([text] + [str(turn["content"])[:500] for turn in history[-4:] if turn.get("role") == "user"])
 
         intent = str(data.get("intent") or "").upper()
         if intent in Intent.ALL and result.intent == Intent.PRODUCT_SEARCH:
@@ -472,12 +475,22 @@ class IntentService:
                     clean = re.sub(r"[^\w\s./-]", "", term).strip().lower()[:40]
                     if clean and clean not in result.terms and not V.DEVANAGARI.search(clean):
                         result.terms.append(clean)
-        if result.budget is None and isinstance(data.get("budget"), (int, float)) and 0 < data["budget"] < 10_000_000:
-            result.budget = Decimal(str(data["budget"]))
+        budget = data.get("budget")
+        if (
+            result.budget is None
+            and isinstance(budget, (int, float))
+            and not isinstance(budget, bool)
+            and 0 < budget < 10_000_000
+            and grounding.number_said(budget, said)
+        ):
+            # Only a budget the customer actually said: a model must never make one up.
+            result.budget = Decimal(str(budget))
         question = data.get("question")
         if isinstance(question, str) and question.strip() and data.get("needs_clarification") and not result.terms:
-            # Still nothing to search for: ask the model's follow-up question instead of a generic one.
-            result.question = question.strip()[:300]
+            # Still nothing to search for: ask the model's follow-up question instead of a generic one — unless it
+            # talks money or numbers the customer didn't say; then the fixed question is asked.
+            asked = question.strip()[:300]
+            result.question = asked if grounding.grounded(asked, said) else V.text(result.language, "unclear")
             result.needs_clarification = True
         elif result.terms:
             result.needs_clarification = False

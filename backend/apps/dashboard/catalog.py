@@ -10,11 +10,13 @@ enforced in one place. Deleting is a soft delete: past orders keep their snapsho
 from django.db import transaction
 from django.db.models import Count, Max, Min, Prefetch, Q, Sum
 from django.db.models.deletion import ProtectedError
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.catalog import services
 from apps.catalog.models import Brand, Category, Product, ProductImage, ProductVariant
@@ -26,7 +28,7 @@ from apps.catalog.serializers import (
 )
 from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError, NotFoundError, ServiceError
-from apps.core.permissions import IsAdminOrStaffReadOnly, managed_store_ids
+from apps.core.permissions import IsAdminOrStaffReadOnly, IsAdminRole, is_admin, managed_store_ids
 from apps.inventory.models import Inventory
 
 MAX_IMAGES_PER_PRODUCT = 12
@@ -59,6 +61,7 @@ class AdminVariantSerializer(serializers.ModelSerializer):
             "attributes",
             "mrp",
             "price",
+            "cost_price",
             "weight_grams",
             "length_mm",
             "width_mm",
@@ -92,6 +95,13 @@ class AdminVariantSerializer(serializers.ModelSerializer):
     def get_stock_reserved(self, obj) -> int:
         return self.context.get("stock", {}).get(obj.pk, (0, 0))[1]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        if not is_admin(getattr(request, "user", None)):
+            data.pop("cost_price", None)  # purchase cost: administrators only (profit reports)
+        return data
+
 
 class AdminProductListSerializer(serializers.ModelSerializer):
     brand = serializers.SerializerMethodField()
@@ -120,6 +130,7 @@ class AdminProductListSerializer(serializers.ModelSerializer):
             "is_featured",
             "is_returnable",
             "is_deleted",
+            "is_demo",
             "state",
             "variant_count",
             "price_from",
@@ -243,6 +254,7 @@ class ImageUpdateSerializer(_ImageSourceFields):
             OpenApiParameter("brand", int),
             OpenApiParameter("state", str, enum=["live", "draft", "inactive", "deleted", "all"]),
             OpenApiParameter("featured", bool),
+            OpenApiParameter("demo", bool, description="Only demo (true) or only real (false) products"),
             OpenApiParameter("stock", str, enum=["out", "in"]),
             OpenApiParameter("ordering", str, enum=["name", "-name", "-updated_at", "updated_at"]),
         ]
@@ -306,6 +318,8 @@ class AdminProductViewSet(viewsets.ModelViewSet):
             qs = qs.filter(brand_id=brand)
         if params.get("featured") in ("1", "true"):
             qs = qs.filter(is_featured=True)
+        if (demo := params.get("demo")) in ("true", "false"):
+            qs = qs.filter(is_demo=demo == "true")
         if params.get("stock") in ("out", "in"):
             stocked = [pk for pk, total in self._stock.items() if total > 0]
             qs = qs.filter(pk__in=stocked) if params["stock"] == "in" else qs.exclude(pk__in=stocked)
@@ -470,6 +484,112 @@ class VariantSearchView(viewsets.ViewSet):
                 for v in variants
             ]
         )
+
+
+# --- Spreadsheet import / export (apps/catalog/importer.py, docs/CATALOG_IMPORT.md) ---------------
+
+
+class CatalogImportSerializer(serializers.Serializer):
+    file = serializers.FileField(help_text=".csv (UTF-8) or .xlsx, at most 5 MB, one row per variant")
+    dry_run = serializers.BooleanField(required=False, default=True, help_text="Check only (default); false saves")
+    sheet = serializers.CharField(required=False, allow_blank=True, default="", max_length=100)
+    allow_demo = serializers.BooleanField(required=False, default=False, help_text="Also update demo rows")
+
+
+def _download(content: bytes, fmt: str, name: str):
+    from django.http import HttpResponse
+
+    from apps.catalog.importer_export import CONTENT_TYPES
+
+    response = HttpResponse(content, content_type=CONTENT_TYPES[fmt])
+    response["Content-Disposition"] = f'attachment; filename="{name}.{fmt}"'
+    return response
+
+
+class _FileFormatMixin:
+    """`?format=csv|xlsx` names the file type here, not a DRF renderer."""
+
+    def perform_content_negotiation(self, request, force=False):
+        return super().perform_content_negotiation(request, force=True)
+
+    def _format(self, request) -> str:
+        fmt = (request.query_params.get("format") or "xlsx").lower()
+        if fmt not in ("csv", "xlsx"):
+            raise ServiceError("Choose format=csv or format=xlsx.", code="invalid_format")
+        return fmt
+
+
+class CatalogImportView(APIView):
+    """Upload a spreadsheet: every row is checked first; a dry run (the default) saves nothing and
+    returns what would happen. A real import is all or nothing. Administrators only."""
+
+    permission_classes = [IsAdminRole]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(request={"multipart/form-data": CatalogImportSerializer}, responses={200: OpenApiTypes.OBJECT})
+    def post(self, request):
+        from apps.catalog.importer import MAX_FILE_BYTES, ImportFileError, import_file
+
+        serializer = CatalogImportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        upload = data["file"]
+        if upload.size > MAX_FILE_BYTES:
+            raise ImportFileError(
+                f"The file is larger than {MAX_FILE_BYTES // (1024 * 1024)} MB. Split it into smaller files.",
+                code="file_too_large",
+            )
+        report = import_file(
+            upload.read(),
+            upload.name,
+            sheet=data["sheet"] or None,
+            dry_run=data["dry_run"],
+            allow_demo=data["allow_demo"],
+            actor=request.user,
+        )
+        return Response(report.as_dict())
+
+
+class CatalogExportView(_FileFormatMixin, APIView):
+    """The catalogue in the import columns (re-importable). Includes purchase costs: administrators only."""
+
+    permission_classes = [IsAdminRole]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("format", str, enum=["xlsx", "csv"]),
+            OpenApiParameter("include_demo", bool),
+            OpenApiParameter("include_deleted", bool),
+        ],
+        responses={(200, "application/octet-stream"): OpenApiTypes.BINARY},
+    )
+    def get(self, request):
+        from apps.catalog.importer_export import export_rows, write_csv, write_xlsx
+
+        fmt = self._format(request)
+        params = request.query_params
+        rows = export_rows(
+            include_demo=params.get("include_demo") in ("1", "true"),
+            include_deleted=params.get("include_deleted") in ("1", "true"),
+        )
+        record_audit(action="catalog.export", actor=request.user, request=request, changes={"rows": len(rows)})
+        return _download(write_xlsx(rows) if fmt == "xlsx" else write_csv(rows), fmt, "catalogue")
+
+
+class CatalogTemplateView(_FileFormatMixin, APIView):
+    """A blank import file (the Excel one has a 'Columns' sheet explaining every column)."""
+
+    permission_classes = [IsAdminRole]
+
+    @extend_schema(
+        parameters=[OpenApiParameter("format", str, enum=["xlsx", "csv"])],
+        responses={(200, "application/octet-stream"): OpenApiTypes.BINARY},
+    )
+    def get(self, request):
+        from apps.catalog.importer_export import template
+
+        fmt = self._format(request)
+        return _download(template(fmt), fmt, "catalogue-template")
 
 
 # --- Categories and brands -----------------------------------------------------------------------

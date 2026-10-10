@@ -28,6 +28,7 @@ CATEGORIES = {
     "returns": "Returns",
     "support": "Support replies",
     "loyalty": "Credits and cashback",
+    "cart": "Cart reminders",
     "work": "Work alerts (staff and delivery partners)",
 }
 
@@ -61,6 +62,8 @@ class Event:
 
 ORDER = "/account/orders/{order_number}"
 STAFF_ORDER = "/admin/orders/{order_number}"
+QUOTE = "/account/quotes/{quote_id}"
+STAFF_QUOTE = "/admin/quotes/{quote_id}"
 _CUSTOMER_MESSAGING = (IN_APP, EMAIL, WHATSAPP)
 
 _EVENTS = [
@@ -194,7 +197,7 @@ _EVENTS = [
         "Order {order_number} is running late",
         "Sorry — your order is taking longer than we estimated. The store is on it and we'll update you here.",
         ("order_number",),
-        (IN_APP, EMAIL),
+        _CUSTOMER_MESSAGING,
         short="Hi {customer_name}, sorry, your {shop_name} order {order_number} is running late. Track it: {link}",
         whatsapp_template="delivery_delayed",
         link=ORDER,
@@ -401,6 +404,62 @@ _EVENTS = [
         ("amount", "description", "expiry_days"),
         link="/account/wallet",
     ),
+    Event(
+        "cart.reminder",
+        "Items left in the cart",
+        "cart",
+        CUSTOMER,
+        "You left {item_count} item(s) in your cart",
+        "Your cart is saved: {item_count} item(s), ₹{amount} at today's prices. Check out whenever you're ready.",
+        ("item_count", "amount"),
+        _CUSTOMER_MESSAGING,
+        short="Hi {customer_name}, you left {item_count} item(s) (₹{amount} today) in your {shop_name} cart. "
+        "Check out here: {link}",
+        whatsapp_template="cart_reminder",
+        link="/cart",
+    ),
+    # --- Quotations (bulk / trade RFQs) ----------------------------------------------------------
+    Event(
+        "quote.ready",
+        "Quotation ready",
+        "orders",
+        CUSTOMER,
+        "Your quotation {quote_number} is ready",
+        "Your quotation {quote_number} is ready, valid until {valid_until}. Review the prices and accept it to "
+        "order at the quoted rates.",
+        ("quote_number", "valid_until"),
+        _CUSTOMER_MESSAGING,
+        short="Hi {customer_name}, your {shop_name} quotation {quote_number} is ready, valid until {valid_until}. "
+        "View it: {link}",
+        whatsapp_template="quote_ready",
+        link=QUOTE,
+    ),
+    Event(
+        "quote.rejected",
+        "Quote request declined",
+        "orders",
+        CUSTOMER,
+        "We couldn't quote request {quote_number}",
+        "Sorry, we couldn't prepare a quotation for request {quote_number}: {reason}",
+        ("quote_number", "reason"),
+        _CUSTOMER_MESSAGING,
+        short="Hi {customer_name}, {shop_name} couldn't quote request {quote_number}: {reason}. {link}",
+        whatsapp_template="quote_update",
+        link=QUOTE,
+    ),
+    Event(
+        "quote.expired",
+        "Quotation expired",
+        "orders",
+        CUSTOMER,
+        "Quotation {quote_number} has expired",
+        "The validity of quotation {quote_number} has ended. Request a new quote to get today's prices.",
+        ("quote_number",),
+        (IN_APP, EMAIL),
+        short="Hi {customer_name}, your {shop_name} quotation {quote_number} has expired. Request a new one: {link}",
+        whatsapp_template="quote_update",
+        link=QUOTE,
+    ),
     # --- Delivery partners -----------------------------------------------------------------------
     Event(
         "delivery.assigned",
@@ -490,6 +549,41 @@ _EVENTS = [
         ("order_number", "amount", "reason"),
         (IN_APP, EMAIL),
         link="/admin/refunds",
+        allowed=(IN_APP, EMAIL, WHATSAPP),
+    ),
+    Event(
+        "staff.low_stock",
+        "Low stock (staff)",
+        "work",
+        STAFF,
+        "Low stock: {product_name} at {store_name}",
+        "{product_name} ({sku}) is down to {available} at {store_name} (alert level {threshold}). Reorder or "
+        "move stock.",
+        ("product_name", "sku", "store_name", "available", "threshold"),
+        (IN_APP, EMAIL),
+        link="/admin/inventory?q={sku}",
+        allowed=(IN_APP, EMAIL, WHATSAPP),
+    ),
+    Event(
+        "quote.requested",
+        "Quote requested (staff)",
+        "work",
+        STAFF,
+        "Quote request {quote_number} from {customer}",
+        "{customer} asked for a quotation on {lines} product(s). Price it from the quotes page.",
+        ("quote_number", "customer", "lines"),
+        link=STAFF_QUOTE,
+        allowed=(IN_APP, EMAIL, WHATSAPP),
+    ),
+    Event(
+        "quote.accepted",
+        "Quotation accepted (staff)",
+        "work",
+        STAFF,
+        "Quotation {quote_number} accepted",
+        "{customer} accepted quotation {quote_number}. They can now check out at the quoted prices.",
+        ("quote_number", "customer"),
+        link=STAFF_QUOTE,
         allowed=(IN_APP, EMAIL, WHATSAPP),
     ),
 ]

@@ -548,6 +548,11 @@ def sample_context(spec: Event) -> dict:
         "store_name": "Main Store",
         "item_count": "3",
         "return_number": "RT2610060001",
+        "quote_number": "QT2610060001",
+        "valid_until": "16 Oct 2026",
+        "lines": "4",
+        "available": "3",
+        "threshold": "5",
     }
     return {name: examples.get(name, f"[{name}]") for name in spec.variables}
 

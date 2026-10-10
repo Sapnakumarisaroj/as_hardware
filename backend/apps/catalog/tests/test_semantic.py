@@ -319,6 +319,35 @@ def test_expand_corrects_typos_only_against_catalogue_words():
     assert expand("cover for head", vocabulary=frozenset({"thread", "cover"})).typos == {}  # a word, not a typo
 
 
+@pytest.mark.parametrize(
+    ("query", "term"),
+    [
+        ("kabza chahiye", "hinge"), ("कब्जे", "hinge"), ("18 mm plai", "plywood"), ("pench", "screws"),
+        ("daraz channel", "drawer channel"), ("almari ka handal", "handle"), ("chitkani", "tower bolt"),
+        ("tala chabi", "lock"), ("barma", "drill"), ("hathoda", "hammer"), ("dastane", "gloves"),
+        ("kaanch ka darwaza", "glass door"), ("sunmica", "laminate"), ("kil", "nails"),
+    ],
+)  # fmt: skip
+def test_expand_knows_the_shops_department_words(query, term):
+    assert term in expand(query).terms
+
+
+def test_department_words_find_products_and_the_benchmark_has_them(api_client, shop):
+    hinges = create_category("Hinges, Channels & Handles")
+    store = create_store(name="Second")
+    create_product(
+        name="Soft-Close Concealed Hinge (Pair)", category=hinges, tags=["hinge", "kabja"], stock=5, store=store
+    )
+    create_product(
+        name="Telescopic Drawer Channel (Pair)", category=hinges, tags=["drawer channel"], stock=5, store=store
+    )
+    index.sync_products()
+    assert "Soft-Close Concealed Hinge (Pair)" in _names(_search(api_client, "kabza chahiye"))[:3]
+    assert "Telescopic Drawer Channel (Pair)" in _names(_search(api_client, "daraz"))[:3]
+    queries = [q for q, _ in benchmark.QUERIES]
+    assert {"kabza chahiye", "18 mm plai", "pench", "chitkani", "daraz channel"} <= set(queries)
+
+
 def test_hybrid_keeps_keyword_hits_and_adds_related_ones(shop):
     base = selectors.product_queryset()
     keyword = KeywordSearchBackend().search(base, "drill")

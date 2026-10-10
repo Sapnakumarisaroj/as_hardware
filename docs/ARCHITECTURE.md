@@ -164,6 +164,12 @@ Cart ──► POST /checkout/preview/ (orders/checkout.py: build_checkout — r
   per channel, unique per event key. In-app rows are the inbox; email (Django email backend, SMTP in production),
   WhatsApp and SMS (`integrations/messaging`, mock by default) are sent by `core.Job` with retries. Secret values
   (the delivery code) are filled in only when sending.
+  WhatsApp in (`notifications/webhooks.py`): messages become `support` conversations; photos/PDFs are kept as
+  attachments (media id only) and fetched through the provider (`fetch_media`) when staff open them;
+  `notifications/whatsapp_bot.py` answers order-status, reorder and product-price questions from the database
+  (free-form `send_text`, only within WhatsApp's 24-hour window, never to opted-out accounts) and leaves everything
+  else for staff. Periodic: `carts.reminders` (cart recovery, off by default) and the low-stock staff alert raised by
+  `inventory.services.apply_movement` when a row crosses its threshold.
 
 ### Offers and coupons (Phase 6)
 One pricing path, `orders.pricing.price_lines(lines, coupon=None)`, is used by the cart, checkout preview, coupon
@@ -601,6 +607,17 @@ out                                verdict, reason, checks, matching variant pai
   screws); `kit_compatibility` lists remaining problems with options ("View compatible options" → use one).
 - **Cart (for Phase 22):** `GET /api/cart/compatibility/` and `POST /api/cart/items/{id}/replace/` (atomic, checked by
   the cart service).
+- **Shop departments (2026-10):** kinds `hinge`, `board`, `drawer_channel`, `handle`, `door_lock`, `door`,
+  `glass_fitting`, `glass`; rules hinge ↔ board/door (door-thickness range), screw ↔ board (shorter than the board for
+  face fixing), hinge ↔ hinge (cup, overlay), channel ↔ channel (length; 18 inch = 450 mm trade size), handle ↔ handle
+  (centre to centre), handle ↔ screw (M thread) and ↔ board (screw length − 6 mm grip), lock ↔ door (thickness,
+  backset), glass fitting ↔ glass / glass fitting (glass-thickness range). `CompatibilityService.check_measurements(
+  product, variant, {board_mm, door_mm, glass_mm, depth_mm})` checks the customer's own sizes ("will it fit 18 mm
+  ply?"); `fitting_variants` keeps the variants that fit (the longest channel for a depth). A spec the listing lacks is
+  INSUFFICIENT_INFORMATION; reasons only quote listing numbers. Project templates `modular_kitchen`, `wardrobe`,
+  `door_lock`, `glass_door`, `hinge_replacement` pass their sizes as `Need.fit`, so kits pick fitting variants and
+  each line carries the engine's `fit` verdict. Model text (intent budget/question, explanations, image descriptions)
+  goes through `apps/ai/services/grounding.py`: no money, no number the customer or the facts didn't give.
 - **Data ownership:** links are edited only in the dashboard (staff with catalogue rights), audited before/after;
   specifications are edited only there too. Customers and the AI have read-only access.
 

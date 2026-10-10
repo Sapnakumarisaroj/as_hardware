@@ -277,6 +277,30 @@ export function AdminReportsPage() {
   )
 }
 
+/** Margin report: say plainly how much of the revenue the profit figures cover (never estimated). */
+function CostCoverage({ kpis }: { kpis: Kpi[] }) {
+  const coverage = kpis.find((k) => k.key === 'cost_coverage')?.value
+  const revenue = Number(kpis.find((k) => k.key === 'goods_revenue')?.value ?? 0)
+  if (!(revenue > 0) || coverage === undefined) return null
+  const share = Number(coverage ?? 0)
+  if (share >= 100) return null
+  return (
+    <p role="note" data-testid="cost-coverage" className="mb-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-ink-900 ring-1 ring-amber-100">
+      {share > 0 ? (
+        <>
+          Profit and margin cover only items with a purchase cost: {formatValue(share, 'percent')} of goods revenue. The rest is left out, not
+          estimated.{' '}
+        </>
+      ) : (
+        <>No purchase costs on the items sold in this period, so profit and margin can’t be shown. </>
+      )}
+      <Link to="/admin/products" className="font-semibold text-amber-700 hover:underline">
+        Add purchase costs to products to see profit.
+      </Link>
+    </p>
+  )
+}
+
 function ReportBody({
   data,
   onDownload,
@@ -296,6 +320,7 @@ function ReportBody({
           Download summary CSV
         </button>
       </div>
+      {data.key === 'margin' && <CostCoverage kpis={data.kpis} />}
       <KpiGrid kpis={data.kpis} />
       {data.series && data.series.some((row) => row.orders > 0) && (
         <Panel

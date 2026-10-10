@@ -7,6 +7,8 @@ Invariants (tested):
 - credits pay at most `max_order_share` % of the goods amount after offers and coupon;
 - cashback/referral credits stay pending until the return window after delivery has passed, and are
   reversed when the order is cancelled or (in proportion) returned;
+- the welcome reward (first delivered order, once per customer) waits the same way and is reversed when the
+  order is cancelled or fully returned;
 - credits used on an order come back when the order is cancelled or the items are refunded on return, in
   proportion and with each lot's original expiry; credits whose expiry has passed are not given back.
 """
@@ -364,13 +366,54 @@ def claim_referral(user, code: str) -> Referral:
 # --- Order lifecycle hooks (called by orders.services / orders.returns inside their transactions) ----
 
 
+#: Welcome rewards are promotional credits whose reference starts with this (no extra ledger kind needed).
+WELCOME_PREFIX = "welcome:"
+
+
+def is_welcome(entry: CreditEntry) -> bool:
+    return entry.kind == K.PROMO and entry.reference.startswith(WELCOME_PREFIX)
+
+
+def _grant_welcome(order, release_at) -> CreditEntry | None:
+    """The shop's welcome reward for a customer's first delivered order: once per customer, ever (a reversed
+    one counts), on the cashback terms — usable after the return window, reversed if the order comes back."""
+    from django.contrib.auth import get_user_model
+
+    from apps.orders.models import Order
+
+    amount = LoyaltySettings.load().welcome_reward
+    if amount <= 0:
+        return None
+    # Lock the customer so two deliveries at once can't both be "the first".
+    get_user_model().objects.select_for_update().filter(pk=order.user_id).first()
+    welcomed = CreditEntry.objects.filter(user_id=order.user_id, kind=K.PROMO, reference__startswith=WELCOME_PREFIX)
+    if welcomed.exists():
+        return None
+    if Order.objects.filter(user_id=order.user_id, delivered_at__isnull=False).exclude(pk=order.pk).exists():
+        return None  # not their first delivered order (e.g. delivered before the reward was switched on)
+    entry = grant(
+        order.user,
+        K.PROMO,
+        amount,
+        reference=f"{WELCOME_PREFIX}{order.order_number}",
+        description="Welcome reward: your first order was delivered",
+        order=order,
+        pending=True,
+    )
+    entry.status, entry.available_at = S.ELIGIBLE, release_at
+    entry.save(update_fields=["status", "available_at"])
+    return entry
+
+
 def on_order_delivered(order) -> None:
     """Start the clock: pending credits of this order become usable when the return window ends.
-    The customer's first delivered order also triggers referral rewards (if switched on)."""
+    The customer's first delivered order also earns the welcome reward and triggers referral rewards
+    (each only if switched on)."""
     release_at = order.delivered_at + timedelta(days=settings.RETURN_WINDOW_DAYS)
     CreditEntry.objects.filter(order=order, status=S.PENDING).update(
         status=S.ELIGIBLE, available_at=release_at, updated_at=timezone.now()
     )
+    _grant_welcome(order, release_at)
     referral = Referral.objects.select_for_update().filter(referee=order.user, status=Referral.Status.JOINED).first()
     if referral is None:
         return
@@ -418,6 +461,12 @@ def on_return_received(
     if kept_before <= 0:
         return
     keep_share = max(kept_before - returned_paid, ZERO) / kept_before
+    if keep_share <= 0:
+        # Everything paid for came back: the welcome reward (not yet usable) goes too. A partial return keeps
+        # it — the order was still delivered.
+        CreditEntry.objects.filter(
+            order=order, status__in=CreditEntry.WAITING, kind=K.PROMO, reference__startswith=WELCOME_PREFIX
+        ).update(status=S.REVERSED, updated_at=timezone.now())
     for entry in CreditEntry.objects.select_for_update().filter(
         order=order, status__in=CreditEntry.WAITING, kind__in=(K.CASHBACK, K.REFERRAL)
     ):

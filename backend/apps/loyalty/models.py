@@ -49,6 +49,13 @@ class LoyaltySettings(models.Model):
         validators=[MinValueValidator(Decimal("0.00"))],
         help_text="Credit for the new customer on the same terms. 0 = off.",
     )
+    welcome_reward = models.DecimalField(
+        **MONEY_FIELD_KWARGS,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text="Credit for every customer's first delivered order, on the same terms as cashback "
+        "(usable after the return window, expires after expiry_days). 0 = off.",
+    )
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"

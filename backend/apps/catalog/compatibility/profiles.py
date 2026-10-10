@@ -1,3 +1,4 @@
+# ruff: noqa: E501 — pattern tables read better on one line
 """What a product *is* and what its listing says, for compatibility (Phase 21).
 
 A profile is built only from the catalogue: the product's name, category, tags, specifications, variant names and
@@ -13,8 +14,87 @@ KINDS: list[tuple[str, tuple[str, ...], tuple[str, ...] | None, tuple[str, ...]]
     ("drill_bit", (r"\bdrill\s+bits?\b", r"\bbit\s+set\b", r"\bbits?\b"), ("tool", "drill"), ()),
     ("drill", (r"\bdrill\b", r"\bdrill\s+driver\b", r"\bhammer\s+drill\b"), ("tool", "power"), ("bit",)),
     ("wall_plug", (r"\bwall\s+plugs?\b", r"\banchors?\b", r"\brawl\s*plugs?\b"), None, ()),
+    # Glass door hardware (before hinges, handles and locks: a "glass door handle" is a glass fitting)
+    (
+        "glass_fitting",
+        (
+            r"\bpatch\s+fittings?\b",
+            r"\bfloor\s+springs?\b",
+            r"\bglass\s+(clamps?|connectors?|brackets?|hinges?|locks?)\b",
+            r"\bglass\s+door\b.*\b(handles?|locks?|fittings?|hinges?)\b",
+            r"\bshower\s+hinges?\b",
+            r"\bspider\s+fittings?\b",
+        ),
+        None,
+        ("sealant", "silicone", "goggle"),
+    ),  # fmt: skip
+    (
+        "glass",
+        (
+            r"\b(toughened|tempered|float|clear|frosted|laminated)\s+glass\b",
+            r"\bglass\s+(sheets?|panels?|panes?|partitions?)\b",
+        ),
+        None,
+        (
+            "fitting",
+            "handle",
+            "spring",
+            "clamp",
+            "sealant",
+            "silicone",
+            "hinge",
+            "lock",
+            "goggle",
+            "connector",
+            "cleaner",
+        ),
+    ),  # fmt: skip
+    # Furniture and door hardware (approved departments: hinges/channels/handles, locks, boards)
+    (
+        "door_lock",
+        (
+            r"\bmortise\b.*\blocks?\b",
+            r"\bmortice\b.*\blocks?\b",
+            r"\bdoor\s+locks?\b",
+            r"\b(knob|cylindrical|lever|tubular)\s+locks?\b",
+            r"\bdead\s*bolts?\b",
+        ),
+        None,
+        ("padlock", "glass"),
+    ),  # fmt: skip
+    (
+        "door",
+        (r"\bflush\s+doors?\b", r"\bdoor\s+(shutters?|leaf|leaves|panels?)\b", r"\b(wooden|membrane|panel)\s+doors?\b"),
+        None,
+        ("lock", "closer", "hinge", "handle", "stopper", "glass", "sliding", "fitting", "bolt", "spring", "kit"),
+    ),  # fmt: skip
+    ("hinge", (r"\bhinges?\b",), None, ("glass", "floor", "shower", "screw")),
+    (
+        "drawer_channel",
+        (
+            r"\bdrawer\s+(channels?|slides?|runners?)\b",
+            r"\btelescopic\s+(channels?|slides?)\b",
+            r"\bball[\s-]*bearing\s+(channels?|slides?)\b",
+            r"\btandem\s+box",
+            r"\bundermount\s+(channels?|slides?)\b",
+        ),
+        None,
+        ("handle",),
+    ),  # fmt: skip
+    (
+        "handle",
+        (r"\bhandles?\b", r"\bknobs?\b"),
+        None,
+        ("lock", "glass", "hammer", "screwdriver", "drill", "saw", "brush", "roller", "spanner", "wrench", "trowel"),
+    ),  # fmt: skip
+    (
+        "board",
+        (r"\bplywood\b", r"\bply\b", r"\bmdf\b", r"\bhdhmr\b", r"\b(particle|block|pre-?laminated)\s*boards?\b"),
+        None,
+        ("adhesive", "glue", "screw", "cutter", "saw", "edge"),
+    ),  # fmt: skip
     ("screw", (r"\bscrews?\b",), None, ("screwdriver",)),
-    ("bolt", (r"\bbolts?\b",), None, ()),
+    ("bolt", (r"\bbolts?\b",), None, ("tower", "door bolt")),
     ("spanner", (r"\bspanners?\b",), None, ()),
     ("pipe", (r"\bpipes?\b",), ("plumb", "pipe"), ("wrench", "tape", "sealant")),
     (
@@ -44,6 +124,15 @@ KINDS: list[tuple[str, tuple[str, ...], tuple[str, ...] | None, tuple[str, ...]]
 # Wood screw gauge → shank diameter (mm), the common Indian/British sizes.
 SCREW_GAUGE_MM = {4: 2.8, 5: 3.1, 6: 3.5, 7: 3.8, 8: 4.2, 9: 4.5, 10: 4.8, 12: 5.5, 14: 6.3}
 NUMBER = r"(\d+(?:\.\d+)?)"
+MM_PER_INCH = 25.4
+# Drawer channels are sold by nominal inch length; the trade's millimetre equivalents (a "18 inch" channel is a
+# 450 mm channel). Other inch lengths are converted exactly.
+CHANNEL_INCH_MM = {10: 250, 12: 300, 14: 350, 16: 400, 18: 450, 20: 500, 22: 550, 24: 600}
+OVERLAYS = {
+    "full": r"\bfull\s*(overlay|cover)\b|\bstraight\b",
+    "half": r"\bhalf\s*(overlay|cover)\b|\bhalf\s*crank",
+    "inset": r"\binset\b|\bin-?set\b|\bfull\s*crank",
+}
 
 
 @dataclass
@@ -112,6 +201,35 @@ def nominal_sizes(text: str) -> set[str]:
     return sizes
 
 
+def channel_length_mm(text: str) -> float | None:
+    """ "18 inch" → 450 (the trade's nominal size), "450 mm" → 450; None when no length is stated."""
+    if match := re.search(r"(\d+(?:\.\d+)?)\s*(?:inch(?:es)?|in\b|\"|”)", text.lower()):
+        inches = float(match.group(1))
+        return (
+            float(CHANNEL_INCH_MM.get(int(inches), round(inches * MM_PER_INCH)))
+            if inches == int(inches)
+            else round(inches * MM_PER_INCH)
+        )
+    values = [v for v in mm_values(text) if v >= 150]  # a channel is at least 150 mm; smaller numbers are not lengths
+    return values[0] if values else None
+
+
+def overlay_of(text: str) -> str | None:
+    """Concealed-hinge overlay named in a listing text: full, half or inset."""
+    return next((name for name, pattern in OVERLAYS.items() if re.search(pattern, text, re.IGNORECASE)), None)
+
+
+# Variant facts that become lists for a whole product (every variant's value): single key → list key.
+PLURALS = {
+    "thickness_mm": "thicknesses",
+    "channel_mm": "channel_lengths",
+    "overlay": "overlays",
+    "cc_mm": "ccs",
+    "screw_len_mm": "screw_lens",
+    "metric_thread": "metric_threads",
+}
+
+
 def _variant_texts(variant) -> list[str]:
     return [variant.name or ""] + [o.value.value for o in variant.option_values.all()]
 
@@ -169,6 +287,41 @@ def build(product, variant=None) -> Profile:
     if found := _spec(product, "voltage"):
         put("volts", (mm_values(found[0] + " mm") or [None])[0], f"spec {found[1]}")
 
+    # Furniture, door and glass hardware: only what the listing states, in millimetres.
+    kind = profile.kind
+    if kind in ("hinge", "door_lock") and (
+        found := _spec(product, "door-thickness", "shutter-thickness", "panel-thickness")
+    ):
+        put("door_range", mm_range(found[0]), f"spec {found[1]}")
+    if kind == "hinge":
+        if found := _spec(product, "cup-diameter", "cup-size", "cup"):
+            put("cup_mm", (mm_values(found[0]) or [None])[0], f"spec {found[1]}")
+        put("overlay", overlay_of(product.name), "name")
+    if kind == "glass_fitting" and (found := _spec(product, "glass-thickness")):
+        put("glass_range", mm_range(found[0]), f"spec {found[1]}")
+    if kind == "door_lock" and (found := _spec(product, "backset")):
+        put("backset_mm", (mm_values(found[0]) or [None])[0], f"spec {found[1]}")
+    if kind == "door" and (found := _spec(product, "stile-width", "door-stile")):
+        put("stile_mm", (mm_values(found[0]) or [None])[0], f"spec {found[1]}")
+    if kind in ("board", "door", "glass") and (
+        found := _spec(product, "thickness", "board-thickness", "glass-thickness")
+    ):
+        put("thickness_mm", (mm_values(found[0]) or [None])[0], f"spec {found[1]}")
+    if kind == "drawer_channel" and (found := _spec(product, "channel-length", "slide-length", "length")):
+        put("channel_mm", channel_length_mm(found[0]), f"spec {found[1]}")
+    if kind == "screw" and (found := _spec(product, "screw-length", "length")):
+        put("screw_len_mm", (mm_values(found[0]) or [None])[0], f"spec {found[1]}")
+    if kind == "handle":
+        if found := _spec(
+            product, "centre-to-centre", "center-to-center", "c-c", "cc", "hole-distance", "hole-spacing"
+        ):
+            put("cc_list", mm_values(found[0]), f"spec {found[1]}")
+        if found := _spec(product, "screw-size", "fixing-screw", "screw-thread"):
+            match = re.search(r"\bm(\d+)\b", found[0].lower())
+            put("handle_thread", int(match.group(1)) if match else None, f"spec {found[1]}")
+        if found := _spec(product, "screw-length", "fixing-screw-length"):
+            put("handle_screw_len", (mm_values(found[0]) or [None])[0], f"spec {found[1]}")
+
     # Variant facts (sizes, current, cross-section, screw size). With several variants, each one's set is kept
     # in `per_variant` so a check can say which variants match.
     per_variant = {}
@@ -188,6 +341,21 @@ def build(product, variant=None) -> Profile:
             facts["screw_len_mm"] = float(match.group(2))
         elif profile.kind == "screw" and (match := re.search(rf"{NUMBER}\s*x\s*{NUMBER}\s*mm", joined, re.IGNORECASE)):
             facts["screw_mm"], facts["screw_len_mm"] = float(match.group(1)), float(match.group(2))
+        if kind == "screw" and (match := re.search(r"\bm(\d+)\s*x", joined, re.IGNORECASE)):
+            facts["metric_thread"] = int(match.group(1))
+        if kind in ("board", "door", "glass") and (thickness := mm_values(joined)):
+            facts["thickness_mm"] = thickness[0]
+        if kind == "drawer_channel":
+            facts["channel_mm"] = channel_length_mm(joined)
+        if kind == "hinge":
+            facts["overlay"] = overlay_of(joined)
+        if (
+            kind == "handle"
+            and values.get("cc_list")
+            and (sizes_mm := mm_values(joined))
+            and sizes_mm[0] in values["cc_list"]
+        ):
+            facts["cc_mm"] = sizes_mm[0]  # the variant's size is one of the centre-to-centre sizes the listing states
         per_variant[v.pk] = {k: val for k, val in facts.items() if val is not None}
     values["per_variant"] = per_variant
     if variant is not None:
@@ -208,6 +376,14 @@ def build(product, variant=None) -> Profile:
         values["cross_sections"] = [values["cross_section"]]
     if "screw_mm" in values:
         values["screw_mms"] = [values["screw_mm"]]
+    for key, plural in PLURALS.items():
+        if variant is None and plural not in values:
+            listed = sorted({f[key] for f in per_variant.values() if key in f})
+            put(plural, listed, "variants")
+        if plural not in values and key in values:
+            values[plural], sources[plural] = [values[key]], sources[key]
+        if variant is not None and key in values:
+            values[plural], sources[plural] = [values[key]], sources[key]
     if profile.kind in ("pipe", "pipe_fitting", "tap") and not values.get("sizes") and values.get("thread_sizes"):
         put("sizes", values["thread_sizes"], sources["thread_sizes"])
     return profile

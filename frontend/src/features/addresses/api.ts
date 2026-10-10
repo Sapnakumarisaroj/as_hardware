@@ -20,6 +20,9 @@ export interface Address {
   latitude: string | null
   longitude: string | null
   address_type: AddressType
+  /** Business delivery/billing address: printed on invoices for orders sent here. */
+  business_name: string
+  gstin: string
   is_default: boolean
   created_at: string
   updated_at: string
@@ -27,7 +30,18 @@ export interface Address {
 
 export type AddressInput = Pick<
   Address,
-  'name' | 'phone' | 'address_line1' | 'address_line2' | 'area' | 'landmark' | 'city' | 'state' | 'postal_code' | 'address_type'
+  | 'name'
+  | 'phone'
+  | 'address_line1'
+  | 'address_line2'
+  | 'area'
+  | 'landmark'
+  | 'city'
+  | 'state'
+  | 'postal_code'
+  | 'address_type'
+  | 'business_name'
+  | 'gstin'
 > & {
   is_default?: boolean
   /** Map pin (both or neither); null removes it. */

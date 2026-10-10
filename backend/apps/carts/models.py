@@ -16,6 +16,8 @@ from apps.core.money import MONEY_FIELD_KWARGS
 
 class Cart(TimeStampedModel):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cart")
+    # Cart-recovery reminder: when the last one was sent (one per cart change; see carts.jobs).
+    reminded_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self) -> str:
         return f"Cart<{self.user_id}>"

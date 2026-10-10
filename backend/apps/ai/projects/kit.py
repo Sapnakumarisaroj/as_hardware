@@ -81,6 +81,8 @@ def pack_amount(product, variant, unit: str) -> float | None:
     if UNIT_OF_PRODUCT.get(product.unit) == unit:
         return 1.0
     if unit == "pcs":
+        if any(re.search(r"\bpair\b", text, re.IGNORECASE) for text in _size_texts(product, variant)):
+            return 2.0  # "Concealed Hinge (Pair)": two pieces per purchasable unit
         return 1.0  # one piece, set or bag per need unit
     return None
 
@@ -186,6 +188,8 @@ def pick_for(need: Need, *, prefer: dict | None = None) -> Pick | None:
                 continue
             if prefer:
                 variants = _narrow(variants, params=prefer)
+            if need.fit:  # only the variants the compatibility engine says fit the customer's sizes, when any does
+                variants = _fitting(product, variants, dict(need.fit))
             choice = choose_packs(product, variants, need.amount, need.unit, hint=need.hint, params=match.params)
             if choice is None:
                 continue
@@ -199,6 +203,24 @@ def pick_for(need: Need, *, prefer: dict | None = None) -> Pick | None:
                 choice.covers,
             )
     return None
+
+
+def _fitting(product, variants: list, measures: dict) -> list:
+    from apps.catalog.compatibility.service import CompatibilityService
+
+    return CompatibilityService().fitting_variants(product, variants, measures)
+
+
+def fit_check(variant, measures: dict) -> dict | None:
+    """The compatibility engine's verdict for a chosen variant against the job's sizes, for the line's details."""
+    from apps.catalog.compatibility.service import CompatibilityService
+
+    if variant is None or not measures:
+        return None
+    result = CompatibilityService.check_measurements(variant.product, variant, measures)
+    if result is None:
+        return None
+    return {"verdict": result.verdict, "reason": result.reason, "measures": measures}
 
 
 # --- Kit lines (saved or not) ----------------------------------------------------------------------------
@@ -253,6 +275,8 @@ def need_lines(needs: list[Need], language: str, *, prefer: dict | None = None) 
             covers=round(pick.covers, 2) if pick.covers is not None else None,
             suggested=[{"variant_id": p.variant.pk, "quantity": p.count} for p in pick.parts],
         )
+        if need.fit and (fit := fit_check(pick.parts[0].variant if pick.parts else None, dict(need.fit))):
+            details["fit"] = fit  # e.g. "takes 16–22 mm door thickness; your shutter is 18 mm"
         for index, part in enumerate(pick.parts):
             key = need.key if index == 0 else f"{need.key}{PART}{index + 1}"
             part_details = {
@@ -396,6 +420,8 @@ def change_item(item: ProjectItem, *, variant_id=None, quantity=None, included=N
         item.variant = variant
         item.unit = variant.product.unit
         item.details = {**item.details, "status": "found", "product_id": variant.product_id}
+        if fit := item.details.pop("fit", None):  # the customer's own pick, checked against the same sizes
+            item.details["fit"] = fit_check(variant, fit.get("measures") or {})
         if quantity is None and item.details.get("need_amount"):
             count, size = regather(item.details, variant)
             item.quantity = Decimal(count)
@@ -576,6 +602,7 @@ def price_rows(
                 },
                 "suggested_parts": details.get("suggested", []),
                 "alternatives": details.get("alternatives", []),
+                "fit": details.get("fit"),  # the compatibility engine against the job's sizes, when it applies
                 "added_by_customer": details.get("added_by_customer", False),
                 "is_optional": row.is_optional,
                 "is_estimate": row.is_estimate,

@@ -62,6 +62,8 @@ export interface PlaceOrderInput {
   idempotencyKey: string
   /** Pay part with shop credit; the server decides how much (never more than its share). */
   useCredits?: boolean
+  /** Order an accepted quotation instead of the cart (the cart is left alone). */
+  quoteId?: number | null
 }
 
 export function usePlaceOrder() {
@@ -79,6 +81,7 @@ export function usePlaceOrder() {
             customer_note: input.customerNote,
             expected_total: input.expectedTotal,
             use_credits: input.useCredits ?? false,
+            ...(input.quoteId ? { quote_id: input.quoteId } : {}),
           },
           { headers: { 'Idempotency-Key': input.idempotencyKey } },
         )
@@ -86,6 +89,7 @@ export function usePlaceOrder() {
     onSuccess: (order) => {
       store(order)
       void queryClient.invalidateQueries({ queryKey: cartKeys.cart })
+      void queryClient.invalidateQueries({ queryKey: ['quotes'] })
     },
   })
 }

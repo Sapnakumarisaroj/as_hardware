@@ -52,20 +52,22 @@ export interface PaymentOption {
 
 export const checkoutKeys = {
   all: ['checkout'] as const,
-  preview: (addressId: number | null, couponCode: string, useCredits = false) =>
-    ['checkout', 'preview', addressId, couponCode, useCredits] as const,
+  preview: (addressId: number | null, couponCode: string, useCredits = false, quoteId: number | null = null) =>
+    ['checkout', 'preview', addressId, couponCode, useCredits, quoteId] as const,
 }
 
-export function useCheckoutPreview(addressId: number | null, couponCode: string, useCredits = false) {
+/** `quoteId`: check out an accepted B2B quotation (its lines at the quoted prices) instead of the cart. */
+export function useCheckoutPreview(addressId: number | null, couponCode: string, useCredits = false, quoteId: number | null = null) {
   const { status } = useAuth()
   return useQuery({
-    queryKey: checkoutKeys.preview(addressId, couponCode, useCredits),
+    queryKey: checkoutKeys.preview(addressId, couponCode, useCredits, quoteId),
     queryFn: async () =>
       (
         await api.post<CheckoutPreview>('/checkout/preview/', {
           address_id: addressId,
           coupon_code: couponCode,
           use_credits: useCredits,
+          ...(quoteId ? { quote_id: quoteId } : {}),
         })
       ).data,
     enabled: status === 'authenticated',

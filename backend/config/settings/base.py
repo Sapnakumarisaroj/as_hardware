@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "apps.analytics",
     "apps.loyalty",
     "apps.shopping",
+    "apps.quotes",
 ]
 
 MIDDLEWARE = [
@@ -254,6 +255,18 @@ DELIVERY_RESTRICT_TO_SERVICE_AREAS = env.bool("DELIVERY_RESTRICT_TO_SERVICE_AREA
 # Default fee rule; delivery zones can override both (Phase 9).
 DELIVERY_FEE = Decimal(env.str("DELIVERY_FEE", default="") or "40.00")
 FREE_DELIVERY_MIN_ORDER = Decimal(env.str("FREE_DELIVERY_MIN_ORDER", default="") or "499.00")
+# The shop's own details printed on invoices (apps/orders/invoice.py). Without a GSTIN the page is an
+# "Order receipt", not a GST tax invoice. Never filled in with placeholder data.
+INVOICE_SELLER_NAME = env("INVOICE_SELLER_NAME", default="")
+INVOICE_SELLER_ADDRESS = env("INVOICE_SELLER_ADDRESS", default="")
+INVOICE_SELLER_GSTIN = env("INVOICE_SELLER_GSTIN", default="")
+# B2B quote requests (apps/quotes): largest quantity per line.
+QUOTE_MAX_LINE_QUANTITY = env.int("QUOTE_MAX_LINE_QUANTITY", default=10000)
+# "Frequently bought together" (apps/shopping/services/recommendations.py): sold orders of the last
+# FBT_WINDOW_DAYS (at most FBT_MAX_ORDERS); a pair must appear together in FBT_MIN_SUPPORT orders.
+FBT_WINDOW_DAYS = env.int("FBT_WINDOW_DAYS", default=180)
+FBT_MIN_SUPPORT = env.int("FBT_MIN_SUPPORT", default=2)
+FBT_MAX_ORDERS = env.int("FBT_MAX_ORDERS", default=5000)
 
 # --- Delivery ETA engine (Phase 9, apps/delivery/eta.py) ---------------------------------
 DELIVERY_AVG_SPEED_KMPH = env.float("DELIVERY_AVG_SPEED_KMPH", default=18.0)  # two-wheeler in city traffic
@@ -323,6 +336,14 @@ MESSAGING_TIMEOUT_SECONDS = env.float("MESSAGING_TIMEOUT_SECONDS", default=10)
 PHONE_COUNTRY_CODE = env("PHONE_COUNTRY_CODE", default="91")  # stored phones are 10 digits
 # Active orders this many minutes past their estimated delivery get one "running late" message.
 DELIVERY_DELAY_NOTICE_MINUTES = env.int("DELIVERY_DELAY_NOTICE_MINUTES", default=15)
+# WhatsApp in: customers' photos/PDFs are fetched from the provider only when staff open them.
+WHATSAPP_MEDIA_MAX_BYTES = env.int("WHATSAPP_MEDIA_MAX_BYTES", default=5 * 1024 * 1024)
+# Keyword auto-replies to WhatsApp messages (order status, reorder, product prices). Off: everything waits for staff.
+WHATSAPP_AUTO_REPLIES = env.bool("WHATSAPP_AUTO_REPLIES", default=True)
+# Cart recovery: one reminder per cart change, sent this many hours after the cart was last touched.
+# Off by default everywhere (the owner turns it on once the WhatsApp template is approved).
+CART_REMINDERS_ENABLED = env.bool("CART_REMINDERS_ENABLED", default=False)
+CART_REMINDER_HOURS = env.int("CART_REMINDER_HOURS", default=6)
 LLM_PROVIDER = env("LLM_PROVIDER", default="none")  # none | ollama | openai_compatible | anthropic
 OLLAMA_BASE_URL = env("OLLAMA_BASE_URL", default="http://localhost:11434")
 OLLAMA_KEEP_ALIVE = env("OLLAMA_KEEP_ALIVE", default="30m")  # keep the model loaded between questions

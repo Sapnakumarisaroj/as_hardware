@@ -24,8 +24,24 @@ export interface Wallet {
     never_cash: boolean
     referral_reward: string
     referee_reward: string
+    welcome_reward: string
   }
-  referral: { code: string; rewards_on: boolean; joined: number; rewarded: number; used_code: boolean }
+  referral: {
+    code: string
+    rewards_on: boolean
+    /** Friends who joined with this code. */
+    joined: number
+    /** …whose first delivered order earned a reward. */
+    rewarded: number
+    /** …whose first order isn't delivered yet. */
+    waiting: number
+    /** Referral credit for friends' orders: usable (or used/expired) and still waiting. */
+    credited: string
+    pending: string
+    used_code: boolean
+  }
+  /** The welcome reward: earned (with status), offered (`status: 'offer'`, first order not delivered yet) or none. */
+  welcome: { amount: string; status: CreditStatus | 'offer'; status_label: string; available_at?: string | null; order_number?: string } | null
 }
 
 export type CreditKind = 'cashback' | 'promo' | 'referral' | 'restore' | 'redemption' | 'expiry'

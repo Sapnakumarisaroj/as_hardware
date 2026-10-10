@@ -22,6 +22,10 @@ class SupportConversation(TimeStampedModel):
     order = models.ForeignKey(
         "orders.Order", null=True, blank=True, on_delete=models.SET_NULL, related_name="support_conversations"
     )
+    # Product enquiries (from the product page or WhatsApp) point at what was asked about.
+    product = models.ForeignKey(
+        "catalog.Product", null=True, blank=True, on_delete=models.SET_NULL, related_name="enquiries"
+    )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN, db_index=True)
     assigned_to = models.ForeignKey(
         settings.AUTH_USER_MODEL,

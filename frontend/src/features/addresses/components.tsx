@@ -29,6 +29,8 @@ const EMPTY: AddressInput = {
   state: '',
   postal_code: '',
   address_type: 'home',
+  business_name: '',
+  gstin: '',
 }
 
 /** Add or edit an address. The backend validates phone and PIN code; its messages show under each field. */
@@ -110,6 +112,13 @@ export function AddressFormModal({
               : null
           }
         />
+        <details className="sm:col-span-2" open={Boolean(initial.business_name || initial.gstin || fieldError('gstin'))}>
+          <summary className="cursor-pointer text-sm font-semibold text-amber-700">Business address (GST invoice)</summary>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            <FormField {...f('business_name')} label="Business name" maxLength={150} />
+            <FormField {...f('gstin')} label="GSTIN" maxLength={20} autoCapitalize="characters" hint="Optional, printed on invoices" />
+          </div>
+        </details>
         <fieldset className="sm:col-span-2">
           <legend className="label">Address type</legend>
           <div className="flex flex-wrap gap-2">

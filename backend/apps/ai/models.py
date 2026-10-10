@@ -86,6 +86,12 @@ class Project(TimeStampedModel):
         WIRING = "wiring", "Wire length"
         PIPES = "pipes", "Pipe length"
         FASTENERS = "fasteners", "Screws and wall plugs"
+        # Pre-launch: projects for the shop's departments (kitchen, wardrobe, doors, glass)
+        MODULAR_KITCHEN = "modular_kitchen", "Modular kitchen (carcass)"
+        WARDROBE = "wardrobe", "Wardrobe"
+        DOOR_LOCK = "door_lock", "Door and lock fitting"
+        GLASS_DOOR = "glass_door", "Glass door / partition"
+        HINGE_REPLACEMENT = "hinge_replacement", "Hinge, channel or handle replacement"
         OTHER = "other", "Other"
 
     class Status(models.TextChoices):

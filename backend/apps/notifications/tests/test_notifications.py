@@ -474,7 +474,7 @@ def test_late_orders_are_told_once(customer, shop, admin_user, settings, django_
         assert services.tell_about_delays() == 1
     with django_capture_on_commit_callbacks(execute=True):
         assert services.tell_about_delays() == 0
-    assert channels(customer, "delivery.delayed") == {"in_app", "email"}
+    assert channels(customer, "delivery.delayed") == {"in_app", "email", "whatsapp"}  # opted in
     assert Notification.objects.filter(user=admin_user, event="staff.delivery_delayed").exists()
 
 
@@ -595,7 +595,8 @@ def test_webhook_receipts_and_customer_messages(customer, settings, api_client, 
     assert _signed(api_client, _incoming("wamid.in1", "Where is my order?")).json()["messages"] == 0  # redelivery
     _signed(api_client, _incoming("wamid.in2", "Also need screws"))
     conversation = SupportConversation.objects.get(channel="whatsapp")
-    assert conversation.user == customer and conversation.messages.count() == 2
+    assert conversation.user == customer and conversation.messages.filter(sender_type="customer").count() == 2
+    assert conversation.messages.filter(sender_type="bot").count() == 1  # "where is my order" was answered
 
     _signed(api_client, _incoming("wamid.in3", "STOP"))
     assert not CustomerProfile.objects.get(user=customer).whatsapp_opt_in

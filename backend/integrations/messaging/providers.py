@@ -7,7 +7,15 @@ import urllib.error
 import urllib.request
 from collections import deque
 
-from .base import MessagingError, MessagingProvider, MessagingUnavailable, OutgoingMessage, SendResult, mask_phone
+from .base import (
+    MediaFile,
+    MessagingError,
+    MessagingProvider,
+    MessagingUnavailable,
+    OutgoingMessage,
+    SendResult,
+    mask_phone,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +52,9 @@ class _MockProvider(MessagingProvider):
             message.reference,
         )
         return SendResult(message_id=f"mock-{self.channel}-{digest}")
+
+    def send_text(self, to: str, text: str, *, reference: str = "") -> SendResult:
+        return self.send(OutgoingMessage(to=to, text=text, reference=reference))
 
 
 class MockWhatsAppProvider(_MockProvider):
@@ -110,6 +121,52 @@ class MetaWhatsAppProvider(MessagingProvider):
             return SendResult(message_id=data["messages"][0]["id"], status="queued")
         except (KeyError, IndexError, TypeError) as exc:
             raise MessagingError("WhatsApp answered without a message id.", retryable=True) from exc
+
+    def send_text(self, to: str, text: str, *, reference: str = "") -> SendResult:
+        """A session (free-form) message: only valid within 24 hours of the customer's last message."""
+        if not self.configured:
+            raise MessagingUnavailable("WhatsApp Cloud API credentials are not set.")
+        body = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "text",
+            "text": {"body": text[:4096], "preview_url": True},
+        }
+        data = self._post(f"/{self.phone_number_id}/messages", body)
+        try:
+            return SendResult(message_id=data["messages"][0]["id"], status="queued")
+        except (KeyError, IndexError, TypeError) as exc:
+            raise MessagingError("WhatsApp answered without a message id.", retryable=True) from exc
+
+    def fetch_media(self, media_id: str, *, max_bytes: int) -> MediaFile | None:
+        """GET /{media-id} gives a short-lived URL; that URL needs the same bearer token."""
+        if not self.configured:
+            raise MessagingUnavailable("WhatsApp Cloud API credentials are not set.")
+        meta = self._request(f"https://graph.facebook.com/{self.api_version}/{media_id}")
+        url, mime = str(meta.get("url") or ""), str(meta.get("mime_type") or "")
+        if not url.startswith("https://"):
+            raise MessagingError("WhatsApp did not return a download link for this file.", code="media_missing")
+        size = int(meta.get("file_size") or 0)
+        if size > max_bytes:
+            raise MessagingError("This file is too large to open here.", code="media_too_large")
+        content = self._request(url, raw=True, max_bytes=max_bytes)
+        return MediaFile(content=content, mime_type=mime.split(";")[0].strip().lower())
+
+    def _request(self, url: str, *, raw: bool = False, max_bytes: int = 0):
+        req = urllib.request.Request(url, method="GET")  # noqa: S310 — https only (checked by the caller)
+        req.add_header("Authorization", f"Bearer {self._token}")
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as res:  # noqa: S310
+                if not raw:
+                    return json.loads(res.read() or b"{}")
+                content = res.read(max_bytes + 1)
+                if len(content) > max_bytes:
+                    raise MessagingError("This file is too large to open here.", code="media_too_large")
+                return content
+        except urllib.error.HTTPError as err:
+            raise MessagingError(f"WhatsApp: HTTP {err.code}", retryable=err.code >= 500, code=str(err.code)) from err
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as err:
+            raise MessagingError(f"Could not reach WhatsApp: {err}", retryable=True, code="network") from err
 
     def _post(self, path: str, body: dict) -> dict:
         url = f"https://graph.facebook.com/{self.api_version}{path}"

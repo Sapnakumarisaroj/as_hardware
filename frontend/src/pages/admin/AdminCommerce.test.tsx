@@ -93,6 +93,49 @@ describe('bulk prices and options in the product form', () => {
     expect(body.variants[0]?.options).toEqual([{ option_type: 5, value: '53 Grade' }])
   })
 
+  it('edits the purchase cost per variant only when the server sent it (administrators)', async () => {
+    signIn()
+    const base = adminProduct({ id: 77, name: 'OPC Cement' })
+    const product = { ...base, variants: base.variants.map((v) => ({ ...v, cost_price: '610.00' })) }
+    const api = mockApi({
+      get: staffGet('admin', catalogGet({ '/admin/products/77/': product })),
+      patch: { '/admin/products/77/': product },
+    })
+    const { user } = renderRoute('/admin/products/77')
+    const first = within(await screen.findByRole('group', { name: /Variant 1/ }))
+    const cost = first.getByLabelText('Purchase cost (₹)')
+    expect(cost).toHaveValue('610.00')
+    await user.clear(cost)
+    await user.type(cost, 'abc')
+    await user.click(screen.getByRole('button', { name: /^Save/ }))
+    expect(await screen.findByText(/the purchase cost must be a number, 0 or more/)).toBeInTheDocument()
+    expect(api.patch).not.toHaveBeenCalled()
+    await user.clear(cost)
+    await user.type(cost, '700')
+    await user.click(screen.getByRole('button', { name: /^Save/ }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalled())
+    expect((lastBody(api.patch, '/admin/products/77/') as { variants: { cost_price?: unknown }[] }).variants[0]?.cost_price).toBe('700')
+    await user.clear(cost)
+    await user.click(screen.getByRole('button', { name: /^Save/ }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(2))
+    expect((lastBody(api.patch, '/admin/products/77/') as { variants: { cost_price?: unknown }[] }).variants[0]?.cost_price).toBeNull()
+  })
+
+  it('leaves the purchase cost out when the server did not send it', async () => {
+    signIn()
+    const product = adminProduct({ id: 77, name: 'OPC Cement' })
+    const api = mockApi({
+      get: staffGet('admin', catalogGet({ '/admin/products/77/': product })),
+      patch: { '/admin/products/77/': product },
+    })
+    const { user } = renderRoute('/admin/products/77')
+    const first = within(await screen.findByRole('group', { name: /Variant 1/ }))
+    expect(first.queryByLabelText('Purchase cost (₹)')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Save/ }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalled())
+    expect((lastBody(api.patch, '/admin/products/77/') as { variants: object[] }).variants[0]).not.toHaveProperty('cost_price')
+  })
+
   it('saves product-page content and accessories chosen from the shop’s products (Phase 16)', async () => {
     signIn()
     const product = adminProduct({ id: 77, name: 'Impact Drill', accessories: [{ id: 80, name: 'Wall Plugs', slug: 'plugs', note: 'For walls' }] })

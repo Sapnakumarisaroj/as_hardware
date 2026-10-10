@@ -24,8 +24,9 @@ function wallet(overrides: Partial<Wallet> = {}): Wallet {
     expired: '0.00',
     reversed: '40.00',
     expiring_soon: { amount: '250.00', first_expiry: '2026-10-15T10:00:00+05:30', within_days: 14 },
-    rules: { enabled: true, max_order_share: '20.00', expiry_days: 90, never_cash: true, referral_reward: '0.00', referee_reward: '0.00' },
-    referral: { code: 'ABCD2345', rewards_on: false, joined: 0, rewarded: 0, used_code: false },
+    rules: { enabled: true, max_order_share: '20.00', expiry_days: 90, never_cash: true, referral_reward: '0.00', referee_reward: '0.00', welcome_reward: '0.00' },
+    referral: { code: 'ABCD2345', rewards_on: false, joined: 0, rewarded: 0, waiting: 0, credited: '0.00', pending: '0.00', used_code: false },
+    welcome: null,
     ...overrides,
   }
 }
@@ -106,6 +107,47 @@ describe('wallet', () => {
     await user.click(screen.getByRole('button', { name: 'Save code' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('That referral code isn’t valid.')
     expect(api.post).toHaveBeenCalledWith('/loyalty/referral/', { code: 'BADCODE1' })
+    // Nothing to show: no referral counts, no welcome reward.
+    expect(screen.queryByTestId('referral-summary')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('welcome-reward')).not.toBeInTheDocument()
+  })
+
+  it('shows referral status, the welcome reward and its history label from the server', async () => {
+    signIn()
+    mockApi({
+      get: {
+        ...shopGet,
+        '/loyalty/wallet/': wallet({
+          rules: { ...wallet().rules, referral_reward: '150.00', welcome_reward: '75.00' },
+          referral: { code: 'ABCD2345', rewards_on: true, joined: 3, rewarded: 1, waiting: 2, credited: '150.00', pending: '0.00', used_code: true },
+          welcome: { amount: '75.00', status: 'eligible', status_label: 'Eligible', available_at: '2026-10-20T10:00:00+05:30', order_number: 'OD1' },
+        }),
+        '/loyalty/ledger/': {
+          count: 1,
+          next: null,
+          previous: null,
+          results: [entry({ kind: 'promo', kind_label: 'Welcome reward', status: 'eligible', amount: '75.00', remaining: null, reference: 'welcome:OD1', description: 'Welcome reward: your first order was delivered' })],
+        },
+      },
+    })
+    renderRoute('/account/wallet')
+    const summary = await screen.findByTestId('referral-summary')
+    expect(summary).toHaveTextContent('Friends joined: 3')
+    expect(summary).toHaveTextContent('Waiting for their first delivery: 2')
+    expect(summary).toHaveTextContent('Earned you a reward: 1')
+    expect(summary).toHaveTextContent('Referral credit received: ₹150')
+    expect(summary).not.toHaveTextContent('Waiting for the return window')
+    expect(screen.getByTestId('welcome-reward')).toHaveTextContent('Your ₹75 welcome reward is usable from')
+    const rows = await screen.findAllByTestId('ledger-row')
+    expect(rows[0]).toHaveTextContent('Welcome reward')
+    expect(screen.queryByLabelText('Joined with a friend’s code?')).not.toBeInTheDocument()
+  })
+
+  it('offers the welcome reward before the first delivered order', async () => {
+    signIn()
+    mockApi({ get: { ...shopGet, '/loyalty/wallet/': wallet({ welcome: { amount: '50.00', status: 'offer', status_label: 'On your first delivered order' } }), '/loyalty/ledger/': { count: 0, next: null, previous: null, results: [] } } })
+    renderRoute('/account/wallet')
+    expect(await screen.findByTestId('welcome-reward')).toHaveTextContent('Get ₹50 credit when your first order is delivered')
   })
 
   it('asks visitors to sign in and shows errors with retry', async () => {
@@ -209,7 +251,7 @@ describe('order credits and cashback', () => {
 })
 
 describe('dashboard loyalty', () => {
-  const settings = { credits_enabled: true, max_order_share: '20.00', expiry_days: 90, referral_reward: '0.00', referee_reward: '0.00', updated_at: '2026-10-05T10:00:00+05:30' }
+  const settings = { credits_enabled: true, max_order_share: '20.00', expiry_days: 90, referral_reward: '0.00', referee_reward: '0.00', welcome_reward: '0.00', updated_at: '2026-10-05T10:00:00+05:30' }
 
   it('saves settings and gives promotional credit only with a reason', async () => {
     signIn()
@@ -232,6 +274,17 @@ describe('dashboard loyalty', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/admin/loyalty/settings/', { max_order_share: '15' }))
     expect(screen.getByText('No cashback rules. Orders earn no cashback.')).toBeInTheDocument()
+
+    const welcome = screen.getByLabelText('Welcome reward on a first delivered order (₹)')
+    expect(welcome).toHaveValue('0.00') // off by default
+    await user.clear(welcome)
+    await user.type(welcome, '-5')
+    expect(screen.getByText('Enter 0 or more.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await user.clear(welcome)
+    await user.type(welcome, '100')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/admin/loyalty/settings/', { welcome_reward: '100' }))
 
     await user.click(screen.getByRole('tab', { name: 'Promotional credit' }))
     await user.type(screen.getByLabelText('Customer'), 'asha')

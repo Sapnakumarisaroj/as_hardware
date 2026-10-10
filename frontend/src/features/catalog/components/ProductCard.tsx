@@ -4,6 +4,9 @@ import { Link } from 'react-router'
 import { ClockIcon } from '@/components/icons'
 import { QuantityStepper } from '@/components/QuantityStepper'
 import { AddToCartButton } from '@/features/cart/AddToCartButton'
+import { CompareButton } from '@/features/compare/CompareButton'
+import { useServiceability } from '@/features/delivery/api'
+import { isValidPincode, usePincode } from '@/features/delivery/location'
 import { OfferBadge } from '@/features/offers/components'
 import { WishlistButton } from '@/features/wishlist/WishlistButton'
 import { formatPercent, formatPrice } from '@/lib/format'
@@ -25,7 +28,13 @@ export function ProductCard({ product }: { product: ProductSummary }) {
   const outOfStock = product.stock_status === 'out_of_stock'
   const hasOptions = product.variant_count > 1
   const delivery = product.delivery
-  const notHere = Boolean(delivery && !delivery.deliverable && !outOfStock)
+  // The shopper's PIN: the per-PIN answer is on the product (`delivery`); the area-wide one (do we
+  // deliver there at all, the estimate for an item in stock nearby) is one cached check for all cards.
+  const pincode = usePincode()
+  const hasPin = isValidPincode(pincode)
+  const area = useServiceability(pincode).data
+  const notServed = hasPin && area?.serviceable === false
+  const notHere = Boolean(delivery && !delivery.deliverable && !outOfStock && !notServed)
   const saving = percent && product.discount_amount && product.discount_amount !== '0.00' ? product.discount_amount : null
 
   return (
@@ -43,8 +52,9 @@ export function ProductCard({ product }: { product: ProductSummary }) {
             {percent} off
           </span>
         )}
-        <div className="absolute right-2 top-2">
+        <div className="absolute right-2 top-2 flex flex-col gap-2 [&>button]:relative [&>button]:after:absolute [&>button]:after:-inset-1 [&>button]:after:content-['']">
           <WishlistButton productId={product.id} productName={product.name} />
+          <CompareButton product={{ slug: product.slug, name: product.name, image: product.image }} />
         </div>
       </div>
 
@@ -78,12 +88,17 @@ export function ProductCard({ product }: { product: ProductSummary }) {
           <li>
             <StockLabel status={product.stock_status} compact />
           </li>
-          {delivery?.fast && !outOfStock && (
+          {delivery?.fast && !outOfStock && !notServed && (
             <li>
               <FastDeliveryBadge pincode={delivery.postal_code} />
             </li>
           )}
-          {delivery && delivery.deliverable && !delivery.fast && !outOfStock && (
+          {delivery?.fast && !outOfStock && !notServed && area?.fast_delivery_available && area.label && (
+            <li className="text-xs font-medium text-ink-800" data-testid="card-eta">
+              {area.label}
+            </li>
+          )}
+          {delivery && delivery.deliverable && !delivery.fast && !outOfStock && !notServed && (
             <li className="inline-flex items-center gap-1 text-xs text-ink-600">
               <ClockIcon className="size-3.5" />
               Standard delivery
@@ -111,18 +126,29 @@ export function ProductCard({ product }: { product: ProductSummary }) {
             Not available for delivery to {delivery.postal_code}
           </p>
         )}
+        {notServed && !outOfStock && (
+          <p className="text-xs text-ink-600" data-testid="not-served">
+            We don’t deliver to {pincode} yet
+          </p>
+        )}
+        {!hasPin && !delivery && !outOfStock && (
+          <p className="text-xs text-ink-600" data-testid="pin-prompt">
+            Enter PIN to check delivery
+          </p>
+        )}
 
         <div className="mt-auto pt-2.5">
           {hasOptions ? (
-            <Link to={href} className="btn-secondary w-full">
+            <Link to={href} className="btn-secondary min-h-11 w-full">
               Choose options
             </Link>
           ) : outOfStock || !product.default_variant_id ? (
-            <button type="button" disabled className="btn-secondary w-full">
+            <button type="button" disabled className="btn-secondary min-h-11 w-full">
               Out of stock
             </button>
           ) : (
-            <div className="flex items-center gap-1.5">
+            // Wraps the Add button under the stepper when the card is too narrow for both (320px phones).
+            <div className="flex flex-wrap items-center gap-1.5">
               <QuantityStepper
                 size="sm"
                 value={quantity}
@@ -135,7 +161,7 @@ export function ProductCard({ product }: { product: ProductSummary }) {
                 productName={product.name}
                 quantity={quantity}
                 label="Add"
-                className="btn-primary min-w-0 flex-1 px-2"
+                className="btn-primary min-h-11 min-w-16 flex-1 basis-16 px-2"
               />
             </div>
           )}

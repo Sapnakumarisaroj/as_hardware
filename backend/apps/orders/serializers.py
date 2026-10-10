@@ -521,10 +521,17 @@ class OrderDetailSerializer(serializers.ModelSerializer):
 
 def order_loyalty(order) -> dict:
     """Phase 17: credits used on the order, credits given back, and its cashback/rewards with status."""
+    from apps.loyalty.ledger import WELCOME_PREFIX
     from apps.loyalty.models import CreditEntry
 
     entries = list(CreditEntry.objects.filter(order=order).order_by("created_at", "pk"))
     kinds = (CreditEntry.Kind.CASHBACK, CreditEntry.Kind.REFERRAL)
+
+    def earned(entry) -> bool:  # the first-order welcome reward is a PROMO entry tagged "welcome:<order>"
+        return entry.kind in kinds or (
+            entry.kind == CreditEntry.Kind.PROMO and entry.reference.startswith(WELCOME_PREFIX)
+        )
+
     return {
         "credits_used": str(order.credit_discount),
         "credits_restored": str(
@@ -540,7 +547,7 @@ def order_loyalty(order) -> dict:
                 "description": e.description,
             }
             for e in entries
-            if e.kind in kinds
+            if earned(e)
         ],
     }
 
@@ -558,6 +565,9 @@ class PlaceOrderSerializer(serializers.Serializer):
     customer_note = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
     expected_total = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
     idempotency_key = serializers.RegexField(IDEMPOTENCY_KEY_PATTERN, required=False, allow_null=True, allow_blank=True)
+    quote_id = serializers.IntegerField(
+        min_value=1, required=False, allow_null=True, help_text="Order an accepted quotation instead of the cart."
+    )
     use_credits = serializers.BooleanField(
         required=False,
         default=False,
@@ -569,6 +579,7 @@ class CheckoutPreviewRequestSerializer(serializers.Serializer):
     address_id = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     coupon_code = serializers.CharField(max_length=30, required=False, allow_blank=True, default="")
     use_credits = serializers.BooleanField(required=False, default=False)
+    quote_id = serializers.IntegerField(min_value=1, required=False, allow_null=True)
 
 
 class _IssueSerializer(serializers.Serializer):

@@ -27,6 +27,7 @@ import type {
   BundleRow,
   CashbackRuleInput,
   CashbackRuleRow,
+  CatalogImportReport,
   CodRow,
   CollectionInput,
   CollectionPreview,
@@ -304,6 +305,31 @@ export function useChangeProductImage(id: number) {
             .data,
     ['products'],
   )
+}
+
+/** Spreadsheet import (docs/CATALOG_IMPORT.md): a dry run checks every row and saves nothing. */
+export function useCatalogImport() {
+  return useChange(async (input: { file: File; dryRun: boolean; sheet?: string }) => {
+    const form = new FormData()
+    form.append('file', input.file)
+    form.append('dry_run', input.dryRun ? 'true' : 'false')
+    if (input.sheet) form.append('sheet', input.sheet)
+    return (await api.post<CatalogImportReport>('/admin/catalog/import/', form)).data
+  }, ['products', 'summary', 'brands', 'inventory'])
+}
+
+/** Downloads the catalogue export or the blank import template with the signed-in session. */
+export async function downloadCatalogFile(kind: 'export' | 'template', format: 'xlsx' | 'csv'): Promise<void> {
+  const response = await api.get<Blob>(`/admin/catalog/${kind}/`, { params: { format }, responseType: 'blob' })
+  if (typeof URL.createObjectURL !== 'function') return
+  const url = URL.createObjectURL(response.data)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${kind === 'export' ? 'catalogue' : 'catalogue-template'}.${format}`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 export const useCategories = (flat = false) =>

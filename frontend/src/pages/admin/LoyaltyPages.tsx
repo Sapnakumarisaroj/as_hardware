@@ -60,7 +60,9 @@ function SettingsPanel() {
   const value = (key: keyof typeof data) => (draft?.[key] ?? data[key]) as string | boolean
   const set = (key: string, next: string | boolean) => setDraft({ ...(draft ?? {}), [key]: next })
   const share = Number(value('max_order_share'))
-  const invalid = !(share >= 0 && share <= 100) || !(Number(value('expiry_days')) >= 1)
+  const welcome = String(value('welcome_reward') ?? '0').trim()
+  const welcomeInvalid = !(welcome !== '' && Number(welcome) >= 0)
+  const invalid = !(share >= 0 && share <= 100) || !(Number(value('expiry_days')) >= 1) || welcomeInvalid
   return (
     <Panel title="Credits">
       <form
@@ -114,11 +116,20 @@ function SettingsPanel() {
         />
         <FormField
           id="referee-reward"
-          label="Welcome reward for the new customer (₹)"
+          label="Reward for the referred new customer (₹)"
           inputMode="decimal"
           value={String(value('referee_reward'))}
           onChange={(e) => set('referee_reward', e.target.value)}
           hint="0 = off."
+        />
+        <FormField
+          id="welcome-reward"
+          label="Welcome reward on a first delivered order (₹)"
+          inputMode="decimal"
+          value={String(value('welcome_reward') ?? '0')}
+          onChange={(e) => set('welcome_reward', e.target.value)}
+          hint="0 = off. For every customer, once; usable after the return window like cashback, reversed if the order is returned."
+          error={welcomeInvalid ? 'Enter 0 or more.' : undefined}
         />
         <div className="sm:col-span-2">
           <button type="submit" className="btn-primary" disabled={!draft || invalid || save.isPending}>

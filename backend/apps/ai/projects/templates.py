@@ -23,6 +23,8 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from apps.catalog.compatibility.rules import CHANNEL_REAR_CLEARANCE_MM
+
 from ..quantity import formulas as F
 from ..quantity import units as U
 from ..quantity.text import say, t
@@ -121,6 +123,8 @@ class Need:
     note: dict[str, str] = field(default_factory=dict)  # how the amount was worked out
     steps: tuple = ()  # the breakdown: ((label in three languages, value), …) from the formulas
     avoid: tuple[str, ...] = ()  # words that rule a product out ("tiles" must not match "tile adhesive")
+    # the customer's sizes the product must fit, for the compatibility engine: (("board_mm", 18), ("depth_mm", 500))
+    fit: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1015,6 +1019,377 @@ FASTENERS = ProjectTemplate(
 )
 
 
+# --- Carpentry and door hardware: kitchens, wardrobes, doors, glass, replacements -----------------------------
+# Products come from the shop's hinge / channel / handle / board / lock / glass-hardware departments. Every
+# "fit" below is the customer's size handed to the compatibility engine (apps.catalog.compatibility): only a
+# variant that the listing says fits is chosen, and the line shows the engine's verdict.
+
+MM_PER_FT = 304.8
+
+
+def _mm_choice(value: str) -> Choice:
+    return Choice(value, t(f"{value} mm", f"{value} मिमी", f"{value} mm"), (rf"(?<![\d.]){value}\s*(mm|मिमी)",))
+
+
+BOARD = Question(
+    "board", "choice", t("Which board for the cabinets and shutters?", "कैबिनेट और शटर किस बोर्ड से?", "Cabinet aur shutter kis board se?"),
+    choices=(
+        Choice("plywood", t("Plywood", "प्लाईवुड", "Plywood / ply"), (r"\bply\w*\b", r"\bplai\b", r"\bplaai\b", r"प्लाई", r"\bbwp\b", r"marine")),
+        Choice("hdhmr", t("HDHMR board", "HDHMR बोर्ड", "HDHMR board"), (r"\bhdhmr\b",)),
+        Choice("mdf", t("MDF board", "MDF बोर्ड", "MDF board"), (r"\bmdf\b",)),
+    ),
+    default="plywood",
+)
+BOARD_MM = Question(
+    "board_mm", "choice", t("Board thickness", "बोर्ड की मोटाई", "Board ki motai"),
+    choices=tuple(_mm_choice(v) for v in ("18", "12", "16", "19", "25")), default="18",
+)
+BOARD_SEARCH = {
+    "plywood": {"kitchen": ("bwp plywood", "marine plywood", "plywood"), "wardrobe": ("commercial plywood", "mr plywood", "plywood")},
+    "hdhmr": {"kitchen": ("hdhmr board", "hdhmr"), "wardrobe": ("hdhmr board", "hdhmr")},
+    "mdf": {"kitchen": ("mdf board", "mdf"), "wardrobe": ("mdf board", "mdf")},
+}
+DRAWERS = Question("drawers", "number", t("How many drawers?", "कितनी दराज़ें?", "Kitni daraz?"), unit="drawers", minimum=0, maximum=100, default=0,
+                   count_words=("drawers", "drawer", "daraz", "daraaz", "दराज़", "दराज"))
+SHUTTER_WORDS = ("shutters", "shutter", "doors", "door", "palle", "palla", "शटर", "दरवाज़े", "दरवाजे")
+
+
+def _board_needs(a: dict, use: str, area, wastage: float, *, back_area=None) -> list[Need]:
+    board, thickness = a.get("board") or "plywood", str(a.get("board_mm") or "18")
+    sheets = F.board_sheets(area.amount, wastage)
+    label = {"plywood": t("Plywood sheets (8 × 4 ft)", "प्लाईवुड शीट (8 × 4 फ़ुट)", "Plywood sheet (8 × 4 ft)"),
+             "hdhmr": t("HDHMR boards (8 × 4 ft)", "HDHMR बोर्ड (8 × 4 फ़ुट)", "HDHMR board (8 × 4 ft)"),
+             "mdf": t("MDF boards (8 × 4 ft)", "MDF बोर्ड (8 × 4 फ़ुट)", "MDF board (8 × 4 ft)")}[board]
+    reason = (t("BWP (boiling-water-proof) ply is the usual choice near a sink and stove.", "सिंक और चूल्हे के पास BWP (पानी-रोधी) प्लाई सही रहती है।", "Sink aur chulhe ke paas BWP (paani-rodhi) ply sahi rehti hai.")
+              if use == "kitchen" and board == "plywood" else
+              t("Cut into side panels, shelves and shutters.", "साइड पैनल, शेल्फ और शटर इसी से कटेंगे।", "Side panel, shelf aur shutter isi se katenge."))
+    needs = [Need("board", label, BOARD_SEARCH[board][use], sheets.amount, "pcs", reason, hint=f"{thickness} mm", steps=tuple(area.steps + sheets.steps))]
+    if back_area is not None:
+        backs = F.board_sheets(back_area.amount, wastage)
+        needs.append(Need("back_panel", t("6 mm ply for the back panels", "पीछे के पैनल के लिए 6 मिमी प्लाई", "Peeche ke panel ke liye 6 mm ply"),
+                          ("plywood",), backs.amount, "pcs", t("Thin sheet that closes the back of each cabinet.", "हर कैबिनेट का पिछला हिस्सा बंद करने के लिए पतली शीट।", "Har cabinet ka peecha band karne ke liye patli sheet."),
+                          optional=True, hint="6 mm", steps=tuple(back_area.steps + backs.steps)))
+    return needs
+
+
+def _hinge_needs(shutters: int, height_mm: float, board_mm: float, *, hint: str = "") -> list[Need]:
+    hinges = F.hinges(shutters, height_mm)
+    return [Need("hinges", t("Concealed (auto) hinges", "कंसील्ड (ऑटो) कब्ज़े", "Concealed (auto) kabze"), ("concealed hinge", "soft close hinge", "hinge"), hinges.amount, "pcs",
+                 t("Chosen for your shutter thickness; the number per shutter goes by its height.", "शटर की मोटाई के हिसाब से; हर शटर पर संख्या उसकी ऊँचाई से तय।", "Shutter ki motai ke hisaab se; har shutter par ginti uski unchai se tay."),
+                 hint=hint, steps=tuple(hinges.steps), fit=(("board_mm", board_mm),), avoid=("glass", "butt"))]
+
+
+def _channel_needs(drawers: int, depth_mm: float) -> list[Need]:
+    if drawers <= 0:
+        return []
+    pairs = F.channels(drawers)
+    return [Need("channels", t("Telescopic drawer channels", "टेलीस्कोपिक दराज़ चैनल", "Telescopic daraz channel"), ("telescopic channel", "drawer channel"), pairs.amount, "pcs",
+                 t("One pair per drawer, the longest length that fits the cabinet depth.", "हर दराज़ के लिए एक जोड़ी, कैबिनेट की गहराई में आने वाली सबसे लंबी।", "Har daraz ke liye ek jodi, cabinet ki gehrai mein aane wali sabse lambi."),
+                 steps=tuple(pairs.steps), fit=(("depth_mm", depth_mm),))]
+
+
+def _handle_need(shutters: int, drawers: int) -> Need:
+    count = F.handles(shutters, drawers)
+    return Need("handles", t("Cabinet handles", "कैबिनेट हैंडल", "Cabinet handle"), ("cabinet handle", "handle"), count.amount, "pcs",
+                t("One per shutter and drawer.", "हर शटर और दराज़ पर एक।", "Har shutter aur daraz par ek."), estimate=False, steps=tuple(count.steps),
+                avoid=("lock", "glass", "hammer", "door"))
+
+
+def _screw_need(parts: list) -> Need:
+    total = sum(int(p.amount) for p in parts)
+    steps = tuple(step for p in parts for step in p.steps) + ((t("Screws", "स्क्रू", "Screw"), f"{total}"),)
+    return Need("screws", t("Wood screws", "लकड़ी के स्क्रू", "Wood screw (pench)"), ("wood screws", "screws"), total, "pcs",
+                t("For the carcass joints, hinges and channels; the hinge plates take short screws that stay inside the board.", "ढांचे के जोड़, कब्ज़ों और चैनल के लिए; कब्ज़े की प्लेट में छोटे स्क्रू लगते हैं जो बोर्ड से बाहर न निकलें।",
+                  "Dhaanche ke jod, kabze aur channel ke liye; kabze ki plate mein chhote screw lagte hain jo board se bahar na niklein."), steps=steps)
+
+
+def _finishing_needs(edge) -> list[Need]:
+    return [
+        Need("edge_band", t("Edge band tape", "एज बैंड टेप", "Edge band tape"), ("edge band", "edge banding tape"), edge.amount, "m",
+             t("Covers the cut edges of shutters and panels.", "शटर और पैनल के कटे किनारे ढकने के लिए।", "Shutter aur panel ke kate kinare dhakne ke liye."), steps=tuple(edge.steps)),
+        Need("wood_adhesive", t("Wood adhesive (Fevicol)", "लकड़ी का गोंद (फेविकोल)", "Wood adhesive (Fevicol)"), ("wood adhesive",), 1, "pcs",
+             t("For the joints and the edge band.", "जोड़ और एज बैंड के लिए।", "Jod aur edge band ke liye."), estimate=False),
+    ]
+
+
+def _kitchen(a: dict) -> list[Need]:
+    cabinets, shutters, drawers = int(a["cabinets"]), int(a["shutters"]), int(a.get("drawers") or 0)
+    width, height, depth = F.KITCHEN_CABINET_MM
+    shutter_h = float(a.get("shutter_height") or height)
+    board_mm = float(a.get("board_mm") or 18)
+    shutter_w = cabinets * width / max(1, shutters)
+    pieces = [
+        ("Side panels", 2 * cabinets, depth, height), ("Top and bottom", 2 * cabinets, width, depth), ("Shelves", cabinets, width, depth),
+        ("Shutters", shutters, shutter_w, shutter_h), ("Drawer fronts", drawers, width, 180), ("Drawer boxes", 2 * drawers, depth + width, 150),
+    ]  # fmt: skip
+    area = F.panel_area(pieces)
+    backs = F.panel_area([("Back panels", cabinets, width, height)])
+    edge = F.edge_band([("Shutters", shutters, shutter_w, shutter_h), ("Drawer fronts", drawers, width, 180)])
+    carcass_edge = F.edge_band([("Front edges", 2 * cabinets, height, 0), ("Front edges", 3 * cabinets, width, 0)], all_sides=False)
+    edge = F.Estimate(edge.amount + carcass_edge.amount, "m", edge.steps + carcass_edge.steps)
+    hinge_count = int(F.hinges(shutters, shutter_h).amount)
+    needs = _board_needs(a, "kitchen", area, float(a.get("wastage", F.BOARD_WASTAGE_PCT)), back_area=backs)
+    needs += _hinge_needs(shutters, shutter_h, board_mm)
+    needs += _channel_needs(drawers, float(a.get("cabinet_depth") or depth - 20))
+    needs.append(_handle_need(shutters, drawers))
+    needs.append(_screw_need([F.carcass_screws(cabinets), F.hinge_screws(hinge_count), F.channel_screws(drawers)]))
+    needs += _finishing_needs(edge)
+    needs.append(Need("basket", t("Cutlery basket", "कटलरी बास्केट", "Cutlery basket"), ("cutlery basket", "kitchen basket"), 1, "pcs",
+                      t("Fits a drawer cabinet; pick the size of your cabinet.", "दराज़ वाले कैबिनेट में; अपने कैबिनेट का साइज़ चुनें।", "Daraz wale cabinet mein; apne cabinet ka size chunein."), optional=True, estimate=False))
+    return needs
+
+
+KITCHEN = ProjectTemplate(
+    key="modular_kitchen",
+    name=t("Modular kitchen (carcass)", "मॉड्यूलर किचन (ढांचा)", "Modular kitchen (dhaancha)"),
+    patterns=(r"modular\s+kitchen", r"kitchen\s+(cabinets?|shutters?|carcass|units?|trolley|banan|banwa)", r"\bcarcass", r"kitchen.*\b(ply\w*|plai|hdhmr|hinges?|kabz\w*|channels?)\b",
+              r"मॉड्यूलर\s+किचन", r"किचन\s+(कैबिनेट|शटर)", r"\bkitchen\b"),
+    summary=t("Boards by the sheet from the panel areas, hinges by shutter height, a pair of channels per drawer, a handle per shutter and drawer, and screws for all of it.",
+              "पैनल के क्षेत्रफल से शीट, शटर की ऊँचाई से कब्ज़े, हर दराज़ पर चैनल की जोड़ी, हर शटर और दराज़ पर हैंडल, और सबके स्क्रू।",
+              "Panel ke area se sheet, shutter ki unchai se kabze, har daraz par channel ki jodi, har shutter aur daraz par handle, aur sabke screw."),
+    questions=(
+        Question("cabinets", "number", t("How many cabinets (boxes)?", "कितने कैबिनेट (डिब्बे)?", "Kitne cabinet (dabbe)?"), unit="cabinets", maximum=60,
+                 count_words=("cabinets", "cabinet", "units", "unit", "boxes", "box", "carcass", "कैबिनेट")),
+        Question("shutters", "number", t("How many shutters (doors)?", "कितने शटर (दरवाज़े)?", "Kitne shutter (palle)?"), unit="shutters", maximum=120, count_words=SHUTTER_WORDS),
+        DRAWERS,
+        Question("shutter_height", "number", t("Shutter height (mm)", "शटर की ऊँचाई (मिमी)", "Shutter ki unchai (mm)"), unit="mm", minimum=200, maximum=2400, default=720),
+        Question("cabinet_depth", "number", t("Inside depth of the drawer cabinets (mm)", "दराज़ वाले कैबिनेट की अंदर की गहराई (मिमी)", "Daraz wale cabinet ki andar ki gehrai (mm)"),
+                 unit="mm", minimum=250, maximum=800, default=540, when=lambda a: float(a.get("drawers") or 0) > 0),
+        BOARD, BOARD_MM, _wastage(F.BOARD_WASTAGE_PCT),
+    ),  # fmt: skip
+    materials=_kitchen,
+    caution=t("Cabinet sizes are taken as standard 600 × 720 × 560 mm boxes; a carpenter's cutting list is more exact.", "कैबिनेट का साइज़ 600 × 720 × 560 मिमी माना गया है; कारपेंटर की कटिंग लिस्ट ज़्यादा सटीक होगी।",
+              "Cabinet ka size 600 × 720 × 560 mm maana gaya hai; carpenter ki cutting list zyada sahi hogi."),
+    title=lambda a, lang: f"{say(t('Kitchen', 'किचन', 'Kitchen'), lang)} · {_n(a.get('cabinets'))} × {_n(a.get('shutters'))}",
+    examples=("Modular kitchen with 6 cabinets, 8 shutters and 3 drawers", "kitchen ke 5 cabinet 18 mm plai se banane hain"),
+)
+
+
+def _wardrobe(a: dict) -> list[Need]:
+    width, height, depth = float(a["width"]) * MM_PER_FT, float(a.get("height") or 7) * MM_PER_FT, float(a.get("depth") or 2) * MM_PER_FT
+    shutters, drawers, shelves = int(a["shutters"]), int(a.get("drawers") or 0), int(a.get("shelves") or 0)
+    board_mm, sliding = float(a.get("board_mm") or 18), a.get("door_type") == "sliding"
+    shutter_w = width / max(1, shutters)
+    pieces = [("Side panels", 2, depth, height), ("Top and bottom", 2, width, depth), ("Shelves", shelves, width, depth),
+              ("Shutters", shutters, shutter_w, height), ("Drawer fronts", drawers, width / 2, 200)]  # fmt: skip
+    area = F.panel_area(pieces)
+    edge = F.edge_band([("Shutters", shutters, shutter_w, height), ("Drawer fronts", drawers, width / 2, 200)])
+    needs = _board_needs(a, "wardrobe", area, float(a.get("wastage", F.BOARD_WASTAGE_PCT)), back_area=F.panel_area([("Back panel", 1, width, height)]))
+    screws = [F.carcass_screws(1), F.channel_screws(drawers)]
+    if sliding:
+        needs.append(Need("sliding_set", t("Sliding door fitting set", "स्लाइडिंग दरवाज़े का फ़िटिंग सेट", "Sliding door fitting set"), ("sliding wardrobe door fitting", "sliding fitting"),
+                          math.ceil(shutters / 2), "pcs", t("One set runs two sliding shutters.", "एक सेट दो स्लाइडिंग शटर चलाता है।", "Ek set do sliding shutter chalata hai."), estimate=False))
+    else:
+        needs += _hinge_needs(shutters, height, board_mm)
+        screws.append(F.hinge_screws(int(F.hinges(shutters, height).amount)))
+    rails = F.wardrobe_rails(width)
+    needs.append(Need("rail", t("Hanging rail", "कपड़े टांगने की रॉड", "Kapde taangne ki rod"), ("wardrobe rail", "hanger rod"), rails.amount, "pcs",
+                      t("One per 4 ft of width.", "हर 4 फ़ुट चौड़ाई पर एक।", "Har 4 ft chaudai par ek."), steps=tuple(rails.steps)))
+    needs += _channel_needs(drawers, depth - 2 * board_mm)
+    needs.append(_handle_need(shutters, drawers))
+    needs.append(_screw_need(screws))
+    needs += _finishing_needs(edge)
+    return needs
+
+
+WARDROBE = ProjectTemplate(
+    key="wardrobe",
+    name=t("Wardrobe", "अलमारी (वॉर्डरोब)", "Wardrobe / almari"),
+    patterns=(r"wardrobe", r"\balmari\b", r"\balmaari\b", r"\balmirah\b", r"\balmira\b", r"अलमारी", r"\bcloset\b", r"sliding\s+(door|shutter)s?", r"\bshutters?\b", r"hanging\s+rail"),
+    summary=t("Boards by the sheet from the panel areas, hinges by shutter height (or a sliding set), a hanging rail per 4 ft, channels per drawer and a handle per shutter.",
+              "पैनल के क्षेत्रफल से शीट, शटर की ऊँचाई से कब्ज़े (या स्लाइडिंग सेट), हर 4 फ़ुट पर रॉड, हर दराज़ पर चैनल और हर शटर पर हैंडल।",
+              "Panel ke area se sheet, shutter ki unchai se kabze (ya sliding set), har 4 ft par rod, har daraz par channel aur har shutter par handle."),
+    questions=(
+        Question("width", "number", t("How wide is the wardrobe (feet)?", "अलमारी कितनी चौड़ी है (फ़ुट)?", "Almari kitni chaudi hai (feet)?"), unit="ft", maximum=20,
+                 count_words=("ft wide", "feet wide", "foot wide", "ft", "feet", "foot", "फ़ुट", "फुट")),
+        Question("height", "number", t("Height (feet)", "ऊँचाई (फ़ुट)", "Unchai (feet)"), unit="ft", minimum=2, maximum=10, default=7),
+        Question("depth", "number", t("Depth (feet)", "गहराई (फ़ुट)", "Gehrai (feet)"), unit="ft", minimum=1, maximum=4, default=2),
+        Question("shutters", "number", t("How many shutters (doors)?", "कितने शटर (दरवाज़े)?", "Kitne shutter (palle)?"), unit="shutters", maximum=12, count_words=SHUTTER_WORDS),
+        Question("door_type", "choice", t("Hinged or sliding shutters?", "कब्ज़े वाले या स्लाइडिंग शटर?", "Kabze wale ya sliding shutter?"),
+                 choices=(Choice("hinged", t("Hinged", "कब्ज़े वाले", "Kabze wale"), (r"hinged", r"\bkabz", r"\bkabj")), Choice("sliding", t("Sliding", "स्लाइडिंग", "Sliding"), (r"slid",))), default="hinged"),
+        Question("shelves", "number", t("How many shelves?", "कितनी शेल्फ?", "Kitni shelf?"), unit="shelves", minimum=0, maximum=30, default=4, count_words=("shelves", "shelf", "khane", "खाने")),
+        DRAWERS, BOARD, BOARD_MM, _wastage(F.BOARD_WASTAGE_PCT),
+    ),  # fmt: skip
+    materials=_wardrobe,
+    title=lambda a, lang: f"{say(t('Wardrobe', 'अलमारी', 'Wardrobe'), lang)} · {_n(a.get('width'))} ft",
+    examples=("6 ft wardrobe with 3 shutters and 2 drawers", "4 feet ki almari, 2 palle, sliding"),
+)
+
+
+def _door(a: dict) -> list[Need]:
+    doors, door_mm = int(a.get("doors") or 1), float(a.get("door_mm") or 35)
+    lock = a["lock_type"]
+    search = ("mortise lock", "door lock") if lock == "mortise" else ("knob lock", "cylindrical lock", "door lock")
+    needs = [Need("lock", t("Mortise lock with handles" if lock == "mortise" else "Knob lock", "मॉर्टिस ताला हैंडल के साथ" if lock == "mortise" else "नॉब ताला",
+                            "Mortise taala handle ke saath" if lock == "mortise" else "Knob taala"), search, doors, "pcs",
+                  t("One per door, chosen for your door's thickness.", "हर दरवाज़े पर एक, दरवाज़े की मोटाई के हिसाब से।", "Har darwaze par ek, darwaze ki motai ke hisaab se."),
+                  estimate=False, fit=(("door_mm", door_mm),), avoid=("glass", "padlock"))]
+    if a.get("job") == "door":
+        height = float(a.get("door_height") or 2100)
+        hinges = F.hinges(doors, height)
+        screws = F.hinge_screws(int(hinges.amount), F.SCREWS_PER_BUTT_HINGE)
+        needs += [
+            Need("hinges", t("Butt hinges", "दरवाज़े के कब्ज़े (बट हिंज)", "Darwaze ke kabze (butt hinge)"), ("butt hinge", "door hinge"), hinges.amount, "pcs",
+                 t("The number per door goes by its height.", "हर दरवाज़े पर संख्या उसकी ऊँचाई से।", "Har darwaze par ginti uski unchai se."), steps=tuple(hinges.steps), avoid=("glass", "concealed")),
+            Need("screws", t("Wood screws", "लकड़ी के स्क्रू", "Wood screw (pench)"), ("wood screws", "screws"), screws.amount, "pcs",
+                 t("Three per hinge leaf, into the frame and the door.", "हर पत्ती में तीन, चौखट और दरवाज़े में।", "Har patti mein teen, chaukhat aur darwaze mein."), steps=tuple(screws.steps)),
+        ]
+    needs += [
+        Need("tower_bolt", t("Tower bolt", "चिटकनी (टावर बोल्ट)", "Chitkani (tower bolt)"), ("tower bolt",), doors, "pcs",
+             t("Bolts the door from inside.", "अंदर से दरवाज़ा बंद करने के लिए।", "Andar se darwaza band karne ke liye."), optional=True, estimate=False),
+        Need("closer", t("Door closer", "डोर क्लोज़र", "Door closer"), ("door closer",), doors, "pcs",
+             t("Closes the door gently by itself.", "दरवाज़ा अपने आप धीरे से बंद करता है।", "Darwaza apne aap dheere se band karta hai."), optional=True, estimate=False, avoid=("glass", "floor")),
+    ]
+    return needs
+
+
+DOOR = ProjectTemplate(
+    key="door_lock",
+    name=t("Door and lock fitting", "दरवाज़ा और ताला फ़िटिंग", "Darwaza aur taala fitting"),
+    patterns=(r"\blocks?\b", r"mortise", r"\btaala\b", r"\btala\b", r"ताला", r"\bdoor\b", r"darwaz", r"दरवाज़", r"दरवाज", r"chitkani|tower\s+bolt", r"door\s+closer"),
+    summary=t("A lock per door that suits the door's thickness; a new door also needs hinges by its height and their screws.",
+              "हर दरवाज़े पर उसकी मोटाई के हिसाब से ताला; नए दरवाज़े पर ऊँचाई के हिसाब से कब्ज़े और उनके स्क्रू भी।",
+              "Har darwaze par uski motai ke hisaab se taala; naye darwaze par unchai ke hisaab se kabze aur unke screw bhi."),
+    questions=(
+        Question("job", "choice", t("What do you want to fit?", "क्या लगाना है?", "Kya lagana hai?"),
+                 choices=(Choice("lock", t("A lock on an existing door", "पुराने दरवाज़े पर ताला", "Purane darwaze par taala"), (r"\b(change|replace|new)\s+(the\s+)?lock", r"\bfit\w*\s+(an?\s+)?(\w+\s+)?lock", r"lock\s+(change|badal)", r"taala\s+(badal|lagana)")),
+                          Choice("door", t("Hang a new door with hinges and a lock", "नया दरवाज़ा कब्ज़ों और ताले के साथ", "Naya darwaza kabze aur taale ke saath"), (r"new\s+door", r"hang\w*\s+(a\s+)?door", r"naya\s+darwaza", r"नया\s+दरवाज़ा")))),
+        Question("doors", "number", t("How many doors?", "कितने दरवाज़े?", "Kitne darwaze?"), unit="doors", maximum=50, default=1, count_words=("doors", "door", "darwaze", "darwaza", "दरवाज़े")),
+        Question("lock_type", "choice", t("Which lock?", "कौन सा ताला?", "Kaun sa taala?"),
+                 choices=(Choice("mortise", t("Mortise lock with handles (main door)", "मॉर्टिस ताला हैंडल के साथ (मुख्य दरवाज़ा)", "Mortise taala handle ke saath (main door)"), (r"mortise", r"mortice", r"main\s+door", r"lever")),
+                          Choice("knob", t("Knob lock (bedroom, bathroom)", "नॉब ताला (बेडरूम, बाथरूम)", "Knob taala (bedroom, bathroom)"), (r"\bknob", r"bedroom", r"bathroom", r"cylindrical")))),
+        Question("door_mm", "number", t("Door thickness (mm)", "दरवाज़े की मोटाई (मिमी)", "Darwaze ki motai (mm)"), unit="mm", minimum=20, maximum=80, default=35),
+        Question("door_height", "number", t("Door height (mm)", "दरवाज़े की ऊँचाई (मिमी)", "Darwaze ki unchai (mm)"), unit="mm", minimum=600, maximum=3000, default=2100, when=lambda a: a.get("job") == "door"),
+    ),  # fmt: skip
+    materials=_door,
+    not_sold=t("Door shutters and frames are made to size by a carpenter or door supplier; we sell the hardware.", "दरवाज़े और चौखट कारपेंटर या डोर सप्लायर नाप से बनाते हैं; हम हार्डवेयर बेचते हैं।",
+               "Darwaze aur chaukhat carpenter ya door supplier naap se banate hain; hum hardware bechte hain."),
+    title=lambda a, lang: f"{say(t('Door', 'दरवाज़ा', 'Darwaza'), lang)} · {_n(a.get('doors'))}",
+    examples=("Fit a mortise lock on 2 doors", "naya darwaza lagana hai, taala aur kabze chahiye"),
+)
+
+
+def _glass_door(a: dict) -> list[Need]:
+    doors, panels, glass_mm = int(a.get("doors") or 0), int(a.get("panels") or 0), float(a["glass_mm"])
+    fit = (("glass_mm", glass_mm),)
+    needs = []
+    if doors:
+        needs += [
+            Need("patch", t("Patch fitting set", "पैच फ़िटिंग सेट", "Patch fitting set"), ("patch fitting",), doors, "pcs",
+                 t("Top and bottom patches hold the glass door; chosen for your glass thickness.", "ऊपर-नीचे के पैच कांच का दरवाज़ा पकड़ते हैं; कांच की मोटाई के हिसाब से।", "Upar-neeche ke patch kaanch ka darwaza pakadte hain; kaanch ki motai ke hisaab se."), estimate=False, fit=fit),
+            Need("floor_spring", t("Floor spring", "फ़्लोर स्प्रिंग", "Floor spring"), ("floor spring",), doors, "pcs",
+                 t("Carries the door and closes it; check it is rated for the door's weight.", "दरवाज़े का वज़न उठाता और बंद करता है; वज़न की क्षमता देख लें।", "Darwaze ka wazan uthata aur band karta hai; wazan ki capacity dekh lein."), estimate=False, fit=fit),
+            Need("pull_handle", t("Glass door pull handle", "कांच के दरवाज़े का हैंडल", "Kaanch ke darwaze ka handle"), ("glass door handle", "pull handle"), doors, "pcs",
+                 t("Back-to-back handle through the glass.", "कांच के आर-पार दोनों तरफ़ का हैंडल।", "Kaanch ke aar-paar dono taraf ka handle."), estimate=False, fit=fit),
+        ]
+    if panels:
+        clamps = F.glass_clamps(panels)
+        needs.append(Need("clamps", t("Glass clamps", "ग्लास क्लैंप", "Glass clamp"), ("glass clamp", "glass connector"), clamps.amount, "pcs",
+                          t("Hold the fixed panels to the floor and wall.", "स्थिर पैनल को फ़र्श और दीवार से पकड़ते हैं।", "Fixed panel ko farsh aur deewar se pakadte hain."), steps=tuple(clamps.steps), fit=fit))
+    tubes = F.sealant_tubes(doors + panels)
+    needs.append(Need("sealant", t("Clear silicone sealant", "पारदर्शी सिलिकॉन सीलेंट", "Clear silicone sealant"), ("silicone sealant", "sealant"), tubes.amount, "pcs",
+                      t("Seals the edges of the fixed glass.", "स्थिर कांच के किनारे सील करता है।", "Fixed kaanch ke kinare seal karta hai."), optional=not panels, steps=tuple(tubes.steps)))
+    return needs
+
+
+GLASS_DOOR = ProjectTemplate(
+    key="glass_door",
+    name=t("Glass door / partition", "कांच का दरवाज़ा / पार्टीशन", "Kaanch ka darwaza / partition"),
+    patterns=(r"glass\s+(door|partition|cabin|enclosure)", r"\b(kanch|kaanch)\b", r"काँच|कांच", r"patch\s+fitting", r"floor\s+spring", r"toughened", r"shower\s+(partition|enclosure)"),
+    summary=t("Per glass door a patch fitting set, a floor spring and a pull handle that take your glass thickness; fixed panels need clamps and sealant.",
+              "हर कांच के दरवाज़े पर पैच फ़िटिंग सेट, फ़्लोर स्प्रिंग और हैंडल जो आपके कांच की मोटाई लें; स्थिर पैनल पर क्लैंप और सीलेंट।",
+              "Har kaanch ke darwaze par patch fitting set, floor spring aur handle jo aapke kaanch ki motai lein; fixed panel par clamp aur sealant."),
+    questions=(
+        Question("doors", "number", t("How many glass doors (that open)?", "कितने खुलने वाले कांच के दरवाज़े?", "Kitne khulne wale kaanch ke darwaze?"), unit="doors", minimum=0, maximum=20, default=1,
+                 count_words=("doors", "door", "darwaze", "darwaza", "दरवाज़े")),
+        Question("panels", "number", t("How many fixed glass panels?", "कितने स्थिर कांच पैनल?", "Kitne fixed kaanch panel?"), unit="panels", minimum=0, maximum=40, default=0, count_words=("panels", "panel", "fixed")),
+        Question("glass_mm", "choice", t("Glass thickness", "कांच की मोटाई", "Kaanch ki motai"), choices=tuple(_mm_choice(v) for v in ("12", "10", "8"))),
+    ),  # fmt: skip
+    materials=_glass_door,
+    not_sold=t("Toughened glass is cut and toughened to size by a glass supplier; we sell the fittings.", "टफ़न कांच ग्लास सप्लायर नाप से काटकर बनाते हैं; हम फ़िटिंग बेचते हैं।",
+               "Toughened kaanch glass supplier naap se kaat kar banate hain; hum fitting bechte hain."),
+    caution=t("Toughened glass can't be cut or drilled after toughening: give the fitting positions to the glass supplier first.", "टफ़न होने के बाद कांच न काटा जा सकता है न छेदा: फ़िटिंग की जगह पहले ग्लास सप्लायर को बताएँ।",
+              "Toughen hone ke baad kaanch na kaata ja sakta hai na chheda: fitting ki jagah pehle glass supplier ko batayein."),
+    professional=lambda a: True,
+    risky=True,
+    title=lambda a, lang: f"{say(t('Glass door', 'कांच का दरवाज़ा', 'Glass door'), lang)} · {_n(a.get('glass_mm'))} mm",
+    examples=("Glass door with 10 mm toughened glass", "office glass partition: 1 door and 2 fixed panels, 12 mm"),
+)
+
+
+def _infer_replacement(answers: dict, text: str) -> None:
+    """ "18 inch channel" / "450 mm" → the old channel's length (converted by the question); "160 mm handle" → the
+    handles' hole distance. Only a size written next to its unit counts."""
+    import re
+
+    size = re.search(r"(\d+(?:\.\d+)?)\s*(mm|inch(?:es)?|in\b|\"|”|इंच|मिमी)", text, re.IGNORECASE)
+    if not size:
+        return
+    unit = {"\"": "inch", "”": "inch", "in": "inch", "इंच": "inch", "मिमी": "mm"}.get(size.group(2).lower(), size.group(2).lower())
+    value = {"value": float(size.group(1)), "unit": "inch" if unit.startswith("inch") else unit}
+    if answers.get("part") == "channel":
+        answers.setdefault("channel_length", value)
+    elif answers.get("part") == "handle" and value["unit"] == "mm":
+        answers.setdefault("cc_mm", value)
+
+
+def _replacement(a: dict) -> list[Need]:
+    part, count = a["part"], int(a["count"])
+    if part == "hinge":
+        overlay = a.get("overlay") or "full"
+        steps = ((t("Hinges", "कब्ज़े", "Kabze"), f"{count}"),)
+        return [
+            Need("hinges", t(f"Concealed hinges, {overlay} overlay", f"कंसील्ड कब्ज़े, {overlay} ओवरले", f"Concealed kabze, {overlay} overlay"), ("concealed hinge", "hinge"), count, "pcs",
+                 t("Same overlay as the old ones, for your shutter thickness.", "पुराने जैसा ओवरले, आपके शटर की मोटाई के हिसाब से।", "Purane jaisa overlay, aapke shutter ki motai ke hisaab se."),
+                 estimate=False, hint=f"{overlay} overlay", steps=steps, fit=(("board_mm", float(a.get("board_mm") or 18)),), avoid=("glass", "butt")),
+            Need("screws", t("Wood screws", "लकड़ी के स्क्रू", "Wood screw (pench)"), ("wood screws", "screws"), count * F.SCREWS_PER_CONCEALED_HINGE, "pcs",
+                 t("If the old screws are worn.", "अगर पुराने स्क्रू घिस गए हों।", "Agar purane screw ghis gaye hon."), optional=True, estimate=False),
+        ]
+    if part == "channel":
+        length = float(a["channel_length"])
+        return [Need("channels", t("Telescopic drawer channels", "टेलीस्कोपिक दराज़ चैनल", "Telescopic daraz channel"), ("telescopic channel", "drawer channel"), count * 2, "pcs",
+                     t("The same length as the old pair.", "पुरानी जोड़ी जितनी लंबाई।", "Purani jodi jitni lambai."), estimate=False,
+                     steps=((t("Pairs", "जोड़ी", "Jodi"), f"{count} × 2 = {count * 2} channels"),), fit=(("depth_mm", length + CHANNEL_REAR_CLEARANCE_MM),))]
+    cc = a.get("cc_mm")
+    return [Need("handles", t("Cabinet handles", "कैबिनेट हैंडल", "Cabinet handle"), ("cabinet handle", "handle"), count, "pcs",
+                 t("The same centre-to-centre distance uses the old holes.", "वही सेंटर-टू-सेंटर दूरी हो तो पुराने छेद काम आते हैं।", "Wahi centre-to-centre doori ho to purane chhed kaam aate hain."),
+                 estimate=False, hint=f"{_n(cc)} mm" if cc else "", avoid=("lock", "glass", "hammer", "door"))]
+
+
+REPLACEMENT = ProjectTemplate(
+    key="hinge_replacement",
+    name=t("Hinge, channel or handle replacement", "कब्ज़ा, चैनल या हैंडल बदलना", "Kabza, channel ya handle badalna"),
+    patterns=(r"(replac\w*|badal\w*|change|kharab|toot\w*|broken|loose|dheel\w*|ढीले|टूट|बदल).*\b(hinges?|kabz\w*|kabj\w*|channels?|handles?|handal)\b",
+              r"\b(hinges?|kabz\w*|kabj\w*|channels?|handles?|handal)\b.*(replac\w*|badal\w*|change|kharab|toot\w*|broken|loose|dheel\w*|ढीले|टूट|बदल)",
+              r"\b(hinges?|kabz\w*|kabj\w*)\b", r"कब्ज़?", r"\b(drawer|telescopic)\s+channels?\b|\bdaraa?z\b"),
+    summary=t("A replacement fits the old holes: hinges with the same overlay, channels of the same length, handles with the same centre-to-centre distance.",
+              "नया पुराने छेदों में बैठे: वही ओवरले वाले कब्ज़े, उतनी ही लंबाई के चैनल, उतनी ही सेंटर-टू-सेंटर दूरी वाले हैंडल।",
+              "Naya purane chhedon mein baithe: wahi overlay wale kabze, utni hi lambai ke channel, utni hi centre-to-centre doori wale handle."),
+    questions=(
+        Question("part", "choice", t("What needs replacing?", "क्या बदलना है?", "Kya badalna hai?"),
+                 choices=(Choice("hinge", t("Hinges", "कब्ज़े", "Kabze"), (r"hinge", r"kabz", r"kabj", r"कब्ज")),
+                          Choice("channel", t("Drawer channels", "दराज़ चैनल", "Daraz channel"), (r"channel", r"slide", r"daraa?z", r"drawer", r"दराज")),
+                          Choice("handle", t("Handles", "हैंडल", "Handle"), (r"handle", r"handal", r"hendal", r"knob", r"हैंडल")))),
+        Question("count", "number", t("How many (hinges / channel pairs / handles)?", "कितने (कब्ज़े / चैनल की जोड़ी / हैंडल)?", "Kitne (kabze / channel ki jodi / handle)?"), unit="pcs", maximum=200,
+                 count_words=("hinges", "hinge", "kabze", "kabza", "kabje", "kabja", "pairs", "pair", "jodi", "channels", "channel", "handles", "handle", "pcs", "pieces", "कब्ज़े")),
+        Question("overlay", "choice", t("How does the shutter sit on the cabinet side?", "शटर कैबिनेट की साइड पर कैसे बैठता है?", "Shutter cabinet ki side par kaise baithta hai?"),
+                 choices=(Choice("full", t("Full overlay: covers the whole side", "फ़ुल ओवरले: पूरी साइड ढकता है", "Full overlay: poori side dhakta hai"), (r"full\s+overlay", r"\bfull\b")),
+                          Choice("half", t("Half overlay: two shutters share a side", "हाफ़ ओवरले: दो शटर एक साइड पर", "Half overlay: do shutter ek side par"), (r"half\s+overlay", r"\bhalf\b")),
+                          Choice("inset", t("Inset: sits inside the opening", "इनसेट: खुले हिस्से के अंदर", "Inset: andar baithta hai"), (r"\binset\b",))),
+                 when=lambda a: a.get("part") == "hinge"),
+        Question(BOARD_MM.key, BOARD_MM.kind, t("Shutter thickness", "शटर की मोटाई", "Shutter ki motai"), BOARD_MM.choices, default="18", when=lambda a: a.get("part") == "hinge"),
+        Question("channel_length", "number", t("Length of the old channel (mm or inch)", "पुराने चैनल की लंबाई (मिमी या इंच)", "Purane channel ki lambai (mm ya inch)"), unit="mm", minimum=150, maximum=1000,
+                 when=lambda a: a.get("part") == "channel"),
+        Question("cc_mm", "number", t("Distance between the old handle's two holes (mm)", "पुराने हैंडल के दो छेदों की दूरी (मिमी)", "Purane handle ke do chhedon ki doori (mm)"), unit="mm", minimum=16, maximum=1200,
+                 when=lambda a: a.get("part") == "handle"),
+    ),  # fmt: skip
+    materials=_replacement,
+    infer=_infer_replacement,
+    title=lambda a, lang: f"{say(t('Replacement', 'बदलना', 'Replacement'), lang)} · {_n(a.get('count'))} {a.get('part') or ''}".strip(),
+    examples=("Replace 4 soft close hinges, full overlay", "2 jodi daraz channel badalne hain, 18 inch"),
+)
+
+
 def _n(value) -> str:
     if value is None:
         return "?"
@@ -1025,8 +1400,9 @@ def _n(value) -> str:
 # Order matters for ties: more specific jobs first.
 TEMPLATES: dict[str, ProjectTemplate] = {
     tpl.key: tpl
-    for tpl in (WATERPROOFING, TILING, PAINTING, ELECTRICAL, PLUMBING, BATHROOM, WALL_DRILLING, FURNITURE, CONSTRUCTION)
-}
+    for tpl in (WATERPROOFING, TILING, PAINTING, ELECTRICAL, PLUMBING, BATHROOM, WALL_DRILLING, KITCHEN, GLASS_DOOR, REPLACEMENT,
+                FURNITURE, WARDROBE, DOOR, CONSTRUCTION)
+}  # fmt: skip
 # Quantity AI (Phase 20): calculators for one requirement ("500 sq ft plastering", "100 feet of wire").
 # Painting, tiling and waterproofing are the same templates as the project builder's.
 CALCULATORS: dict[str, ProjectTemplate] = {

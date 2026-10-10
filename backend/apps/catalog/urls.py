@@ -3,6 +3,7 @@ from rest_framework.routers import SimpleRouter
 
 from apps.reviews.views import ProductReviewsView
 
+from .compare import ProductCompareView
 from .compatibility_views import CompatibilityCheckView, ProductCompatibilityView
 from .seo import sitemap_view
 from .views import (
@@ -22,6 +23,7 @@ router.register("brands", BrandViewSet, basename="brand")
 router.register("products", ProductViewSet, basename="product")
 
 urlpatterns = [
+    path("products/compare/", ProductCompareView.as_view(), name="product-compare"),
     path("products/<slug:slug>/reviews/", ProductReviewsView.as_view(), name="product-reviews"),
     path("search/suggest/", SearchSuggestView.as_view(), name="search-suggest"),
     path("search/recent/", RecentSearchView.as_view(), name="search-recent"),

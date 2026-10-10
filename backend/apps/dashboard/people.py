@@ -411,7 +411,7 @@ class SupportMessageRowSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SupportMessage
-        fields = ["id", "sender_type", "sender_name", "body", "created_at"]
+        fields = ["id", "sender_type", "sender_name", "body", "attachments", "created_at"]
 
     def get_sender_name(self, obj) -> str:
         if obj.sender_type == SupportMessage.Sender.CUSTOMER:
@@ -430,6 +430,7 @@ class SupportListSerializer(serializers.ModelSerializer):
     message_count = serializers.IntegerField(read_only=True, default=0)
     last_message = serializers.SerializerMethodField()
     waiting_for_reply = serializers.SerializerMethodField()
+    product = serializers.SerializerMethodField()
 
     class Meta:
         model = SupportConversation
@@ -442,6 +443,7 @@ class SupportListSerializer(serializers.ModelSerializer):
             "customer",
             "order_number",
             "store_name",
+            "product",
             "assigned_to",
             "assigned_to_name",
             "message_count",
@@ -450,6 +452,11 @@ class SupportListSerializer(serializers.ModelSerializer):
             "last_message_at",
             "created_at",
         ]
+
+    def get_product(self, obj) -> dict | None:
+        from apps.support.serializers import product_ref
+
+        return product_ref(obj)
 
     def get_customer(self, obj) -> dict | None:
         if obj.user_id is None:
@@ -506,7 +513,7 @@ class AdminSupportViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
         if getattr(self, "swagger_fake_view", False):
             return SupportConversation.objects.none()
         qs = (
-            SupportConversation.objects.select_related("user", "order__store", "assigned_to")
+            SupportConversation.objects.select_related("user", "order__store", "assigned_to", "product")
             .prefetch_related(Prefetch("messages", queryset=SupportMessage.objects.select_related("sender")))
             .annotate(message_count=Count("messages"))
         )

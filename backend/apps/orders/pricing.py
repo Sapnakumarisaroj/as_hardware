@@ -139,6 +139,25 @@ def line_from_variant(variant, quantity: int) -> PricedLine:
     )
 
 
+def line_from_quote_item(item) -> PricedLine:
+    """A quotation line (quotes.QuoteItem): the staff-quoted unit price for the agreed quantity.
+    `base_unit_price` keeps the catalogue price so savings and refunds stay explainable."""
+    variant = item.variant
+    product = variant.product
+    unit_price = item.quoted_unit_price
+    return PricedLine(
+        variant_id=variant.id,
+        product_id=product.id,
+        category_id=product.category_id,
+        subcategory_id=product.subcategory_id,
+        unit_price=unit_price,
+        unit_mrp=variant.mrp,
+        gst_rate=product.gst_rate,
+        quantity=item.quantity,
+        base_unit_price=variant.price if unit_price < variant.price else None,
+    )
+
+
 # --- 5. Delivery fee -----------------------------------------------------------------------------
 
 
@@ -360,18 +379,25 @@ class Pricing:
 
 
 def price_lines(
-    lines: Iterable[PricedLine], *, coupon=None, fee_rule=None, user=None, use_credits: bool = False
+    lines: Iterable[PricedLine],
+    *,
+    coupon=None,
+    fee_rule=None,
+    user=None,
+    use_credits: bool = False,
+    automatic_offers: bool = True,
 ) -> Pricing:
     """The one pricing path for cart, checkout, coupon preview and order placement:
     automatic offers first, then the coupon on what remains, then (when `use_credits`) the
     customer's credits up to the shop's share. Raises CouponError if the coupon does not apply
     to these lines. `user` decides customer-specific offers (first order, per-customer limits)
-    and whose credits; None = a visitor."""
-    from apps.offers.engine import apply_offers
+    and whose credits; None = a visitor. `automatic_offers=False` is for quotation orders: the
+    quoted price is the negotiated price, so offers don't stack on it (callers pass no coupon)."""
+    from apps.offers.engine import OfferResult, apply_offers
     from apps.offers.services import coupon_discount
 
     lines = list(lines)
-    offers = apply_offers(lines, user=user)
+    offers = apply_offers(lines, user=user) if automatic_offers else OfferResult()
     discount = ZERO
     if coupon is not None:
         net_lines = [

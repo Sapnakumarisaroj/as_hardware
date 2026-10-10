@@ -14,7 +14,7 @@ function catalogRoutes(products = [drill, tap]) {
 
 describe('homepage', () => {
   it('shows search, departments from the API and sections fed by the listing API', async () => {
-    const api = mockApi({ get: catalogRoutes() })
+    const api = mockApi({ get: { ...catalogRoutes(), '/delivery/promise/': { fast_delivery_max_minutes: 60 } } })
     renderRoute('/')
 
     expect(screen.getByRole('heading', { level: 1, name: 'Hardware for every project' })).toBeInTheDocument()
@@ -27,7 +27,7 @@ describe('homepage', () => {
     expect(within(groups).getByRole('link', { name: 'Tools & Safety' })).toHaveAttribute('href', '/shop/tools-safety')
     expect(within(groups).getByRole('link', { name: 'Hinges, Channels & Handles' })).toHaveAttribute('href', '/c/hinges-channels-handles')
 
-    // Curated-list fallbacks and the popular grid use live data; departments are reached through the category cards.
+    // Curated-list fallbacks and the popular grid use live data (three general rows at most); departments are reached through the category cards.
     for (const title of ['Best sellers', 'New arrivals', 'Popular hardware', 'Bulk buying']) {
       expect(await screen.findByRole('region', { name: title })).toBeInTheDocument()
     }
@@ -35,8 +35,11 @@ describe('homepage', () => {
     const tools = screen.getByRole('region', { name: 'Smarter way to buy hardware' })
     expect(within(tools).getByRole('link', { name: /AI assistant/ })).toHaveAttribute('href', '/ai-assistant')
     expect(within(tools).getAllByRole('link')).toHaveLength(6)
-    expect(screen.getByRole('region', { name: 'Fast hardware delivery across Bengaluru' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Why shop with us' })).toHaveTextContent('Cash on delivery')
+    expect(screen.getByRole('region', { name: 'Fast hardware delivery across Bengaluru' })).toHaveTextContent('Fast delivery within 60 mins')
+    const trust = screen.getByRole('region', { name: 'Why shop with us' })
+    expect(trust).toHaveTextContent('Within 60 mins where eligible')
+    expect(trust).toHaveTextContent('Bulk pricing') // products with bulk prices exist
+    expect(trust).not.toHaveTextContent('Cash on delivery') // decided per shop, store and zone at checkout
     const sent = paramsSent(api.get, '/products/')
     expect(sent).toContainEqual(expect.objectContaining({ ordering: 'popular', in_stock: 'true' }))
     expect(sent).toContainEqual(expect.objectContaining({ bestseller: 'true', ordering: 'popular' }))
@@ -53,6 +56,7 @@ describe('homepage', () => {
     const api = mockApi({
       get: {
         ...catalogRoutes(),
+        '/delivery/promise/': { fast_delivery_max_minutes: 60 },
         '/collections/': [
           { id: 1, name: 'Deals of the week', slug: 'deals', description: 'This week', rule: 'manual', starts_at: null, ends_at: null, products: [tap] },
           { id: 2, name: 'Bulk savings', slug: 'bulk', description: '', rule: 'bulk_pricing', starts_at: null, ends_at: null, products: [drill] },
@@ -96,18 +100,64 @@ describe('homepage', () => {
     expect(screen.queryByRole('region', { name: 'Plywood, MDF & HDHMR' })).not.toBeInTheDocument()
   })
 
-  it('shows an error with retry when categories cannot load', async () => {
+  it('with the API down keeps the shop’s groups and leaves out every section it can’t fill', async () => {
     mockApi({
       get: {
         '/categories/': httpError(500, 'Server error.'),
-        '/products/': productPage([]),
+        '/products/': httpError(500, 'Server error.'),
       },
     })
-    const { user } = renderRoute('/')
-    expect(await screen.findByText('Couldn’t load categories')).toBeInTheDocument()
-    const retry = screen.getAllByRole('button', { name: 'Retry' })[0]
-    await user.click(retry!)
-    expect(await screen.findByText('Couldn’t load categories')).toBeInTheDocument()
+    renderRoute('/')
+    // The four groups from the shop's own table, linking to the real category pages.
+    const groups = await screen.findByRole('region', { name: 'Shop by category' })
+    expect(within(groups).getByRole('link', { name: 'Tools & Safety' })).toHaveAttribute('href', '/shop/tools-safety')
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Popular hardware' })).not.toBeInTheDocument())
+    for (const title of ['Best sellers', 'New arrivals', 'Bulk buying', 'Fast delivery to you']) {
+      expect(screen.queryByRole('region', { name: title })).not.toBeInTheDocument()
+    }
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    // No delivery promise configured/loaded: nothing about fast delivery is claimed.
+    expect(screen.getByRole('region', { name: 'Hardware delivery across Bengaluru' })).not.toHaveTextContent(/fast/i)
+    expect(screen.getByRole('region', { name: 'Why shop with us' })).not.toHaveTextContent('Fast delivery')
+    expect(screen.getByTestId('hero-delivery')).not.toHaveTextContent(/fast/i)
+    expect(screen.queryByTestId('fast-badge')).not.toBeInTheDocument()
+  })
+
+  it('caps the general product rows at three, the shop’s curated lists first', async () => {
+    const list = (id: number, name: string) => ({
+      id, name, slug: `list-${id}`, description: '', rule: 'manual', starts_at: null, ends_at: null, products: [tap],
+    })
+    mockApi({ get: { ...catalogRoutes(), '/collections/': [list(1, 'Deals'), list(2, 'Essentials'), list(3, 'Plumbing picks'), list(4, 'Fourth list')] } })
+    renderRoute('/')
+    for (const title of ['Deals', 'Essentials', 'Plumbing picks']) {
+      expect(await screen.findByRole('region', { name: title })).toBeInTheDocument()
+    }
+    expect(screen.queryByRole('region', { name: 'Fourth list' })).not.toBeInTheDocument()
+    // Best sellers / new arrivals aren't curated but the cap is reached, so they aren't added.
+    expect(screen.queryByRole('region', { name: 'Best sellers' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Popular hardware' })).not.toBeInTheDocument()
+  })
+
+  it('a PIN we don’t serve: no fast claims, a clear message, and every card says so', async () => {
+    window.localStorage.setItem('boltrun.delivery-pincode', '999999')
+    mockApi({
+      get: {
+        ...catalogRoutes(),
+        '/delivery/promise/': { fast_delivery_max_minutes: 60 },
+        '/delivery/check/': {
+          serviceable: false, postal_code: '999999', location_precision: 'pin', fast_delivery_available: false,
+          label: '', fast_unavailable_reason: '', message: 'We don’t deliver to 999999 yet.', stores: [],
+        },
+      },
+    })
+    renderRoute('/')
+    await waitFor(() => expect(screen.getByTestId('hero-delivery')).toHaveTextContent('We don’t deliver to 999999 yet.'))
+    expect(screen.getByTestId('hero-delivery')).not.toHaveTextContent(/fast/i)
+    expect(screen.queryByTestId('fast-badge')).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Why shop with us' })).not.toHaveTextContent('Fast delivery')
+    const best = await screen.findByRole('region', { name: 'Best sellers' })
+    await waitFor(() => expect(within(best).getAllByTestId('not-served')[0]).toHaveTextContent('We don’t deliver to 999999 yet'))
+    expect(within(best).queryByTestId('pin-prompt')).not.toBeInTheDocument()
   })
 })
 

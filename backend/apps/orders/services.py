@@ -35,7 +35,7 @@ from integrations.payments.registry import online_payments_enabled
 
 from .delivery_info import delivery_sentence, refresh_delivery_estimate
 from .models import Order, OrderItem, OrderShipment, OrderStatus, OrderStatusHistory, PaymentMethod, PaymentStatus
-from .pricing import line_from_variant, paid_by_line, price_lines
+from .pricing import line_from_quote_item, line_from_variant, paid_by_line, price_lines
 from .shipments import LEFT_THE_STORE, mirror_order_status, sync_order_status
 from .state_machine import (
     CUSTOMER_CANCELLABLE,
@@ -101,6 +101,7 @@ def place_order(
     expected_total: Decimal | None = None,
     idempotency_key: str | None = None,
     use_credits: bool = False,
+    quote=None,
 ) -> tuple[Order, Payment]:
     """Create an order from the cart in one transaction (any failure rolls everything back).
 
@@ -110,6 +111,9 @@ def place_order(
       returns the new figures for the customer to review.
     - `use_credits` (Phase 17): pay part of the order with shop credit; the amount is decided
       here (at most the shop's share), never by the client.
+    - `quote` (quotes.Quote, accepted by this customer): order exactly the quoted lines at the
+      quoted unit prices instead of the cart. No automatic offers or coupon on top; stock, delivery,
+      COD rules, credits and the expected-total check work as usual. The cart is left alone.
     """
     if payment_method not in PaymentMethod.values:
         raise OrderError("Unsupported payment method.", code="invalid_payment_method")
@@ -131,13 +135,20 @@ def place_order(
     if address is None:
         raise NotFoundError("Delivery address not found.")
 
-    items = list(
-        CartItem.objects.select_for_update()
-        .filter(cart__user=user)
-        .select_related("variant__product__brand")
-        .prefetch_related("variant__price_tiers")
-        .order_by("id")
-    )
+    if quote is not None:
+        from apps.quotes.services import lock_for_checkout
+
+        if coupon_code.strip():
+            raise OrderError("Coupons can't be used on a quotation order.", code="coupon_not_allowed")
+        quote, items = lock_for_checkout(quote, user)
+    else:
+        items = list(
+            CartItem.objects.select_for_update()
+            .filter(cart__user=user)
+            .select_related("variant__product__brand")
+            .prefetch_related("variant__price_tiers")
+            .order_by("id")
+        )
     if not items:
         raise OrderError("Your cart is empty.", code="cart_empty")
     for item in items:
@@ -146,7 +157,7 @@ def place_order(
             raise OrderError(
                 f"{product.name} is no longer available. Remove it to continue.", code="product_unavailable"
             )
-        if item.quantity > product.max_order_quantity:
+        if quote is None and item.quantity > product.max_order_quantity:
             raise OrderError(
                 f"You can order at most {product.max_order_quantity} of {product.name}.", code="max_quantity_exceeded"
             )
@@ -156,10 +167,20 @@ def place_order(
     plan = _plan(address, {item.variant_id: item.quantity for item in items})
 
     # Bulk tiers, offers, coupon and delivery fee: the one pricing engine (orders.pricing).
-    lines = [line_from_variant(item.variant, item.quantity) for item in items]
+    if quote is not None:
+        lines = [line_from_quote_item(item) for item in items]
+    else:
+        lines = [line_from_variant(item.variant, item.quantity) for item in items]
     coupon = get_valid_coupon(coupon_code, user, lock=True) if coupon_code.strip() else None
     # Offers, then the coupon, then credits (if chosen): one engine, one result.
-    pricing = price_lines(lines, coupon=coupon, fee_rule=plan.fee_rule, user=user, use_credits=use_credits)
+    pricing = price_lines(
+        lines,
+        coupon=coupon,
+        fee_rule=plan.fee_rule,
+        user=user,
+        use_credits=use_credits,
+        automatic_offers=quote is None,
+    )
     totals, offers = pricing.totals, pricing.offers
     if expected_total is not None and q(expected_total) != totals.grand_total:
         raise TotalsChanged(
@@ -250,6 +271,8 @@ def place_order(
                 quantity=line.quantity,
                 line_total=line.line_total,
                 offer_discount=offers.line_discounts.get(line.variant_id, ZERO),
+                unit_cost=item.variant.cost_price,
+                quoted=quote is not None,
             )
             for item, line in zip(items, lines, strict=True)
         ]
@@ -300,7 +323,12 @@ def place_order(
     else:
         notify_order(order, "order.placed", amount=order.grand_total)
 
-    CartItem.objects.filter(pk__in=[item.pk for item in items]).delete()
+    if quote is not None:
+        from apps.quotes.services import mark_ordered
+
+        mark_ordered(quote, order)
+    else:
+        CartItem.objects.filter(pk__in=[item.pk for item in items]).delete()
     return order, payment
 
 

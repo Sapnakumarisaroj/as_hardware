@@ -77,6 +77,63 @@ describe('reports page', () => {
     await waitFor(() => expect(paramsSent(api.get, '/admin/reports/products/').length).toBeGreaterThan(0))
   })
 
+  it('shows profit columns and says plainly how much of the revenue has a purchase cost', async () => {
+    const margin = (coverage: number | null, profit: string | null): Report =>
+      report('margin', {
+        title: 'Profit and price realisation',
+        kpis: [
+          { key: 'goods_revenue', label: 'Goods revenue', value: '3550.00', format: 'money' },
+          { key: 'gross_profit', label: 'Gross profit', value: profit, format: 'money' },
+          { key: 'cost_coverage', label: 'Cost coverage', value: coverage, format: 'percent' },
+        ],
+        tables: [
+          {
+            key: 'categories',
+            title: 'Price realisation and profit by category',
+            columns: [
+              { key: 'category', label: 'Category', format: 'text' },
+              { key: 'selling', label: 'At selling price', format: 'money' },
+              { key: 'profit', label: 'Gross profit', format: 'money' },
+              { key: 'margin', label: 'Margin', format: 'percent' },
+              { key: 'coverage', label: 'Cost coverage', format: 'percent' },
+            ],
+            rows: [
+              { category: 'Power Tools', selling: '3000.00', profit, margin: profit ? 39.4 : null, coverage: coverage ? 100 : 0 },
+              { category: 'Hinges', selling: '600.00', profit: null, margin: null, coverage: 0 },
+            ],
+            chart: { type: 'bar', label: 'category', value: 'selling' },
+          },
+        ],
+        notes: [],
+      })
+    const marginList = { results: [...list.results, { key: 'margin', title: 'Profit and price realisation', description: '' }] }
+    signIn()
+    let current = margin(0, null)
+    mockApi({
+      get: staffGet('admin', {
+        '/admin/session/': session,
+        '/notifications/summary/': { unread: 0 },
+        '/admin/reports/': marginList,
+        '/admin/reports/margin/': () => current,
+      }),
+    })
+    const first = renderRoute('/admin/reports?report=margin')
+    const note = await screen.findByTestId('cost-coverage')
+    expect(note).toHaveTextContent('No purchase costs on the items sold in this period')
+    expect(within(note).getByRole('link', { name: 'Add purchase costs to products to see profit.' })).toHaveAttribute('href', '/admin/products')
+    const table = screen.getByRole('table', { name: 'Price realisation and profit by category' })
+    expect(within(table).getByRole('columnheader', { name: 'Gross profit' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Cost coverage' })).toBeInTheDocument()
+    first.unmount()
+
+    current = margin(83.6, '1168.75')
+    renderRoute('/admin/reports?report=margin')
+    expect(await screen.findByTestId('cost-coverage')).toHaveTextContent('cover only items with a purchase cost: 83.6% of goods revenue')
+    const rowsShown = within(screen.getByRole('table', { name: 'Price realisation and profit by category' })).getAllByRole('row')
+    expect(rowsShown[1]).toHaveTextContent('39.4%')
+    expect(rowsShown[2]).toHaveTextContent('—') // no cost: no profit, never guessed
+  })
+
   it('opens a report link from the assistant with its dates and downloads CSV', async () => {
     signIn()
     const api = mockApi({

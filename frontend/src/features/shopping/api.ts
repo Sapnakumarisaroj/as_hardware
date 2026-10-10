@@ -86,6 +86,37 @@ export function useAddBundleToCart() {
   })
 }
 
+function refreshCart(queryClient: ReturnType<typeof useQueryClient>, cart?: Cart) {
+  if (cart) queryClient.setQueryData(cartKeys.cart, cart)
+  else void queryClient.invalidateQueries({ queryKey: cartKeys.cart })
+  void queryClient.invalidateQueries({ queryKey: shoppingKeys.cart })
+  void queryClient.invalidateQueries({ queryKey: ['checkout'] })
+}
+
+/** Swap a cart line for another variant at a quantity (a cheaper pack size: 40 singles → 1 box of 50). */
+export function useReplaceWithQuantity() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { itemId: number; variantId: number; quantity: number }) =>
+      (await api.post<Cart>(`/cart/items/${input.itemId}/replace/`, { variant_id: input.variantId, quantity: input.quantity })).data,
+    onSuccess: (cart) => refreshCart(queryClient, cart),
+  })
+}
+
+/** "Complete the set": the missing lines one by one through the cart API (each checked again there). */
+export function useAddLines() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (lines: { variant_id: number; quantity: number }[]) => {
+      let cart: Cart | undefined
+      for (const line of lines) cart = (await api.post<Cart>('/cart/items/', { variant_id: line.variant_id, quantity: line.quantity })).data
+      return cart
+    },
+    onSuccess: (cart) => refreshCart(queryClient, cart),
+    onError: () => refreshCart(queryClient),
+  })
+}
+
 /** Set a cart line's quantity (bulk-tier and quantity suggestions); the cart checks it again. */
 export function useSetCartQuantity() {
   const queryClient = useQueryClient()

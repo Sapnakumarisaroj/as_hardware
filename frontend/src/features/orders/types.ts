@@ -161,7 +161,7 @@ export interface OrderLoyalty {
   credits_used: string
   credits_restored: string
   earned: {
-    kind: 'cashback' | 'referral'
+    kind: 'cashback' | 'referral' | 'promo'
     amount: string
     status: 'pending' | 'eligible' | 'available' | 'reversed' | 'expired'
     status_label: string

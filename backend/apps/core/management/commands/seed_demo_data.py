@@ -108,7 +108,10 @@ class Command(BaseCommand):
         with transaction.atomic():
             categories = self._categories()
             brands = {
-                name: Brand.objects.update_or_create(name=name, defaults={"slug": slugify(name)})[0] for name in BRANDS
+                name: Brand.objects.update_or_create(
+                    name=name, defaults={"slug": slugify(name), "is_demo": name.endswith("(Demo)")}
+                )[0]
+                for name in BRANDS
             }
             products = self._products(categories, brands)
             stores = self._stores()
@@ -192,6 +195,7 @@ class Command(BaseCommand):
             product, _ = Product.all_objects.update_or_create(
                 sku=base_sku,
                 defaults={
+                    "is_demo": True,
                     "name": name,
                     "slug": slugify(name)[:220],
                     "brand": brands[brand],
@@ -236,6 +240,7 @@ class Command(BaseCommand):
             store, _ = Store.all_objects.update_or_create(
                 code=code,
                 defaults={
+                    "is_demo": True,
                     "name": name,
                     "kind": kind,
                     "address_line1": f"{area} (demo address)",

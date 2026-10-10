@@ -17,6 +17,8 @@ export function FastDeliveryBadge() {
   if (!minutes) return null
 
   const data = isValidPincode(pincode) ? check.data : undefined
+  // A PIN we don't deliver to gets no fast-delivery claim at all (the Deliver to chip says why).
+  if (data && !data.serviceable) return null
   let state: 'neutral' | 'available' | 'unavailable' = 'neutral'
   let detail = `Fast delivery within ${minutes} minutes where we can. Choose your PIN code to check your area; your time is shown in the cart.`
   if (data?.serviceable && data.fast_delivery_available) {

@@ -17,6 +17,7 @@ import { VariantSelector } from '@/features/catalog/components/VariantSelector'
 import { recordView } from '@/features/catalog/recentlyViewed'
 import type { ProductDetail, ProductVariant } from '@/features/catalog/types'
 import { variantLabel } from '@/features/catalog/variants'
+import { CompareButton } from '@/features/compare/CompareButton'
 import { useProductEstimate } from '@/features/delivery/api'
 import { DeliveryEstimate, FreeDeliveryNote, PincodeForm } from '@/features/delivery/components'
 import { savePincode, usePincode } from '@/features/delivery/location'
@@ -26,6 +27,7 @@ import { isNotFound } from '@/lib/api/errors'
 import { formatDate, formatPrice } from '@/lib/format'
 import { AccessoryGroups, CompatibilityChecker } from '@/features/compatibility/ProductCompatibility'
 import { ProductRecommendations } from '@/features/shopping/ProductRecommendations'
+import { ProductEnquiry } from '@/features/support/ProductEnquiry'
 import { usePageMeta } from '@/lib/usePageMeta'
 
 import { NotFoundPage } from './NotFoundPage'
@@ -334,7 +336,7 @@ export function ProductDetailPage() {
       quantity={safeQuantity}
       disabled={outOfStock}
       label={outOfStock ? 'Out of stock' : 'Add to cart'}
-      className="btn-secondary flex-1 py-3 text-base"
+      className="btn-secondary min-h-12 flex-1 whitespace-nowrap px-2.5 py-3 text-sm sm:px-4 sm:text-base"
     />
   )
   const buyNowButton = !outOfStock && (
@@ -343,7 +345,7 @@ export function ProductDetailPage() {
       variantId={variant.id}
       productName={productName}
       quantity={safeQuantity}
-      className="btn-primary flex-1 py-3 text-base"
+      className="btn-primary min-h-12 flex-1 whitespace-nowrap px-2.5 py-3 text-sm sm:px-4 sm:text-base"
     />
   )
 
@@ -435,10 +437,10 @@ export function ProductDetailPage() {
             <div className="hidden items-center gap-3 lg:flex">
               {addButton}
               {buyNowButton}
-              <WishlistButton productId={data.id} productName={data.name} variant="button" />
             </div>
-            <div className="lg:hidden">
+            <div className="flex flex-wrap gap-2">
               <WishlistButton productId={data.id} productName={data.name} variant="button" />
+              <CompareButton product={{ slug: data.slug, name: data.name, image: (data.images.find((i) => i.is_primary) ?? data.images[0])?.image ?? null }} variant="button" />
             </div>
             <ul className="grid grid-cols-3 gap-2 border-t border-steel-100 pt-3 text-xs text-ink-600" aria-label="Buying with us">
               <li className="flex items-center gap-1.5">
@@ -484,6 +486,8 @@ export function ProductDetailPage() {
           </div>
 
           {data.short_description && <p className="text-ink-800">{data.short_description}</p>}
+
+          <ProductEnquiry productId={data.id} productName={data.name} />
         </div>
       </div>
 

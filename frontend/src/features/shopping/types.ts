@@ -8,6 +8,8 @@ export interface RecommendationRow {
   variant_id: number | null
   verdict: string | null
   orders?: number
+  confidence?: number
+  lift?: number
   saving_each?: string
   product: ProductSummary
 }
@@ -36,11 +38,25 @@ export interface Recommendations {
   bundles?: BundleSummary[]
 }
 
-export type SmartAction = 'add' | 'replace' | 'remove' | 'set_quantity' | 'apply_bundle' | 'view' | null
+export type SmartAction = 'add' | 'replace' | 'remove' | 'set_quantity' | 'apply_bundle' | 'add_lines' | 'view' | null
+
+/** A missing line of a set ("complete the set"), priced by the server. */
+export interface SmartLine {
+  product_id: number
+  variant_id: number
+  quantity: number
+  label: string
+  name: string
+  unit_price: string
+  line_total: string
+  product?: ProductSummary | null
+}
 
 export interface SmartSuggestion {
   type: string
   message: string
+  /** Why it is suggested, from the shop's data (links, orders, rules, specifications, prices). */
+  reason?: string
   action: SmartAction
   priority: number
   product_id?: number | null
@@ -58,6 +74,11 @@ export interface SmartSuggestion {
   remaining?: string
   over?: boolean
   gap?: string
+  closes_gap?: boolean
+  orders?: number
+  lines?: SmartLine[]
+  kit?: { key: string; name: string }
+  parts?: { variant_id: number; quantity: number; label: string }[]
   product?: ProductSummary | null
 }
 

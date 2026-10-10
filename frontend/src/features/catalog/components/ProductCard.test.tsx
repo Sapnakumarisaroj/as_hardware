@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { productPage, productSummary } from '@/test/fixtures'
@@ -6,9 +6,10 @@ import { mockApi } from '@/test/mockApi'
 import { renderRoute } from '@/test/utils'
 
 /** Cards are rendered through the real /products listing so they get real providers. */
-async function renderCards(products: ReturnType<typeof productSummary>[]) {
+async function renderCards(products: ReturnType<typeof productSummary>[], extra: Record<string, unknown> = {}) {
   mockApi({
     get: {
+      ...extra,
       '/categories/': [],
       '/products/': productPage(products),
       '/products/facets/': {
@@ -43,6 +44,8 @@ describe('ProductCard', () => {
     expect(card).toHaveTextContent('In stock')
     // No PIN chosen: no fast-delivery promise, even though some store offers fast delivery.
     expect(screen.queryByTestId('fast-badge')).not.toBeInTheDocument()
+    expect(screen.getByTestId('pin-prompt')).toHaveTextContent('Enter PIN to check delivery')
+    expect(screen.getByRole('button', { name: 'Add Impact Drill 650W to compare' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Quantity of Impact Drill 650W' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Save Impact Drill 650W to wishlist' })).toBeInTheDocument()
@@ -67,6 +70,27 @@ describe('ProductCard', () => {
     expect(drill).toHaveTextContent('Fast delivery to 411038')
     expect(saw).not.toHaveTextContent('Fast delivery')
     expect(saw).toHaveTextContent('Not available for delivery to 411038')
+  })
+
+  it('with a chosen PIN shows the engine’s estimate on fast items and no PIN prompt', async () => {
+    window.localStorage.setItem('boltrun.delivery-pincode', '411038')
+    await renderCards(
+      [
+        productSummary({ delivery: { postal_code: '411038', deliverable: true, fast: true } }),
+        productSummary({ id: 2, slug: 'saw', name: 'Saw', delivery: { postal_code: '411038', deliverable: true, fast: false } }),
+      ],
+      {
+        '/delivery/check/': {
+          serviceable: true, postal_code: '411038', location_precision: 'pin', fast_delivery_available: true,
+          label: 'Delivery in 18 minutes', fast_unavailable_reason: '', message: '', stores: [],
+        },
+      },
+    )
+    const [drill, saw] = screen.getAllByRole('article')
+    expect(await within(drill!).findByTestId('card-eta')).toHaveTextContent('Delivery in 18 minutes')
+    expect(saw).toHaveTextContent('Standard delivery')
+    expect(within(saw!).queryByTestId('card-eta')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('pin-prompt')).not.toBeInTheDocument()
   })
 
   it('shows the free-delivery rule and bulk price from the server', async () => {

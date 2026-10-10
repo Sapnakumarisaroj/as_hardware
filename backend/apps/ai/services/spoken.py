@@ -181,7 +181,12 @@ TRANSLITERATIONS = {
     "ग्राइंडर": "grinder", "ग्लास": "glass", "डोर": "door", "क्लोजर": "closer",
 }  # fmt: skip
 # Hindi and Hinglish product words from the assistant's vocabulary that name one thing.
-_HINGLISH_PRODUCT_WORDS = {"nal", "paip", "hathoda", "pechkas", "pana", "aari", "pech", "gond", "lakdi", "taar", "pankha", "dastane"}  # fmt: skip
+_HINGLISH_PRODUCT_WORDS = {"nal", "paip", "hathoda", "pechkas", "pana", "aari", "pech", "gond", "lakdi", "taar", "pankha", "dastane",
+                           # the shop's departments (boards, hinges, channels, handles, locks, tools, safety, glass)
+                           "plai", "plaai", "plyboard", "kabja", "kabje", "kabza", "kabze", "kabjey", "kabjon", "daraz", "daraaz",
+                           "handal", "hendal", "hendle", "mutthi", "muthi", "almari", "almaari", "almira", "taala", "tala", "taale",
+                           "chabi", "chaabi", "chitkani", "chatkani", "chitkini", "sitkani", "barma", "pench", "hathauda", "hathodi",
+                           "pechkash", "dastana", "dastaane", "chashma", "chasma", "joota", "joote", "kanch", "kaanch", "fevikol"}  # fmt: skip
 
 
 def _translations() -> dict[str, str]:
@@ -441,7 +446,9 @@ def _translate(words: list[str]) -> list[str]:
     for phrase in _TRANSLATION_PHRASES:
         if f" {phrase} " in text:
             text = text.replace(f" {phrase} ", f" {TRANSLATIONS[phrase]} ")
-    return text.split()
+    words = text.split()
+    # "daraz channel" → "drawer channel channel": a word repeated by its own translation is said once
+    return [word for i, word in enumerate(words) if i == 0 or word != words[i - 1]]
 
 
 def parse_line(segment: str) -> SpokenLine:

@@ -27,6 +27,7 @@ const MENU: { title: string; items: [Section, string, string][] }[] = [
       ['refunds', 'Refunds', '/admin/refunds'],
       ['customers', 'Customers', '/admin/customers'],
       ['support', 'Support', '/admin/support'],
+      ['quotes', 'Quotes', '/admin/quotes'],
     ],
   },
   {

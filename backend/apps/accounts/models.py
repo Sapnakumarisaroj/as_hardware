@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from apps.core.models import SoftDeleteModel, TimeStampedModel
 from apps.core.uploads import ALLOWED_IMAGE_EXTENSIONS, avatar_path
-from apps.core.validators import MaxFileSizeValidator, phone_validator, postal_code_validator
+from apps.core.validators import MaxFileSizeValidator, gstin_validator, phone_validator, postal_code_validator
 
 
 class UserManager(BaseUserManager):
@@ -96,7 +96,17 @@ class User(AbstractBaseUser, PermissionsMixin):
         return (self.full_name or self.email).split(" ")[0]
 
 
+class BuyerType(models.TextChoices):
+    INDIVIDUAL = "individual", "Home / individual"
+    CARPENTER = "carpenter", "Carpenter"
+    CONTRACTOR = "contractor", "Contractor"
+    INTERIOR_DESIGNER = "interior_designer", "Interior designer"
+    BUSINESS = "business", "Business"
+
+
 class CustomerProfile(TimeStampedModel):
+    BuyerType = BuyerType
+
     class Language(models.TextChoices):
         ENGLISH = "en", "English"
         HINDI = "hi", "Hindi"
@@ -113,9 +123,19 @@ class CustomerProfile(TimeStampedModel):
     whatsapp_opt_in = models.BooleanField(default=False)
     # Recommendation personalisation uses browsing/purchase history only when this is on.
     personalization_opt_in = models.BooleanField(default=True)
+    # Professional buying: what the customer says they are. Self-declared; it is shown to staff on quote
+    # requests and the business details go on invoices. Never a price by itself (any customer may ask
+    # for a quote).
+    buyer_type = models.CharField(max_length=20, choices=BuyerType.choices, default=BuyerType.INDIVIDUAL)
+    business_name = models.CharField(max_length=150, blank=True, help_text="Legal or trade name for invoices.")
+    gstin = models.CharField(max_length=15, blank=True, validators=[gstin_validator])
 
     def __str__(self) -> str:
         return f"Profile<{self.user_id}>"
+
+    @property
+    def is_professional(self) -> bool:
+        return self.buyer_type != BuyerType.INDIVIDUAL
 
 
 class Address(SoftDeleteModel):
@@ -155,6 +175,9 @@ class Address(SoftDeleteModel):
     address_type = models.CharField(max_length=10, choices=AddressType.choices, default=AddressType.HOME)
     # "One default per user" is enforced by accounts.services (MySQL has no partial unique indexes).
     is_default = models.BooleanField(default=False)
+    # Business delivery/billing address: the company and GSTIN printed on invoices for orders sent here.
+    business_name = models.CharField(max_length=150, blank=True)
+    gstin = models.CharField(max_length=15, blank=True, validators=[gstin_validator])
 
     class Meta:
         ordering = ["-is_default", "-updated_at"]
@@ -183,4 +206,6 @@ class Address(SoftDeleteModel):
             "latitude": str(self.latitude) if self.latitude is not None else None,
             "longitude": str(self.longitude) if self.longitude is not None else None,
             "address_type": self.address_type,
+            "business_name": self.business_name,
+            "gstin": self.gstin,
         }

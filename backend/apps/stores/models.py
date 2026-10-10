@@ -65,6 +65,7 @@ class Store(SoftDeleteModel):
         "when estimating delivery capacity.",
     )
     is_active = models.BooleanField(default=True)
+    is_demo = models.BooleanField(default=False, db_index=True, editable=False, help_text="Created by the demo seed.")
     accepts_orders = models.BooleanField(default=True, help_text="Temporarily pause new orders without deactivating.")
     cod_enabled = models.BooleanField(default=True, help_text="Allow cash on delivery for orders shipped from here.")
     # Store managers only see inventory/orders of stores they are assigned to.

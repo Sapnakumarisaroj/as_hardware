@@ -45,6 +45,14 @@ class SendResult:
     status: str = "sent"  # sent | queued (provider accepted it; delivery receipts may follow)
 
 
+@dataclass(frozen=True)
+class MediaFile:
+    """A photo or document a customer sent (WhatsApp keeps it; we fetch it only when staff open it)."""
+
+    content: bytes
+    mime_type: str
+
+
 class MessagingProvider:
     name = "none"
     channel = ""
@@ -56,6 +64,16 @@ class MessagingProvider:
 
     def send(self, message: OutgoingMessage) -> SendResult:
         raise MessagingUnavailable(f"No {self.channel or 'messaging'} provider is configured.")
+
+    def send_text(self, to: str, text: str, *, reference: str = "") -> SendResult:
+        """A free-form reply. WhatsApp allows it only within 24 hours of the customer's last message
+        (the caller checks the window); outside it only approved templates may be sent."""
+        raise MessagingUnavailable(f"No {self.channel or 'messaging'} provider is configured.")
+
+    def fetch_media(self, media_id: str, *, max_bytes: int) -> MediaFile | None:
+        """The bytes of an incoming attachment, or None when this provider can't fetch it (mocks).
+        Raises MessagingError when the provider refuses or the file is larger than `max_bytes`."""
+        return None
 
     def status(self) -> dict:
         """What the admin's provider screen shows. Never includes a secret."""

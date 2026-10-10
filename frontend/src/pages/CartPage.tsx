@@ -15,6 +15,7 @@ import { useCartEstimate } from '@/features/delivery/api'
 import { DeliveryEstimate, FreeDeliveryNote, PincodeForm } from '@/features/delivery/components'
 import { usePincode } from '@/features/delivery/location'
 import { CartOfferNotes } from '@/features/offers/components'
+import { RequestQuoteButton } from '@/features/quotes/components'
 import { PriceSummary } from '@/features/orders/components'
 import { useAddToWishlist } from '@/features/wishlist/api'
 import { ApiError, isUnauthorized } from '@/lib/api/errors'
@@ -335,6 +336,10 @@ export function CartPage() {
             }
           />
           <div className="mt-4 hidden lg:block">{checkoutButton('btn-primary w-full py-3 text-base')}</div>
+          {/* B2B: a quotation for these lines and quantities; the cart itself is left alone. */}
+          <div className="mt-2">
+            <RequestQuoteButton />
+          </div>
           <p className="mt-2 text-xs text-ink-600">Coupons, delivery address and payment are chosen at checkout.</p>
         </div>
       </aside>

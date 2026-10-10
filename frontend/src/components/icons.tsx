@@ -231,3 +231,11 @@ export const ChatIcon = (p: IconProps) => (
     <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
   </Svg>
 )
+/** Two columns side by side: product comparison. */
+export const CompareIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="7" height="16" rx="1.5" />
+    <rect x="14" y="4" width="7" height="16" rx="1.5" />
+    <path d="M6.5 8v4M17.5 8v8" />
+  </Svg>
+)

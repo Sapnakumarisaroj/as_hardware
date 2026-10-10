@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 
 import { EmptyState, ErrorState, PageSpinner, SignInPrompt } from '@/components/feedback'
 import { useToast } from '@/components/toast'
@@ -209,7 +209,10 @@ export function CheckoutPage() {
     list[0]?.id ??
     null
 
-  const preview = useCheckoutPreview(addressId, coupon, useCredits)
+  // ?quote=<id>: check out an accepted B2B quotation (quoted prices, no offers or coupon) instead of the cart.
+  const [searchParams] = useSearchParams()
+  const quoteId = Number(searchParams.get('quote')) || null
+  const preview = useCheckoutPreview(addressId, quoteId ? '' : coupon, useCredits, quoteId)
   const placeOrder = usePlaceOrder()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -219,7 +222,7 @@ export function CheckoutPage() {
   if (status === 'anonymous') {
     return (
       <div className="container-page py-10">
-        <SignInPrompt message="Sign in to check out." next="/checkout" />
+        <SignInPrompt message="Sign in to check out." next={quoteId ? `/checkout?quote=${quoteId}` : '/checkout'} />
       </div>
     )
   }
@@ -257,7 +260,7 @@ export function CheckoutPage() {
       </div>
     )
   }
-  if (data.cart.issues.length) return <Navigate to="/cart" replace />
+  if (data.cart.issues.length && !quoteId) return <Navigate to="/cart" replace />
 
   // A method the server says can't be used for this order (e.g. COD above the limit) is never sent.
   const usable = data.payment_methods.filter((option) => option.available !== false)
@@ -295,11 +298,12 @@ export function CheckoutPage() {
       {
         addressId,
         paymentMethod,
-        couponCode: coupon,
+        couponCode: quoteId ? '' : coupon,
         customerNote: note.trim(),
         expectedTotal: data.totals.grand_total,
         idempotencyKey,
         useCredits,
+        quoteId,
       },
       {
         onSuccess: (order) => {
@@ -337,9 +341,9 @@ export function CheckoutPage() {
   return (
     <div className="container-page pb-32 pt-6 lg:pb-8">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Checkout</h1>
-        <Link to="/cart" className="text-sm font-semibold text-amber-700 hover:underline">
-          Back to cart
+        <h1 className="text-2xl font-bold">{quoteId ? 'Checkout · quotation' : 'Checkout'}</h1>
+        <Link to={quoteId ? `/account/quotes/${quoteId}` : '/cart'} className="text-sm font-semibold text-amber-700 hover:underline">
+          {quoteId ? 'Back to quote' : 'Back to cart'}
         </Link>
       </div>
 
@@ -392,25 +396,27 @@ export function CheckoutPage() {
             )}
           </Step>
 
-          <Step n={4} title="Coupon">
-            <CouponBox applied={coupon} preview={data} onApply={applyCoupon} onRemove={() => setCoupon('')} />
-            {coupon && data.coupon_error && (
-              <p role="alert" className="mt-2 text-sm text-danger-600">
-                {data.coupon_error.message}{' '}
-                <button type="button" onClick={() => setCoupon('')} className="font-semibold underline">
-                  Remove coupon
-                </button>
-              </p>
-            )}
-          </Step>
+          {!quoteId && (
+            <Step n={4} title="Coupon">
+              <CouponBox applied={coupon} preview={data} onApply={applyCoupon} onRemove={() => setCoupon('')} />
+              {coupon && data.coupon_error && (
+                <p role="alert" className="mt-2 text-sm text-danger-600">
+                  {data.coupon_error.message}{' '}
+                  <button type="button" onClick={() => setCoupon('')} className="font-semibold underline">
+                    Remove coupon
+                  </button>
+                </p>
+              )}
+            </Step>
+          )}
 
           {data.credits?.enabled && Number(data.credits.available) > 0 && (
-            <Step n={5} title="Credits">
+            <Step n={quoteId ? 4 : 5} title="Credits">
               <CreditsBox credits={data.credits} onChange={setUseCredits} busy={preview.isFetching} />
             </Step>
           )}
 
-          <Step n={data.credits?.enabled && Number(data.credits.available) > 0 ? 6 : 5} title="Payment method">
+          <Step n={(quoteId ? 3 : 4) + (data.credits?.enabled && Number(data.credits.available) > 0 ? 2 : 1)} title="Payment method">
             <fieldset>
               <legend className="sr-only">Choose how to pay</legend>
               <div className="space-y-2">

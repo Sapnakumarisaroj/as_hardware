@@ -1,20 +1,18 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import { ErrorState } from '@/components/feedback'
 import { HeroArt } from '@/components/HeroArt'
 import {
   BoltIcon,
   CalculatorIcon,
   CameraIcon,
-  CashIcon,
   ChevronRightIcon,
   ClipboardIcon,
+  CompareIcon,
   ImageIcon,
   LayersIcon,
   MicIcon,
   PinIcon,
-  PuzzleIcon,
   ReceiptIcon,
   ReturnIcon,
   SparkIcon,
@@ -26,10 +24,11 @@ import { ProductRail, ProductStrip } from '@/features/catalog/components/Product
 import { useNavGroups, type NavGroup } from '@/features/catalog/navGroups'
 import { useRecentlyViewed } from '@/features/catalog/recentlyViewed'
 import type { Collection, ProductSummary } from '@/features/catalog/types'
-import { useServiceability } from '@/features/delivery/api'
+import { useDeliveryPromise, useServiceability } from '@/features/delivery/api'
 import { isValidPincode, usePincode } from '@/features/delivery/location'
 import { LiveOffersStrip } from '@/features/offers/components'
-import { HomeRecommendations } from '@/features/shopping/ProductRecommendations'
+import { useHomeRecommendations } from '@/features/shopping/api'
+import { RecommendationRails } from '@/features/shopping/components'
 import { useWishlist } from '@/features/wishlist/api'
 import { env } from '@/lib/env'
 import { pluralize } from '@/lib/format'
@@ -42,11 +41,34 @@ import { usePageMeta } from '@/lib/usePageMeta'
  * price or delivery time is written into this page.
  */
 
-/** 1. Hero: headline, the two main actions and an honest delivery line. */
-function Hero() {
+/**
+ * What may be said about fast delivery right now. `minutes` is the shop's configured limit (GET
+ * /delivery/promise/) and is null when that can't be loaded: then nothing about fast delivery is
+ * claimed. With a PIN, the delivery engine's answer for it: fast here, standard only, or not served.
+ */
+function useDeliveryClaims() {
+  const promise = useDeliveryPromise()
   const pincode = usePincode()
   const check = useServiceability(pincode)
-  const fastHere = isValidPincode(pincode) && check.data?.serviceable && check.data.fast_delivery_available
+  const minutes = promise.data?.fast_delivery_max_minutes || null
+  const data = isValidPincode(pincode) ? check.data : undefined
+  return {
+    minutes,
+    pincode,
+    check: data,
+    fastHere: Boolean(minutes && data?.serviceable && data.fast_delivery_available),
+    notServed: data?.serviceable === false,
+  }
+}
+
+/** 1. Hero: headline, the two main actions and an honest delivery line. */
+function Hero() {
+  const { minutes, pincode, check, fastHere, notServed } = useDeliveryClaims()
+  const fastLine = fastHere
+    ? `Fast delivery to ${pincode}: ${check?.label}`
+    : minutes && !notServed && !check
+      ? `Fast delivery within ${minutes} mins where eligible`
+      : null
   return (
     <section className="relative overflow-hidden bg-ink-950 text-white">
       <div aria-hidden className="pointer-events-none absolute -right-40 -top-40 size-[34rem] rounded-full bg-amber-500/20 blur-3xl" />
@@ -73,15 +95,24 @@ function Hero() {
               Browse categories
             </a>
           </div>
-          <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-steel-200" aria-label="Delivery">
-            <li className="inline-flex items-center gap-2">
-              <BoltIcon className="size-4 text-amber-400" />
-              {fastHere ? `Fast delivery to ${pincode}: ${check.data?.label}` : 'Fast delivery where eligible'}
-            </li>
-            <li className="inline-flex items-center gap-2">
-              <TruckIcon className="size-4 text-amber-400" />
-              Standard delivery across Bengaluru
-            </li>
+          <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-steel-200" aria-label="Delivery" data-testid="hero-delivery">
+            {fastLine && (
+              <li className="inline-flex items-center gap-2">
+                <BoltIcon className="size-4 shrink-0 text-amber-400" />
+                {fastLine}
+              </li>
+            )}
+            {notServed ? (
+              <li className="inline-flex items-center gap-2">
+                <PinIcon className="size-4 shrink-0 text-amber-400" />
+                {check?.message || `We don’t deliver to ${pincode} yet.`}
+              </li>
+            ) : (
+              <li className="inline-flex items-center gap-2">
+                <TruckIcon className="size-4 shrink-0 text-amber-400" />
+                {check?.serviceable && !fastHere ? `Delivery to ${pincode}: ${check.label}` : 'Standard delivery across Bengaluru'}
+              </li>
+            )}
           </ul>
         </div>
         <div className="animate-rise [animation-delay:120ms]">
@@ -92,21 +123,29 @@ function Hero() {
   )
 }
 
-/** 2. What the platform actually offers (only claims the system backs). */
-const TRUST: [string, string, ReactNode][] = [
-  ['Cash on delivery', 'On eligible orders', <CashIcon key="c" />],
-  ['Fast Bengaluru delivery', 'Where your address allows', <BoltIcon key="b" />],
-  ['Easy returns', 'Request from your orders', <ReturnIcon key="r" />],
-  ['Bulk pricing', 'Lower prices for bigger orders', <LayersIcon key="l" />],
-  ['GST-inclusive prices', 'No surprises at checkout', <ReceiptIcon key="g" />],
-]
+/**
+ * 2. What the platform offers — only claims the system backs right now: fast delivery only with the
+ * configured limit (and not for a PIN we don't serve), bulk pricing only when products have bulk
+ * prices. Cash on delivery isn't listed: it is switched per shop, store and zone and decided at checkout.
+ */
+const LG_COLS: Record<number, string> = { 2: 'lg:grid-cols-2', 3: 'lg:grid-cols-3', 4: 'lg:grid-cols-4' }
 
 function TrustStrip() {
+  const { minutes, notServed } = useDeliveryClaims()
+  // Same query as the bulk-buying rail (shared cache): are there products with bulk prices at all?
+  const bulk = useProducts({ page_size: '8', bulk_pricing: 'true' })
+  type Point = [string, string, ReactNode]
+  const trust: Point[] = []
+  if (minutes && !notServed) trust.push(['Fast delivery', `Within ${minutes} mins where eligible`, <BoltIcon key="b" />])
+  trust.push(['Easy returns', 'Request from your orders', <ReturnIcon key="r" />])
+  if (bulk.data?.results.length) trust.push(['Bulk pricing', 'Lower prices for bigger orders', <LayersIcon key="l" />])
+  trust.push(['GST-inclusive prices', 'No surprises at checkout', <ReceiptIcon key="g" />])
+  const odd = trust.length % 2 === 1
   return (
     <section aria-label="Why shop with us" className="relative z-10 -mt-6 sm:-mt-8">
-      <ul className="card grid grid-cols-2 divide-steel-100 p-2 sm:grid-cols-3 lg:grid-cols-5 lg:divide-x">
-        {TRUST.map(([title, text, icon], i) => (
-          <li key={title} className={`flex items-center gap-2.5 rounded-xl p-2.5 sm:gap-3 sm:p-3 ${i === TRUST.length - 1 ? 'col-span-2 sm:col-span-1' : ''}`}>
+      <ul className={`card grid grid-cols-2 divide-steel-100 p-2 lg:divide-x ${LG_COLS[trust.length] ?? 'lg:grid-cols-4'}`}>
+        {trust.map(([title, text, icon], i) => (
+          <li key={title} className={`flex items-center gap-2.5 rounded-xl p-2.5 sm:gap-3 sm:p-3 ${odd && i === trust.length - 1 ? 'col-span-2 lg:col-span-1' : ''}`}>
             <span className="grid size-9 shrink-0 sm:size-10 place-items-center rounded-xl bg-amber-50 text-amber-700 ring-1 ring-amber-100 [&>svg]:size-5">
               {icon}
             </span>
@@ -150,9 +189,8 @@ function GroupCollage({ group }: { group: NavGroup }) {
 /** 3. Shop by category — the four groups of the shop's ten departments (same as the header). */
 function ShopByGroup() {
   const { groups, categories } = useNavGroups()
-  if (categories.isError) {
-    return <ErrorState error={categories.error} onRetry={() => categories.refetch()} title="Couldn’t load categories" />
-  }
+  // Without the category tree (API down) the groups still list the shop's departments from the
+  // table, linking to the real category pages, so the section stays useful instead of an error box.
   if (categories.isPending) {
     return (
       <ul aria-label="Loading categories" className="grid grid-cols-1 gap-4 py-8 sm:grid-cols-2 lg:grid-cols-4">
@@ -221,18 +259,17 @@ function ShopByGroup() {
 
 /** 4. Fast delivery — only for a PIN the engine can deliver fast to right now. */
 function FastDeliveryRail() {
-  const pincode = usePincode()
-  const check = useServiceability(pincode)
-  const fast = isValidPincode(pincode) && check.data?.fast_delivery_available
+  const { pincode, check, fastHere } = useDeliveryClaims()
   return (
     <ProductRail
       title="Fast delivery to you"
       eyebrow="Arriving soon"
-      subtitle={fast ? `${check.data?.label} to ${pincode} · from stores near you` : undefined}
+      subtitle={fastHere ? `${check?.label} to ${pincode} · from stores near you` : undefined}
       icon={<BoltIcon className="size-5 text-amber-400" />}
       params={{ fast_delivery: 'true', ordering: 'popular' }}
       viewAllHref="/products?fast_delivery=true"
-      enabled={Boolean(fast)}
+      enabled={fastHere}
+      hideOnError
       tone="dark"
     />
   )
@@ -244,65 +281,72 @@ const RULE_LINKS: Partial<Record<Collection['rule'], string>> = {
   bulk_pricing: '/products?bulk_pricing=true',
 }
 
-/** 5. The shop's curated lists (deals of the week, best sellers, new launches, essentials…), in its order. */
-function CollectionSections({ collections }: { collections: Collection[] }) {
-  return (
-    <>
-      {collections
-        .filter((collection) => collection.rule !== 'bulk_pricing')
-        .map((collection) => (
-          <ProductStrip
-            key={collection.id}
-            title={collection.name}
-            eyebrow="Curated"
-            subtitle={collection.description || undefined}
-            products={collection.products}
-            viewAllHref={RULE_LINKS[collection.rule]}
-          />
-        ))}
-    </>
-  )
-}
+/** At most this many general product rows (curated lists and their live fallbacks) on the page. */
+export const HOME_MAIN_RAILS = 3
 
-/** Lists the shop hasn't curated still appear from live data (sold units, newest). */
-function FallbackRails({ collections }: { collections: Collection[] }) {
+/**
+ * 5. The general product rows, in the shop's order: its curated lists first (deals of the week,
+ * best sellers, new launches…), then live lists it hasn't curated (best sellers, new arrivals) and
+ * finally a grid of popular hardware. Capped at three so the page doesn't become a stack of rows;
+ * the page spreads them out between the other sections.
+ */
+function mainRails(collections: Collection[]): ReactNode[] {
   const rules = new Set(collections.map((c) => c.rule))
-  return (
-    <>
-      {!rules.has('best_sellers') && (
-        <ProductRail
-          title="Best sellers"
-          eyebrow="Most bought"
-          params={{ bestseller: 'true', ordering: 'popular' }}
-          viewAllHref="/products?ordering=popular"
-        />
-      )}
-      {!rules.has('new_launches') && (
-        <ProductRail title="New arrivals" eyebrow="Just in" params={{ ordering: 'newest' }} viewAllHref="/products?ordering=newest" />
-      )}
-    </>
-  )
-}
-
-/** 6. Popular hardware — a grid, so the page doesn't become one long row of rows. */
-function PopularHardware() {
-  return (
+  const curated = collections
+    .filter((c) => c.rule !== 'bulk_pricing' && c.products.length > 0)
+    .map((collection) => (
+      <ProductStrip
+        key={`collection-${collection.id}`}
+        title={collection.name}
+        eyebrow="Curated"
+        subtitle={collection.description || undefined}
+        products={collection.products}
+        viewAllHref={RULE_LINKS[collection.rule]}
+      />
+    ))
+  const live = [
+    !rules.has('best_sellers') && (
+      <ProductRail
+        key="best-sellers"
+        title="Best sellers"
+        eyebrow="Most bought"
+        params={{ bestseller: 'true', ordering: 'popular' }}
+        viewAllHref="/products?ordering=popular"
+        hideOnError
+      />
+    ),
+    !rules.has('new_launches') && (
+      <ProductRail
+        key="new-arrivals"
+        title="New arrivals"
+        eyebrow="Just in"
+        params={{ ordering: 'newest' }}
+        viewAllHref="/products?ordering=newest"
+        hideOnError
+      />
+    ),
     <ProductRail
+      key="popular"
       title="Popular hardware"
       eyebrow="Customers’ picks"
       params={{ ordering: 'popular', in_stock: 'true' }}
       viewAllHref="/products?ordering=popular"
       layout="grid"
-    />
-  )
+      hideOnError
+    />,
+  ].filter(Boolean) as ReactNode[]
+  return [...curated, ...live].slice(0, HOME_MAIN_RAILS)
 }
 
-/** 7. Delivery promise, worded the way the engine works: fast where eligible, standard everywhere else. */
+/** 6. Delivery, worded the way the engine works: fast where eligible (the configured limit), standard otherwise. */
 function DeliveryBanner() {
+  const { minutes, pincode, check, notServed } = useDeliveryClaims()
   const points: [ReactNode, string, string][] = [
-    [<PinIcon key="p" />, 'Bengaluru', 'Every Bengaluru PIN code'],
-    [<BoltIcon key="b" />, 'Fast delivery where eligible', 'Worked out for your address, stock and riders'],
-    [<TruckIcon key="t" />, 'Standard delivery across Bengaluru', 'A delivery window when fast isn’t possible'],
+    [<PinIcon key="p" />, 'Bengaluru', check?.serviceable ? `We deliver to ${pincode}` : 'Check your PIN code in the header'],
+    ...(minutes && !notServed
+      ? [[<BoltIcon key="b" />, `Fast delivery within ${minutes} mins`, 'Where your address, stock and riders allow'] as [ReactNode, string, string]]
+      : []),
+    [<TruckIcon key="t" />, 'Standard delivery', minutes && !notServed ? 'A delivery window when fast isn’t possible' : 'A delivery window for your address'],
   ]
   return (
     <section aria-labelledby="delivery-heading" className="my-8 animate-rise overflow-hidden rounded-3xl bg-ink-900 text-white">
@@ -311,14 +355,15 @@ function DeliveryBanner() {
         <div className="relative">
           <p className="eyebrow text-amber-400">Delivery</p>
           <h2 id="delivery-heading" className="mt-1 text-2xl font-bold sm:text-3xl">
-            Fast hardware delivery across Bengaluru
+            {minutes && !notServed ? 'Fast hardware delivery across Bengaluru' : 'Hardware delivery across Bengaluru'}
           </h2>
           <p className="mt-2 text-sm text-steel-200">
-            Choose your PIN code in the header to see the delivery time for your address. The time for your order is confirmed in the
-            cart.
+            {notServed
+              ? `${check?.message || `We don’t deliver to ${pincode} yet.`} Try another PIN code in the header.`
+              : 'Choose your PIN code in the header to see the delivery time for your address. The time for your order is confirmed in the cart.'}
           </p>
         </div>
-        <ul className="relative grid gap-3 sm:grid-cols-3">
+        <ul className={`relative grid gap-3 ${points.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
           {points.map(([icon, title, text]) => (
             <li key={title} className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
               <span className="grid size-9 place-items-center rounded-lg bg-amber-500 text-ink-950 [&>svg]:size-5">{icon}</span>
@@ -332,9 +377,9 @@ function DeliveryBanner() {
   )
 }
 
-/** 8. Bulk buying — the shop's bulk list if it has one, else every product with bulk prices. */
+/** 7. Bulk buying — the shop's bulk list if it has one, else every product with bulk prices. */
 function BulkBuyingRail({ collections }: { collections: Collection[] }) {
-  const own = collections.filter((c) => c.rule === 'bulk_pricing')
+  const own = collections.filter((c) => c.rule === 'bulk_pricing' && c.products.length > 0).slice(0, 1)
   if (own.length) {
     return (
       <>
@@ -359,19 +404,20 @@ function BulkBuyingRail({ collections }: { collections: Collection[] }) {
       subtitle="Lower prices per unit when you buy more"
       params={{ bulk_pricing: 'true' }}
       viewAllHref="/products?bulk_pricing=true"
+      hideOnError
       tone="tinted"
     />
   )
 }
 
-/** 9. The AI tools, kept out of the navigation. */
+/** 8. The shopping tools, kept out of the navigation. */
 const AI_TOOLS: [string, string, string, ReactNode][] = [
   ['AI assistant', 'Describe the job, get the right parts', '/ai-assistant', <SparkIcon key="a" />],
   ['Image search', 'Snap a part to find it', '/image-search', <CameraIcon key="i" />],
-  ['Voice search', 'Say what you need in any language mix', '/voice', <MicIcon key="v" />],
+  ['Voice search', 'Say what you need', '/voice', <MicIcon key="v" />],
   ['Project builder', 'A priced kit for your job', '/projects', <ClipboardIcon key="p" />],
-  ['Quantity AI', 'How many screws, plugs and more', '/quantity', <CalculatorIcon key="q" />],
-  ['Compatibility checker', 'Will these parts work together?', '/ai-assistant', <PuzzleIcon key="c" />],
+  ['Quantity calculator', 'How many screws, plugs and more', '/quantity', <CalculatorIcon key="q" />],
+  ['Compare products', 'Specs and prices side by side', '/compare', <CompareIcon key="c" />],
 ]
 
 function AiSection() {
@@ -383,7 +429,7 @@ function AiSection() {
           Smarter way to buy hardware
         </h2>
       </div>
-      <ul className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-6">
         {AI_TOOLS.map(([title, text, to, icon], index) => (
           <li key={title} className="flex animate-rise" style={{ animationDelay: `${index * 50}ms` }}>
             <Link to={to} className="card card-hover group flex w-full flex-col p-4 sm:p-5">
@@ -400,7 +446,7 @@ function AiSection() {
   )
 }
 
-/** 10. Recently viewed — slugs from this browser, products always loaded fresh. */
+/** Recently viewed — slugs from this browser, products always loaded fresh. */
 function useRecentProducts() {
   const slugs = useRecentlyViewed()
   const query = useProducts({ slugs: slugs.join(','), page_size: String(slugs.length || 1) }, { enabled: slugs.length > 0 })
@@ -408,7 +454,7 @@ function useRecentProducts() {
   return slugs.map((slug) => bySlug.get(slug)).filter((p): p is ProductSummary => Boolean(p))
 }
 
-/** 11. Recommended — more from the category of a saved item, or of the last product viewed. */
+/** More from the category of a saved item, or of the last product viewed (when the server has no picks). */
 function RecommendedForYou({ recent }: { recent: ProductSummary[] }) {
   const { status } = useAuth()
   const wishlist = useWishlist()
@@ -425,15 +471,45 @@ function RecommendedForYou({ recent }: { recent: ProductSummary[] }) {
       subtitle={basis ? `Because you ${fromSaved ? 'saved' : 'looked at'} items in ${basis.name}` : undefined}
       params={{ category: basis?.slug ?? '', exclude, in_stock: 'true' }}
       enabled={Boolean(basis)}
+      hideOnError
     />
   )
 }
 
+/** The server's personal rows (buy again, from your orders, your project). Of its general rows only
+ * "best value" is used: "popular now" would repeat the page's own best sellers / popular hardware. */
+const PERSONAL_GROUPS = ['buy_again', 'recommended_for_you', 'complete_your_project']
+const GENERAL_GROUPS = ['best_value']
+
+/**
+ * 9. For you: recently viewed, then at most two of the server's personal rows (buy again first) or,
+ * without any, its "best value" row and a "recommended" row from the last viewed or saved category.
+ */
+function ForYou() {
+  const recent = useRecentProducts()
+  const recs = useHomeRecommendations()
+  const has = (name: string) => (recs.data?.groups[name] ?? []).length > 0
+  const personal = PERSONAL_GROUPS.filter(has).slice(0, 2)
+  const order = personal.length ? personal : GENERAL_GROUPS.filter(has)
+  return (
+    <>
+      <ProductStrip title="Recently viewed" eyebrow="Pick up where you left off" products={recent} />
+      {recs.data && order.length > 0 && <RecommendationRails data={recs.data} order={order} />}
+      {!personal.length && !recs.isPending && <RecommendedForYou recent={recent} />}
+    </>
+  )
+}
+
+/*
+ * Page order: a calm rhythm instead of rows stacked on rows. Bands (trust, delivery, bulk, tools)
+ * separate the product rows; every section hides itself when it has nothing to show or its data
+ * can't be loaded, so an empty shop or a backend outage leaves no bare headings.
+ */
 export function HomePage() {
   usePageMeta(null, `${env.appName}: plywood, Fevicol, hinges, kitchen and wardrobe fittings, door locks, tools and safety gear delivered across Bengaluru.`)
   const collections = useCollections()
   const lists = collections.data ?? []
-  const recent = useRecentProducts()
+  const [first, second, third] = collections.isPending ? [] : mainRails(lists)
   return (
     <>
       <Hero />
@@ -441,16 +517,14 @@ export function HomePage() {
         <TrustStrip />
         <ShopByGroup />
         <FastDeliveryRail />
-        {collections.isSuccess && <CollectionSections collections={lists} />}
-        {!collections.isPending && <FallbackRails collections={lists} />}
-        <PopularHardware />
-        <DeliveryBanner />
-        {!collections.isPending && <BulkBuyingRail collections={lists} />}
+        {first}
         <LiveOffersStrip />
+        <ForYou />
+        <DeliveryBanner />
+        {second}
+        {!collections.isPending && <BulkBuyingRail collections={lists} />}
+        {third}
         <AiSection />
-        <HomeRecommendations />
-        <ProductStrip title="Recently viewed" eyebrow="Pick up where you left off" products={recent} />
-        <RecommendedForYou recent={recent} />
       </div>
     </>
   )

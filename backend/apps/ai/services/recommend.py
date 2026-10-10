@@ -24,6 +24,7 @@ from urllib.parse import quote
 from integrations.llm import ChatOptions, LLMError, LLMUnavailable, get_llm_provider
 
 from ..quantity import formulas
+from . import grounding
 from . import vocabulary as V
 from .schemas import AssistantReply, Intent, ProductMatch, Understanding
 
@@ -83,7 +84,8 @@ def _num(value: float) -> str:
 
 
 def _mentions_money(text: str) -> bool:
-    return bool(re.search(r"₹|\brs\.?\s*\d|\brupees?\b|\binr\b|\bprice", text, re.IGNORECASE))
+    """₹, "Rs.", "INR", "500/-", "rupaye", "कीमत", "price"… (Devanagari digits included): see `grounding`."""
+    return grounding.mentions_money(text) or bool(re.search(r"\bprice", text, re.IGNORECASE))
 
 
 class RecommendationService:
@@ -243,11 +245,15 @@ class RecommendationService:
         lowered = message.lower()
         if not any(name.lower() in lowered for name in names):
             return None  # it did not talk about what we found
-        allowed_numbers = set(re.findall(r"\d+(?:\.\d+)?", " ".join(names)))
-        if any(n not in allowed_numbers for n in re.findall(r"\d+(?:\.\d+)?", message)):
+        if grounding.ungrounded_numbers(message, " ".join(names)):
             return None  # a number that is not part of a product name: an invented spec, id or price
         return message
 
     def _explanation(self, reply, understood: Understanding) -> str | None:
+        """General knowledge in the model's words: no money, and no number the customer didn't say (a model's
+        number would read as a specification or a price the shop gave)."""
         prompt = {"language": understood.language, "question": understood.text}
-        return self._ask_model(reply, _LLM_EXPLAIN, prompt, max_tokens=260)
+        message = self._ask_model(reply, _LLM_EXPLAIN, prompt, max_tokens=260)
+        if message is None or not grounding.grounded(message, understood.text):
+            return None
+        return message

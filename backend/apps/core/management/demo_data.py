@@ -135,6 +135,8 @@ PRODUCTS = [
             ("Opening Angle", "105", "°"),
             ("Finish", "Nickel", ""),
             ("Mechanism", "Soft close", ""),
+            # demo spec for the compatibility checker (hinge ↔ board / shutter thickness)
+            ("Door Thickness", "15 - 22", "mm"),
         ],
     ),
     (
@@ -146,7 +148,12 @@ PRODUCTS = [
         "18",
         ["hinge", "butt hinge", "door hinge", "kabja"],
         [("HNG-BUTT-4", "", "260", "199", 260)],
-        [("Length", "100", "mm"), ("Material", "SS 304", ""), ("Pack Size", "2", "pcs")],
+        [
+            ("Length", "100", "mm"),
+            ("Material", "SS 304", ""),
+            ("Pack Size", "2", "pcs"),
+            ("Door Thickness", "30 - 45", "mm"),
+        ],
     ),
     (
         "hinges-channels-handles",
@@ -172,7 +179,14 @@ PRODUCTS = [
         "18",
         ["handle", "cabinet handle", "drawer handle", "kitchen handle"],
         [("HDL-AL-160", "160 mm", "240", "189", 120), ("HDL-AL-224", "224 mm", "300", "239", 160)],
-        [("Material", "Aluminium", ""), ("Finish", "Matt black", "")],
+        [
+            ("Material", "Aluminium", ""),
+            ("Finish", "Matt black", ""),
+            # demo specs for the compatibility checker (handle ↔ handle / screws / shutter thickness)
+            ("Centre to Centre", "160, 224", "mm"),
+            ("Fixing Screw", "M4", ""),
+            ("Screw Length", "25", "mm"),
+        ],
     ),
     # --- Kitchen Systems & Accessories ---------------------------------------------------------------
     (
@@ -266,7 +280,7 @@ PRODUCTS = [
         "18",
         ["door lock", "mortise lock", "lock", "taala", "handle"],
         [("LCK-MOR-SS", "Satin steel", "2450", "1890", 2200), ("LCK-MOR-AB", "Antique brass", "2650", "2090", 2200)],
-        [("Keys", "3", ""), ("Lock Body", "Mortise", ""), ("Door Thickness", "35 - 45", "mm")],
+        [("Keys", "3", ""), ("Lock Body", "Mortise", ""), ("Door Thickness", "35 - 45", "mm"), ("Backset", "60", "mm")],
     ),
     (
         "door-locks-hardware",
@@ -277,7 +291,7 @@ PRODUCTS = [
         "18",
         ["knob lock", "door lock", "lock", "bedroom lock"],
         [("LCK-KNOB-BR", "", "990", "749", 700)],
-        [("Function", "Privacy (bedroom)", ""), ("Finish", "Stainless steel", "")],
+        [("Function", "Privacy (bedroom)", ""), ("Finish", "Stainless steel", ""), ("Door Thickness", "32 - 45", "mm")],
     ),
     (
         "door-locks-hardware",
@@ -584,7 +598,7 @@ PRODUCTS = [
         "18",
         ["floor spring", "glass door", "door closer"],
         [("FSP-100", "Up to 100 kg door", "6800", "5490", 7500)],
-        [("Door Weight", "Up to 100", "kg"), ("Hold Open", "90", "°")],
+        [("Door Weight", "Up to 100", "kg"), ("Hold Open", "90", "°"), ("Glass Thickness", "8 - 12", "mm")],
     ),
 ]
 

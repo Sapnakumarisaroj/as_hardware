@@ -8,7 +8,8 @@ import { useReplaceCartItem } from '@/features/compatibility/api'
 import { ApiError } from '@/lib/api/errors'
 import { formatPrice } from '@/lib/format'
 
-import { useAddBundleToCart, useSetCartQuantity } from './api'
+import { useAddBundleToCart, useAddLines, useReplaceWithQuantity, useSetCartQuantity } from './api'
+import { visibleSections } from './sections'
 import type { BundleSummary, Recommendations, SmartCart, SmartSuggestion } from './types'
 
 /** Recommendation groups as rails of real product cards, each with its reason. Empty groups are not shown. */
@@ -65,6 +66,7 @@ const ACTION_LABEL: Record<string, string> = {
   remove: 'Remove',
   set_quantity: 'Update quantity',
   apply_bundle: 'Add the missing items',
+  add_lines: 'Add the missing items',
 }
 
 /**
@@ -73,8 +75,9 @@ const ACTION_LABEL: Record<string, string> = {
  */
 export function SmartCartPanel({ data }: { data: SmartCart }) {
   const [expanded, setExpanded] = useState(false)
-  if (data.empty || !data.sections.length) return null
-  const shown = expanded ? data.sections : data.sections.slice(0, 3)
+  const sections = visibleSections(data)
+  if (data.empty || !sections.length) return null
+  const shown = expanded ? sections : sections.slice(0, 3)
   return (
     <section aria-label="Smart cart" className="mt-4 space-y-3">
       {shown.map((section) => (
@@ -87,9 +90,9 @@ export function SmartCartPanel({ data }: { data: SmartCart }) {
           </ul>
         </div>
       ))}
-      {data.sections.length > 3 && (
+      {sections.length > 3 && (
         <button type="button" className="text-sm font-semibold text-amber-700 underline" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? 'Show fewer suggestions' : `Show ${data.sections.length - 3} more`}
+          {expanded ? 'Show fewer suggestions' : `Show ${sections.length - 3} more`}
         </button>
       )}
     </section>
@@ -100,11 +103,13 @@ function SuggestionRow({ item }: { item: SmartSuggestion }) {
   const toast = useToast()
   const add = useAddToCart()
   const replace = useReplaceCartItem()
+  const replaceWith = useReplaceWithQuantity()
+  const addLines = useAddLines()
   const remove = useRemoveCartItem()
   const setQuantity = useSetCartQuantity()
   const addBundle = useAddBundleToCart()
   const [confirming, setConfirming] = useState(false)
-  const busy = add.isPending || replace.isPending || remove.isPending || setQuantity.isPending || addBundle.isPending
+  const busy = add.isPending || replace.isPending || replaceWith.isPending || remove.isPending || setQuantity.isPending || addBundle.isPending || addLines.isPending
   const fail = (error: unknown) => toast.show(error instanceof ApiError ? error.message : 'Could not do that. Please try again.', { tone: 'error' })
   const needsConfirm = item.action === 'replace' || item.action === 'remove'
 
@@ -116,12 +121,20 @@ function SuggestionRow({ item }: { item: SmartSuggestion }) {
     setConfirming(false)
     if (item.action === 'add' && item.variant_id) {
       add.mutate({ variantId: item.variant_id, quantity: item.quantity ?? 1 }, { onSuccess: () => toast.show(`Added ${item.product?.name ?? 'it'} to your cart.`), onError: fail })
+    } else if (item.action === 'replace' && item.cart_item_id && item.variant_id && item.quantity) {
+      replaceWith.mutate(
+        { itemId: item.cart_item_id, variantId: item.variant_id, quantity: item.quantity },
+        { onSuccess: () => toast.show(item.type === 'pack_size' ? 'Changed to the cheaper pack.' : `Replaced with ${item.product?.name ?? 'the suggestion'}.`), onError: fail },
+      )
     } else if (item.action === 'replace' && item.cart_item_id && item.variant_id) {
       replace.mutate({ itemId: item.cart_item_id, variantId: item.variant_id }, { onSuccess: () => toast.show(`Replaced with ${item.product?.name ?? 'the suggestion'}.`), onError: fail })
     } else if (item.action === 'remove' && item.cart_item_id) {
       remove.mutate(item.cart_item_id, { onSuccess: () => toast.show('Removed from your cart.'), onError: fail })
     } else if (item.action === 'set_quantity' && item.cart_item_id && item.quantity) {
       setQuantity.mutate({ itemId: item.cart_item_id, quantity: item.quantity }, { onSuccess: () => toast.show('Quantity updated.'), onError: fail })
+    } else if (item.action === 'add_lines' && item.lines?.length) {
+      const lines = item.lines
+      addLines.mutate(lines, { onSuccess: () => toast.show(`Added ${lines.length} item${lines.length === 1 ? '' : 's'} to your cart.`), onError: fail })
     } else if (item.action === 'apply_bundle' && item.bundle) {
       addBundle.mutate({ slug: item.bundle.slug, onlyMissing: true }, { onSuccess: (r) => toast.show(`Added ${r.added_lines} item${r.added_lines === 1 ? '' : 's'} from ${item.bundle!.name}.`), onError: fail })
     }
@@ -131,6 +144,16 @@ function SuggestionRow({ item }: { item: SmartSuggestion }) {
   return (
     <li className="text-sm">
       <p>{item.message}</p>
+      {item.reason && item.reason !== item.message && <p className="text-xs text-ink-600">Why: {item.reason}</p>}
+      {item.lines && item.lines.length > 0 && (
+        <ul className="mt-1 space-y-0.5 text-xs" aria-label={`Missing from ${item.kit?.name ?? 'the set'}`}>
+          {item.lines.map((line) => (
+            <li key={line.variant_id}>
+              {line.quantity} × {line.product ? <Link to={`/p/${line.product.slug}`} className="underline">{line.name}</Link> : line.name} · {formatPrice(line.line_total)}
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="mt-1 flex flex-wrap items-center gap-2">
         {item.product && (
           <Link to={`/p/${item.product.slug}`} className="text-xs font-semibold text-amber-700 underline">
@@ -146,7 +169,9 @@ function SuggestionRow({ item }: { item: SmartSuggestion }) {
         )}
         {confirming && (
           <span className="flex items-center gap-2" role="group" aria-label="Confirm">
-            <span className="text-xs">{item.action === 'replace' ? `Replace with ${item.product?.name ?? 'the suggestion'}?` : 'Remove this line?'}</span>
+            <span className="text-xs">
+              {item.action === 'replace' ? (item.type === 'pack_size' ? 'Change to this pack size?' : `Replace with ${item.product?.name ?? 'the suggestion'}?`) : 'Remove this line?'}
+            </span>
             <button type="button" className="btn-primary px-2.5 py-1 text-xs" disabled={busy} onClick={run}>
               Yes, {item.action === 'replace' ? 'replace' : 'remove'}
             </button>

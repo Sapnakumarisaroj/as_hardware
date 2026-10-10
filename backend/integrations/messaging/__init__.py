@@ -3,6 +3,7 @@ from functools import lru_cache
 from django.conf import settings
 
 from .base import (
+    MediaFile,
     MessagingError,
     MessagingProvider,
     MessagingUnavailable,
@@ -55,6 +56,7 @@ def reset_messaging_providers() -> None:
 
 __all__ = [
     "OUTBOX",
+    "MediaFile",
     "MessagingError",
     "MessagingProvider",
     "MessagingUnavailable",

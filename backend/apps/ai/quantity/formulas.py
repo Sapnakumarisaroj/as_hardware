@@ -342,3 +342,195 @@ def fasteners(holes: int) -> Estimate:
     return Estimate(
         count, "pcs", [_step("Holes", "छेद", "Chhed", f"{holes} + {fmt(FASTENER_SPARE_SHARE * 100)} % spare = {count}")]
     )
+
+
+# --- Furniture, kitchens, doors (the shop's hinge / channel / handle / board departments) ------------------
+# Rules of thumb a carpenter uses for a shopping list; the plan labels every amount "estimate".
+
+# Hinges per door by door (shutter) height: up to 900 mm → 2, up to 1500 → 3, up to 2100 → 4, taller → 5.
+HINGES_BY_HEIGHT_MM = ((900, 2), (1500, 3), (2100, 4))
+HINGES_ABOVE = 5
+SCREWS_PER_CONCEALED_HINGE = 4  # 2 in the cup, 2 in the mounting plate
+SCREWS_PER_BUTT_HINGE = 6  # 3 per leaf
+SCREWS_PER_CHANNEL_PAIR = 12  # about 6 per channel: 3 into the cabinet side, 3 into the drawer
+CARCASS_SCREWS_PER_CABINET = 16  # 4 per joint, 4 joints (sides to top and bottom)
+SHEET_SQM = 2.97  # one 8 × 4 ft sheet (2440 × 1220 mm)
+BOARD_WASTAGE_PCT = 15  # cutting, grain direction and offcuts
+EDGE_BAND_EXTRA = 0.10
+# A standard kitchen base cabinet (width × height × depth, mm) when the customer doesn't give sizes.
+KITCHEN_CABINET_MM = (600, 720, 560)
+WARDROBE_RAIL_FT = 4  # one hanging rail per 4 ft of width or part of it
+
+
+def hinges_per_door(height_mm: float) -> int:
+    for limit, count in HINGES_BY_HEIGHT_MM:
+        if height_mm <= limit:
+            return count
+    return HINGES_ABOVE
+
+
+def hinges(doors: int, height_mm: float) -> Estimate:
+    each = hinges_per_door(height_mm)
+    total = doors * each
+    return Estimate(total, "pcs", [
+        _step("Hinges per door", "हर दरवाज़े पर कब्ज़े", "Har darwaze par kabze",
+              f"{fmt(height_mm)} mm high → {each} (2 up to 900 mm, 3 up to 1500, 4 up to 2100, 5 above)"),
+        _step("Hinges", "कब्ज़े", "Kabze", f"{doors} × {each} = {total}"),
+    ])  # fmt: skip
+
+
+def hinge_screws(hinge_count: int, per_hinge: int = SCREWS_PER_CONCEALED_HINGE) -> Estimate:
+    total = hinge_count * per_hinge
+    return Estimate(
+        total,
+        "pcs",
+        [_step("Hinge screws", "कब्ज़ों के स्क्रू", "Kabze ke screw", f"{hinge_count} hinges × {per_hinge} = {total}")],
+    )
+
+
+def channels(drawers: int) -> Estimate:
+    total = drawers * 2
+    return Estimate(
+        total,
+        "pcs",
+        [
+            _step(
+                "Drawer channels",
+                "दराज़ चैनल",
+                "Daraz channel",
+                f"{drawers} drawers × 1 pair (2 channels) = {total} channels",
+            )
+        ],
+    )
+
+
+def channel_screws(drawers: int) -> Estimate:
+    total = drawers * SCREWS_PER_CHANNEL_PAIR
+    return Estimate(
+        total,
+        "pcs",
+        [
+            _step(
+                "Channel screws",
+                "चैनल के स्क्रू",
+                "Channel ke screw",
+                f"{drawers} pairs × {SCREWS_PER_CHANNEL_PAIR} = {total}",
+            )
+        ],
+    )
+
+
+def handles(shutters: int, drawers: int = 0) -> Estimate:
+    total = shutters + drawers
+    return Estimate(
+        total, "pcs", [_step("Handles", "हैंडल", "Handle", f"{shutters} shutters + {drawers} drawers = {total}")]
+    )
+
+
+def panel_area(parts: list[tuple[str, int, float, float]]) -> Estimate:
+    """Board area of (label, count, width mm, height mm) pieces, in square metres."""
+    steps, total = [], 0.0
+    for label, count, width, height in parts:
+        if count <= 0:
+            continue
+        area = count * width * height / 1_000_000
+        total += area
+        steps.append(_step(label, label, label, f"{count} × {fmt(width)} × {fmt(height)} mm = {fmt(area, 2)} sq m"))
+    steps.append(_step("Board area", "बोर्ड का क्षेत्रफल", "Board ka area", f"{fmt(total, 2)} sq m"))
+    return Estimate(total, "sqm", steps)
+
+
+def board_sheets(area_sqm: float, wastage_pct: float = BOARD_WASTAGE_PCT) -> Estimate:
+    with_waste = area_sqm * (1 + wastage_pct / 100)
+    sheets = max(1, math.ceil(round(with_waste / SHEET_SQM, 6)))
+    return Estimate(sheets, "pcs", [
+        _step("With wastage", "बर्बादी सहित", "Wastage ke saath", f"{fmt(area_sqm, 2)} sq m + {fmt(wastage_pct)} % = {fmt(with_waste, 2)} sq m"),
+        _step("Sheets (8 × 4 ft)", "शीट (8 × 4 फ़ुट)", "Sheet (8 × 4 ft)", f"{fmt(with_waste, 2)} ÷ {SHEET_SQM} sq m per sheet = {sheets}"),
+    ])  # fmt: skip
+
+
+def edge_band(parts: list[tuple[str, int, float, float]], *, all_sides: bool = True) -> Estimate:
+    """Edge band (metres) for (label, count, width mm, height mm) pieces: all four edges, or the front edge only
+    (`all_sides=False`: carcass panels, `width` is the visible edge)."""
+    metres = 0.0
+    for _label, count, width, height in parts:
+        metres += count * (2 * (width + height) if all_sides else width) / 1000
+    total = metres * (1 + EDGE_BAND_EXTRA)
+    return Estimate(
+        total,
+        "m",
+        [
+            _step(
+                "Edge band",
+                "एज बैंड",
+                "Edge band",
+                f"{fmt(metres)} m of edges + {fmt(EDGE_BAND_EXTRA * 100)} % = {fmt(total)} m",
+            )
+        ],
+    )
+
+
+def carcass_screws(cabinets: int) -> Estimate:
+    total = cabinets * CARCASS_SCREWS_PER_CABINET
+    return Estimate(
+        total,
+        "pcs",
+        [
+            _step(
+                "Assembly screws",
+                "जोड़ने के स्क्रू",
+                "Jodne ke screw",
+                f"{cabinets} cabinets × {CARCASS_SCREWS_PER_CABINET} = {total}",
+            )
+        ],
+    )
+
+
+def wardrobe_rails(width_mm: float) -> Estimate:
+    width_ft = width_mm / 304.8
+    rails = max(1, math.ceil(round(width_ft / WARDROBE_RAIL_FT, 6)))
+    return Estimate(
+        rails,
+        "pcs",
+        [
+            _step(
+                "Hanging rails",
+                "हैंगिंग रॉड",
+                "Hanging rod",
+                f"{fmt(width_ft)} ft ÷ {WARDROBE_RAIL_FT} ft per rail = {rails}",
+            )
+        ],
+    )
+
+
+GLASS_CLAMPS_PER_PANEL = 4  # a fixed glass panel: 2 clamps at the floor, 2 at the wall or ceiling
+GLASS_PIECES_PER_SEALANT_TUBE = 2  # one 280 ml tube seals the edges of about two door-size panels
+
+
+def glass_clamps(panels: int) -> Estimate:
+    total = panels * GLASS_CLAMPS_PER_PANEL
+    return Estimate(
+        total,
+        "pcs",
+        [
+            _step(
+                "Glass clamps", "ग्लास क्लैंप", "Glass clamp", f"{panels} fixed panels × {GLASS_CLAMPS_PER_PANEL} = {total}"
+            )
+        ],
+    )
+
+
+def sealant_tubes(pieces: int) -> Estimate:
+    tubes = max(1, math.ceil(pieces / GLASS_PIECES_PER_SEALANT_TUBE))
+    return Estimate(
+        tubes,
+        "pcs",
+        [
+            _step(
+                "Sealant",
+                "सीलेंट",
+                "Sealant",
+                f"{pieces} glass pieces ÷ {GLASS_PIECES_PER_SEALANT_TUBE} per tube = {tubes}",
+            )
+        ],
+    )

@@ -546,7 +546,7 @@ paginated (`page`, `page_size` ≤ 100) and searched on the server; the browser 
 | GET | `/api/admin/customers/`, `…/{id}/` | **admin only** | `?q=` (name, email, phone), `?role=` (default `customer`; `all`), `is_active`, `has_orders`, `ordering=-date_joined\|date_joined\|-total_spend\|-order_count\|-last_order_at`. Rows: contact, `order_count` (not cancelled), `total_spend` (paid orders), `last_order_at`. Detail adds `deactivated_at, cancelled_orders, returns, addresses[]` (area/city/PIN), `managed_stores[]`, `recent_orders[]`. Never contains password hashes or tokens. Changes go through `PATCH /api/admin/users/{id}/` (`is_active`, `role`) |
 | GET, GET/PATCH | `/api/admin/riders/`, `…/{partner_id}/` | staff read (own stores) · admin PATCH | `?q=`, `?status=offline\|available\|busy\|online`, `?store=`, `?is_verified=`, `?is_active=`. Rows: contact, vehicle, `home_store(_name), status, is_verified, is_active, active_assignments, capacity, can_take_jobs, cash_in_hand, delivered, delivered_today, failed, earnings_today, earnings_7_days, earnings_total`. PATCH `{is_verified?, is_active?, max_active_assignments? (1–10), home_store?, vehicle_type?, vehicle_number?}`; switching a rider off with a job in hand → 409 `active_delivery` |
 | GET | `/api/admin/jobs/` | staff (own stores) | Every rider job: `?status=` (a status, or `active`, `completed`, `failed`), `?kind=delivery\|return_pickup`, `?partner=`, `?store=`, `?q=` (order number, rider). Rows: the Phase 10 assignment fields plus `order_number, order_status, shipment_id, store_name, return_number, distance_km` |
-| GET, GET | `/api/admin/support/`, `…/{id}/` | staff | Conversations; managers see those about orders of their stores. `?status=` (a status or `active`), `?q=` (subject, customer name/email/phone, order number), `?mine=true`, `?store=`. Rows: `customer{id, name, email, phone}`, `order_number, store_name, assigned_to(_name), message_count, last_message, waiting_for_reply`; detail adds `messages[{sender_type, sender_name, body, created_at}]` |
+| GET, GET | `/api/admin/support/`, `…/{id}/` | staff | Conversations; managers see those about orders of their stores. `?status=` (a status or `active`), `?q=` (subject, customer name/email/phone, order number), `?mine=true`, `?store=`. Rows: `customer{id, name, email, phone}`, `order_number, store_name, product, assigned_to(_name), message_count, last_message, waiting_for_reply`; detail adds `messages[{sender_type, sender_name, body, attachments, created_at}]` |
 | POST | `/api/admin/support/{id}/reply/` | staff | `{body}` → 201. Posts an agent message, sets `waiting_customer`, assigns the conversation to the sender if nobody has it |
 | PATCH | `/api/admin/support/{id}/` | staff | `{status?, assign_to_me?}` |
 | GET | `/api/admin/search/index/` | **admin only** | Phase 13. `{embedder{kind, key, available, dimensions, model?, loaded?}, search_backend, products, indexed, missing, stale, other_embedder, last_updated, ready}` |
@@ -557,6 +557,22 @@ paginated (`page`, `page_size` ≤ 100) and searched on the server; the browser 
 Also extended for the dashboard: `GET /api/inventory/` takes `?q=` (SKU, product, variant, store) and `?stock=out\|low\|ok`
 and rows carry `store_name`; `GET /api/returns/` takes `?q=` and `?store=` and `?status=open` (requested + approved);
 `GET /api/payments/refunds/` takes `?q=` and `?store=` and rows carry `customer_name`, `store_name`.
+
+### Catalogue import / export
+Spreadsheet upload of the whole catalogue, one row per variant. Columns, rules and examples: [CATALOG_IMPORT.md](CATALOG_IMPORT.md).
+Dashboard screen: `/admin/products/import`. Same service from the shell: `manage.py import_catalog <file> [--commit] [--sheet NAME]`,
+`manage.py export_catalog [--output catalogue.xlsx|.csv] [--template]`.
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| POST | `/api/admin/catalog/import/` | **admin only** | multipart `file` (`.csv` UTF-8 or `.xlsx`, ≤ 5 MB, ≤ 5000 rows), `dry_run` (default **true**), `sheet?`, `allow_demo?` (default false). Every row is validated first; the import is all or nothing in one transaction; a dry run runs it and rolls back. → 200 `{ok, dry_run, committed, filename, counts{rows, products_created, products_updated, variants_created, variants_updated, unchanged, stock_movements, brands_created}, rows[{row, product_sku, variant_sku, action: create\|update\|unchanged}], errors[{row, column, sku, message}]}` (`ok: false` = nothing saved). File problems → 400 `unsupported_file_type`, `file_too_large`, `empty_file`, `bad_encoding`, `bad_csv`, `bad_xlsx`, `unknown_sheet`, `unknown_columns`, `missing_columns`, `duplicate_column`, `too_many_rows`. Stock goes through inventory adjustments (reason "Catalogue import"); audit-logged as `catalog.import` |
+| GET | `/api/admin/catalog/export/` | **admin only** | `?format=xlsx` (default) \| `csv`, `include_demo`, `include_deleted`. The catalogue in the import columns (re-importable unchanged; includes `cost_price`). Text that a spreadsheet could run as a formula is prefixed with `'`. Audit-logged as `catalog.export` |
+| GET | `/api/admin/catalog/template/` | **admin only** | `?format=xlsx\|csv`. Blank file with the header row (Excel: plus a "Columns" sheet) |
+
+Demo data and purchase cost: `GET /api/admin/products/` rows carry `is_demo` (read-only) and take `?demo=true|false`;
+admin product detail variants carry `cost_price` (purchase cost per unit, GST incl., `null` = not entered), writable in
+`variants[]`, sent to **administrators only** (left out for store managers) and never part of a customer-facing
+response. `manage.py purge_demo_data [--commit]` deletes demo products/brands/stores, archiving those orders, reviews or quotes still use.
 
 ## AI hardware assistant (Phase 12)
 Customers only (JWT). Each customer sees and changes only their own conversations (another customer's id gives 404).
@@ -667,10 +683,10 @@ Credits are shop credit, never cash. Every amount is decided by the server from 
 
 | Method | Path | Access | Notes |
 |---|---|---|---|
-| GET | `/api/loyalty/wallet/` | customer | `{balance, spendable, pending, eligible, earned, restored, used, expired, reversed, expiring_soon {amount, first_expiry, within_days}, rules {enabled, max_order_share, expiry_days, never_cash, referral_reward, referee_reward}, referral {code, rewards_on, joined, rewarded, used_code}}` |
+| GET | `/api/loyalty/wallet/` | customer | `{balance, spendable, pending, eligible, earned, restored, used, expired, reversed, expiring_soon {amount, first_expiry, within_days}, rules {enabled, max_order_share, expiry_days, never_cash, referral_reward, referee_reward, welcome_reward}, referral {code, rewards_on, joined, rewarded, waiting, credited, pending, used_code}, welcome {amount, status (`offer` or a ledger status), status_label, available_at, order_number} or null}`; referral counts from `Referral` rows, `credited`/`pending` from the ledger (rewards for friends' orders) |
 | GET | `/api/loyalty/ledger/` | customer | Own entries, newest first, paginated; `?kind=` (`cashback`, `promo`, `referral`, `restore`, `redemption`, `expiry`), `?status=` (`pending`, `eligible`, `available`, `expired`, `reversed`, `posted`). Row: `{id, kind, kind_label, status, status_label, amount (− = used/expired), remaining, available_at, expires_at, order_number, reference, description, created_at}`. Read only (writes 405; others' entries 404) |
 | POST | `/api/loyalty/referral/` | customer | `{code}` once, before the first order. Errors 400: `invalid_referral_code`, `own_referral_code`, `referral_already_used`, `not_a_new_customer` |
-| GET/PATCH | `/api/admin/loyalty/settings/` | admin | `{credits_enabled, max_order_share (0–100), expiry_days (1–3650), referral_reward, referee_reward, updated_at}`; audited |
+| GET/PATCH | `/api/admin/loyalty/settings/` | admin | `{credits_enabled, max_order_share (0–100), expiry_days (1–3650), referral_reward, referee_reward, welcome_reward (≥ 0, 0 = off: credit on every customer's first delivered order, once, on cashback terms; a promotional entry with reference `welcome:<order>`, ledger label "Welcome reward"; reversed on a full return), updated_at}`; audited |
 | CRUD | `/api/admin/loyalty/cashback-rules/` | admin | `{name, description, reward_type percent|fixed, percent, fixed_amount, max_amount, min_order_value, products[], categories[], first_order_only, starts_at, ends_at, is_active, priority}` + `summary`, `state` |
 | POST | `/api/admin/loyalty/promo-credits/` | admin | `{user, amount ≥ 1, reason, expiry_days?}` → 201 ledger entry (the only way to add credit by hand; audited) |
 | GET | `/api/admin/loyalty/ledger/` | admin | All entries, `?user=`, `?kind=`, `?status=`, `?q=` (customer, order number, reference); read only |
@@ -854,6 +870,24 @@ action's transaction commits; one row per channel, never twice for the same even
 | PATCH | `/api/admin/notifications/channels/{channel}/` | administrator | `{enabled}`; in-app can't be turned off (400); audited |
 | GET | `/api/admin/notifications/log/?status=&channel=&event=&q=` | administrator | delivery log (masked recipient, template, provider status, attempts, error, `can_retry`) |
 | POST | `/api/admin/notifications/log/{id}/retry/` · `log/retry-failed/` | administrator | send a failed/skipped email/WhatsApp/SMS again (one, or up to 200 failed, optional `{channel}`); audited |
+| POST | `/api/support/product-enquiries/` | signed in | `{product_id, message ≤ 2000}` → 201 conversation (`subject` "Question about <product>", `product{id, name, slug}`, `messages`); 404 unknown/unpublished product |
+| GET | `/api/support/messages/{id}/attachments/{index}/` | staff (managers: their stores' order conversations) | streams a WhatsApp photo/PDF fetched from the provider: only `image/jpeg`, `image/png`, `image/webp`, `application/pdf`, ≤ `WHATSAPP_MEDIA_MAX_BYTES` (5 MB); `nosniff` + sandbox CSP. 404 `attachment_unavailable` for other types, too large, or a provider that can't fetch (the mock); 403 customers |
+
+**WhatsApp in.** Image/document messages are stored on the `SupportMessage` as
+`attachments[{type, media_id, mime_type, caption, sha256?, filename?}]` (body = caption). Text messages get a keyword
+auto-reply (`notifications/whatsapp_bot.py`, English + Hinglish, `WHATSAPP_AUTO_REPLIES`, default on) only when the shop
+can answer from its own data — order status (latest order, status, tracking link; phone must match an account),
+reorder (`orders.services.reorder` of the last delivered order into the cart; never places an order), product prices
+(≤ 3 products from the catalogue search, variant price, stock wording, product links; the conversation is linked to
+the product when exactly one matches). "help/agent/support" and anything else wait for staff. Replies are
+`sender_type: "bot"` messages sent as free-form WhatsApp text, only within 24 h of the customer's message; accounts
+with WhatsApp off (or after STOP) get nothing. Admin support rows add `product`; messages add `attachments`.
+
+New events: `cart.reminder` (category `cart`; job `carts.reminders`, `CART_REMINDERS_ENABLED` default **False**,
+`CART_REMINDER_HOURS` 6, one per cart change, not 21:00–09:00), `staff.low_stock` (stock row falls to its alert level;
+store managers + admins; once per row per day), `quote.requested` / `quote.accepted` (staff), `quote.ready` /
+`quote.rejected` / `quote.expired` (customer; link `/account/quotes/{quote_id}`). `delivery.delayed` now also goes to
+WhatsApp for opted-in customers.
 
 ## Reports and business assistant ✅ (Phase 24)
 Administrators and store managers (`IsStaffRole`); managers see only their stores, `?store=` narrows and never widens
@@ -865,9 +899,48 @@ Administrators and store managers (`IsStaffRole`); managers see only their store
 | GET | `/api/admin/reports/` | `{results: [{key, title, description}]}`: sales, orders, products, categories, brands, inventory, delivery, riders, customers, returns, offers, stores, margin |
 | GET | `/api/admin/reports/{key}/?from=&to=&group_by=&store=` | one report; default the last 30 days; ≤ 366 days; 400 `invalid_date` / `range_too_long`; 404 unknown key |
 | GET | `/api/admin/reports/{key}/export/?table=&from=&to=&store=` | CSV (UTF-8 with BOM) of one table, or `table=kpis`; formula-looking text prefixed with `'`; 404 unknown table |
+
 | GET | `/api/admin/assistant/` | `{ai: {provider, model, available}, suggestions, topics, stores}` |
 | POST | `/api/admin/assistant/?store=` | `{question}` (≤ 300) → `{understood, intent, intent_label, report, period{from,to,label}, store, text, kpis, comparison, table, notes, link, source: rules|ai, suggestions}`; throttle scope `ai` |
 | GET | `/api/admin/assistant/history/` | the person's last 30 questions and answers |
+
+`margin` ("Profit and price realisation"): KPIs add `goods_revenue` (paid for goods after offers, coupon and credits, minus refunds of received returns), `costed_revenue`, `cost_of_goods`, `gross_profit`, `gross_margin` (%), `cost_coverage` (% of goods revenue whose order lines have `unit_cost`); profit figures are `null` when no line has a cost (note: "Add purchase costs to products to see profit"). The `categories` table adds `revenue`, `cost`, `profit`, `margin`, `coverage` (also in its CSV). Restocked returned units carry no cost; quoted lines count at their quoted price. `offers`: the `offers` and `coupons` tables have `revenue` = net goods value (subtotal − offers − coupon, each order once) of the paid orders that used them. The assistant's profit answers quote these numbers and are never reworded by a model.
+
+## Professional buyers, quotes (RFQ) and invoices ✅ (pre-launch)
+Buyer type and GST details are self-declared; they never change a price on their own. GSTINs are checked for the
+official format and check character only (never looked up).
+
+- `GET/PATCH /api/profile/` adds `buyer_type` (`individual` | `carpenter` | `contractor` | `interior_designer` |
+  `business`), `business_name`, `gstin` (upper-cased; blank clears). `/api/auth/me/` adds `buyer_type`.
+- Addresses add `business_name`, `gstin` (copied into the order's address snapshot and printed on invoices).
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/quotes/` | the customer's quotes, newest first (paginated) |
+| POST | `/api/quotes/` | `{items: [{variant_id, quantity, note?}]` and/or `from_cart: true`, `note?`, `address_id?}` → 201 quote (status `requested`); the cart is left alone. ≤ 50 lines, quantity 1–`QUOTE_MAX_LINE_QUANTITY`; 400 `quote_empty`, `product_unavailable`, `invalid_quantity` |
+| GET | `/api/quotes/{id}/` | own quotes only (404 otherwise) |
+| POST | `/api/quotes/{id}/accept/` | `quoted` → `accepted`; 409 `quote_not_ready`, `quote_expired` (the quote is marked expired) |
+| POST | `/api/quotes/{id}/close/` | `{reason?}`: cancels a request or declines a quotation; 409 `quote_closed` |
+| GET | `/api/admin/quotes/?status=&q=` | admins and store managers (read) |
+| POST | `/api/admin/quotes/{id}/quotation/` | admins: `{lines: [{item_id, unit_price}], valid_days (1–90, default 7), shop_note?}` — every line priced, `0 < price ≤ MRP` (GST inclusive); revisable until accepted; 400 `invalid_prices`, 409 `quote_closed`; audited |
+| POST | `/api/admin/quotes/{id}/reject/` | admins: `{reason}` |
+| GET | `/api/orders/{number}/invoice/` | printable HTML invoice (print / save as PDF in the browser); same visibility as the order; 409 `invoice_unavailable` for pending or cancelled orders |
+
+A quote reads `{id, number, status, status_label, items[{id, variant_id, sku, product_name, product_slug, variant_name,
+unit, quantity, customer_note, unit_mrp, list_unit_price, list_line_total, quoted_unit_price, quoted_line_total}],
+list_goods_total, quoted_goods_total|null, valid_until, shop_note, buyer_type, business_name, gstin, order_number,
+can_accept, can_checkout, can_close, …}`; staff responses add `customer_name/email/phone`. Statuses: requested →
+quoted → accepted → ordered; side exits cancelled, declined, rejected, expired (job `quotes.expire`).
+
+Checkout: `quote_id` on `POST /api/checkout/preview/` and `POST /api/orders/` orders exactly the accepted quotation's
+lines at the quoted prices through the normal order engine (stock, delivery, COD limits, credits and the
+expected-total check apply; no automatic offers; a coupon → 400 `coupon_not_allowed`). 400 `quote_not_accepted`,
+`quote_expired`, `quote_already_ordered`. Order lines record `quoted: true`.
+
+Invoice: built from the order's snapshots. A GST tax invoice only when `INVOICE_SELLER_GSTIN` is set (with
+`INVOICE_SELLER_NAME` / `INVOICE_SELLER_ADDRESS`); otherwise titled "Order receipt". GST per line on its net amount
+(after offers, coupon and credits); CGST + SGST when the seller's and buyer's GSTIN states match, IGST when they
+differ, a single GST column when the buyer has no GSTIN.
 
 ## Security notes (Phase 25)
 - Any request body above `MAX_REQUEST_BYTES` (12 MB) → 413 `request_too_large`, before parsing.

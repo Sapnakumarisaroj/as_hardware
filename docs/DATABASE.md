@@ -359,6 +359,28 @@ functions), which keeps the PostgreSQL/MySQL/SQLite portability rules above.
   no_reward, `rewarded_order`; check constraint referrer ≠ referee).
 - **orders.Order** gains `credit_discount` (default 0) and `loyalty_snapshot` (JSON: share, expiry days, credits
   available, cashback amount/rule at ordering).
+- **LoyaltySettings** gains `welcome_reward` (default 0 = off; migration `loyalty.0002`).
+
+## quotes and business buyers ✅ (migrations `quotes.0001`, `accounts.0004`, `orders.0011`)
+- **Quote**: `number` (unique), `user`, `status` (requested, quoted, accepted, ordered, declined, rejected, cancelled,
+  expired), `customer_note`, `address`, buyer snapshot (`buyer_type`, `business_name`, `gstin`), `shop_note`,
+  `valid_until`, `quoted_at/by`, `accepted_at`, `closed_reason`, `order` (1:1, set when ordered). Indexes
+  (user, -created_at), (status, -created_at).
+- **QuoteItem**: `quote`, `variant` (protect), `quantity` ≥ 1 (check constraint), `customer_note`, `list_unit_price`,
+  `quoted_unit_price` (null until quoted), `sort_order`; unique (quote, variant).
+- **accounts.CustomerProfile** gains `buyer_type` (individual, carpenter, contractor, interior_designer, business),
+  `business_name`, `gstin` (validated); **accounts.Address** gains `business_name`, `gstin`.
+- **orders.OrderItem** gains `unit_cost` (purchase cost snapshot, null = unknown) and `quoted` (price came from a quote).
+
+## Catalogue import, demo rows, profit (migrations `catalog.0008/0009`, `stores.0005/0006`)
+- **catalog.Product**, **catalog.Brand**, **stores.Store** gain `is_demo` (indexed, not editable). Data migrations mark
+  existing demo-seed rows (SKU/code prefix `DEMO-`, brands ending "(Demo)"); `purge_demo_data` removes or archives them.
+- **catalog.ProductVariant** gains `cost_price` (optional purchase cost; admin only, copied to `OrderItem.unit_cost`).
+
+## Other additive fields
+- **carts.Cart** gains `reminded_at` (cart recovery reminder sent; migration `carts.0002`).
+- **support.SupportConversation** gains `product` (FK, set null; enquiries about a product; migration `support.0002`).
+- **ai.Project** `project_type` choices extended with department project types (migration `ai.0005`, choices only).
 
 ## Planned tables 🔜
 `accounts_passwordresettoken` (Phase 3) · `ai_searchhistory`, `ai_recommendation`, `ai_bundle`/`ai_bundleitem` (Phases 14–19) · `django_cache` (prod DB cache, created by `createcachetable`).

@@ -168,6 +168,11 @@ class OrderItem(models.Model):
     offer_discount = models.DecimalField(
         **MONEY_FIELD_KWARGS, default=0, help_text="This line's share of automatic offers (for returns/refunds)."
     )
+    # The variant's purchase cost per unit when the order was placed (null = unknown; profit reports
+    # leave such lines out instead of guessing).
+    unit_cost = models.DecimalField(**MONEY_FIELD_KWARGS, null=True, blank=True)
+    # Set when a quotation priced this line (unit_price is the quoted price).
+    quoted = models.BooleanField(default=False)
     # Phase 9: the shipment (store) this line is reserved at and ships from.
     shipment = models.ForeignKey(
         "OrderShipment", null=True, blank=True, on_delete=models.SET_NULL, related_name="items"

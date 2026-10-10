@@ -391,6 +391,111 @@ def test_referral_without_rewards_records_no_money(user, other_user, staff_user,
     assert not CreditEntry.objects.filter(kind=K.REFERRAL).exists()
 
 
+# --- Welcome reward ---------------------------------------------------------------------------------------------
+
+
+def welcome_on(amount="75"):
+    rules = LoyaltySettings.load()
+    rules.welcome_reward = D(amount)
+    rules.save()
+
+
+def welcomes(user):
+    return CreditEntry.objects.filter(user=user, kind=K.PROMO, reference__startswith=ledger.WELCOME_PREFIX)
+
+
+def test_welcome_reward_once_on_the_first_delivered_order_on_cashback_terms(user, staff_user, shop):
+    welcome_on()
+    first = order(user, (shop["tape"], 1))
+    second = order(user, (shop["tape"], 1))
+    assert not welcomes(user).exists()  # nothing at placement
+    first = deliver(first, staff_user)
+    entry = welcomes(user).get()
+    assert (entry.amount, entry.status, entry.order) == (D("75.00"), S.ELIGIBLE, first)
+    assert entry.reference == f"welcome:{first.order_number}"
+    assert entry.available_at == first.delivered_at + timedelta(days=7) and ledger.balance(user) == D("0.00")
+    deliver(second, staff_user)
+    ledger.on_order_delivered(first)  # a repeated hook changes nothing
+    assert welcomes(user).count() == 1
+    ledger.release_due(now=entry.available_at + timedelta(minutes=1))
+    entry.refresh_from_db()
+    assert entry.status == S.AVAILABLE and ledger.balance(user) == D("75.00")
+    assert entry.expires_at == entry.available_at + timedelta(minutes=1) + timedelta(days=90)
+
+
+def test_no_welcome_reward_when_off_or_not_the_first_delivered_order(user, other_user, staff_user, shop):
+    deliver(order(user, (shop["tape"], 1)), staff_user)  # reward off: 0
+    assert not CreditEntry.objects.filter(user=user).exists()
+    welcome_on()
+    deliver(order(user, (shop["tape"], 1)), staff_user)  # second delivered order: no welcome
+    assert not welcomes(user).exists()
+    cancelled = order(other_user, (shop["tape"], 1))
+    cancel_order_by_customer(cancelled, user=other_user, reason="Changed my mind")
+    assert not welcomes(other_user).exists()  # cancelled orders are never delivered
+
+
+def test_full_return_reverses_the_welcome_reward_partial_keeps_it(user, other_user, staff_user, shop):
+    welcome_on()
+    placed = deliver(order(user, (shop["tape"], 2)), staff_user)
+    item = placed.items.get()
+    ret = request_return(placed, user=user, items=[{"order_item_id": item.id, "quantity": 2}], reason="damaged")
+    approve_return(ret, actor=staff_user)
+    receive_return(ret, actor=staff_user)
+    assert welcomes(user).get().status == S.REVERSED
+    deliver(order(user, (shop["tape"], 1)), staff_user)
+    assert welcomes(user).count() == 1  # once per customer, ever
+    assert ledger.release_due(now=NOW() + timedelta(days=30)) == 0 and ledger.balance(user) == D("0.00")
+
+    kept = deliver(order(other_user, (shop["tape"], 2)), staff_user)
+    item = kept.items.get()
+    ret = request_return(kept, user=other_user, items=[{"order_item_id": item.id, "quantity": 1}], reason="damaged")
+    approve_return(ret, actor=staff_user)
+    receive_return(ret, actor=staff_user)
+    entry = welcomes(other_user).get()
+    assert (entry.status, entry.amount) == (S.ELIGIBLE, D("75.00"))
+
+
+def test_welcome_reward_in_wallet_and_ledger(auth_client, user, staff_user, shop):
+    assert auth_client.get("/api/loyalty/wallet/").json()["welcome"] is None  # off
+    welcome_on("50")
+    wallet = auth_client.get("/api/loyalty/wallet/").json()
+    assert wallet["welcome"]["status"] == "offer" and wallet["rules"]["welcome_reward"] == "50.00"
+    placed = deliver(order(user, (shop["tape"], 1)), staff_user)
+    wallet = auth_client.get("/api/loyalty/wallet/").json()
+    assert wallet["welcome"]["status"] == "eligible" and wallet["welcome"]["order_number"] == placed.order_number
+    rows = auth_client.get("/api/loyalty/ledger/").json()["results"]
+    assert [r["kind_label"] for r in rows] == ["Welcome reward"]
+
+
+def test_wallet_referral_summary_comes_from_referrals_and_the_ledger(auth_client, user, other_user, staff_user, shop):
+    rules = LoyaltySettings.load()
+    rules.referral_reward, rules.referee_reward = D("150"), D("50")
+    rules.save()
+    code = ReferralCode.for_user(user).code
+    ledger.claim_referral(other_user, code)
+    late = get_user_model().objects.create_user("friend2@example.com", "S3cure-pass!", full_name="Friend")
+    ledger.claim_referral(late, code)
+    referral = auth_client.get("/api/loyalty/wallet/").json()["referral"]
+    assert (referral["code"], referral["joined"], referral["waiting"], referral["rewarded"]) == (code, 2, 2, 0)
+    assert referral["credited"] == "0.00" and referral["pending"] == "0.00"
+    friend_order = deliver(order(other_user, (shop["tape"], 1)), staff_user)
+    referral = auth_client.get("/api/loyalty/wallet/").json()["referral"]
+    assert (referral["joined"], referral["waiting"], referral["rewarded"]) == (2, 1, 1)
+    assert referral["pending"] == "150.00" and referral["credited"] == "0.00"
+    ledger.release_due(now=friend_order.delivered_at + timedelta(days=8))
+    referral = auth_client.get("/api/loyalty/wallet/").json()["referral"]
+    assert referral["pending"] == "0.00" and referral["credited"] == "150.00"
+
+
+def test_admin_welcome_reward_setting(admin_client):
+    assert admin_client.get("/api/admin/loyalty/settings/").json()["welcome_reward"] == "0.00"  # off by default
+    bad = admin_client.patch("/api/admin/loyalty/settings/", {"welcome_reward": "-1"}, format="json")
+    assert bad.status_code == 400 and "welcome_reward" in str(bad.json())
+    ok = admin_client.patch("/api/admin/loyalty/settings/", {"welcome_reward": "100"}, format="json")
+    assert ok.status_code == 200 and ok.json()["welcome_reward"] == "100.00"
+    assert LoyaltySettings.load().welcome_reward == D("100.00")
+
+
 # --- API and permissions ------------------------------------------------------------------------------------------
 
 

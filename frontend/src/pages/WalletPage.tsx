@@ -145,9 +145,38 @@ function Referral({ wallet }: { wallet: Wallet }) {
       <p className="mt-1 text-xs text-ink-600">
         {referral.rewards_on
           ? `When a friend who used your code gets their first order delivered and its return window passes, you receive ${formatPrice(rules.referral_reward)} in credit${Number(rules.referee_reward) > 0 ? ` and they receive ${formatPrice(rules.referee_reward)}` : ''}.`
-          : 'Referral rewards are not running at the moment. Friends can still use your code.'}{' '}
-        {referral.joined > 0 && `${referral.joined} joined with your code, ${referral.rewarded} rewarded.`}
+          : 'Referral rewards are not running at the moment. Friends can still use your code.'}
       </p>
+      {referral.joined > 0 && (
+        <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm" aria-label="Your referrals" data-testid="referral-summary">
+          <div>
+            <dt className="inline text-ink-600">Friends joined: </dt>
+            <dd className="inline font-semibold">{referral.joined}</dd>
+          </div>
+          {referral.waiting > 0 && (
+            <div>
+              <dt className="inline text-ink-600">Waiting for their first delivery: </dt>
+              <dd className="inline font-semibold">{referral.waiting}</dd>
+            </div>
+          )}
+          <div>
+            <dt className="inline text-ink-600">Earned you a reward: </dt>
+            <dd className="inline font-semibold">{referral.rewarded}</dd>
+          </div>
+          {Number(referral.credited) > 0 && (
+            <div>
+              <dt className="inline text-ink-600">Referral credit received: </dt>
+              <dd className="inline font-semibold text-success-600">{formatPrice(referral.credited)}</dd>
+            </div>
+          )}
+          {Number(referral.pending) > 0 && (
+            <div>
+              <dt className="inline text-ink-600">Waiting for the return window: </dt>
+              <dd className="inline font-semibold">{formatPrice(referral.pending)}</dd>
+            </div>
+          )}
+        </dl>
+      )}
       {!referral.used_code && (
         <form onSubmit={submit} className="mt-3 flex flex-wrap items-end gap-2" noValidate>
           <div>
@@ -176,6 +205,17 @@ function Referral({ wallet }: { wallet: Wallet }) {
       )}
     </section>
   )
+}
+
+function welcomeText(welcome: NonNullable<Wallet['welcome']>): string {
+  const amount = formatPrice(welcome.amount)
+  if (welcome.status === 'offer') return `Get ${amount} credit when your first order is delivered (usable once its return window passes).`
+  if (welcome.status === 'eligible')
+    return welcome.available_at ? `Your ${amount} welcome reward is usable from ${formatDate(welcome.available_at)}.` : `Your ${amount} welcome reward is waiting for the return window.`
+  if (welcome.status === 'available') return `Your ${amount} welcome reward has been credited.`
+  if (welcome.status === 'reversed') return `Your ${amount} welcome reward was reversed because the order was returned.`
+  if (welcome.status === 'expired') return `Your ${amount} welcome reward has expired.`
+  return `Welcome reward: ${amount} (${welcome.status_label}).`
 }
 
 /** /account/wallet — balance, pending cashback, totals and history, all from the server's ledger. */
@@ -233,6 +273,12 @@ export function WalletPage() {
         <Stat label="Expired" value={data.expired} tone="muted" />
         <Stat label="Reversed" value={data.reversed} tone="muted" hint="Cashback of cancelled or returned orders" />
       </dl>
+
+      {data.welcome && (
+        <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-ink-900 ring-1 ring-amber-100" data-testid="welcome-reward">
+          {welcomeText(data.welcome)}
+        </p>
+      )}
 
       {empty ? (
         <div className="mt-8">

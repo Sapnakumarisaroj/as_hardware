@@ -145,12 +145,15 @@ export function ProductRail({
   hideWhenEmpty = true,
   tone = 'plain',
   layout = 'row',
+  hideOnError = false,
   limit = 8,
   ...heading
-}: SectionProps & { params: ListingParams; enabled?: boolean; hideWhenEmpty?: boolean; limit?: number }) {
+}: SectionProps & { params: ListingParams; enabled?: boolean; hideWhenEmpty?: boolean; hideOnError?: boolean; limit?: number }) {
   const query = useProducts({ page_size: String(limit), ...params }, { enabled })
   if (!enabled) return null
   if (query.isSuccess && query.data.results.length === 0 && hideWhenEmpty) return null
+  // The home page leaves a failed section out rather than showing a heading over an error.
+  if (query.isError && hideOnError) return null
 
   return (
     <Section title={heading.title} tone={tone}>

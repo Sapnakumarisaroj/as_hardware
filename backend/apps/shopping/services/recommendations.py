@@ -16,16 +16,19 @@ customer's own history; a new visitor sees catalogue-wide groups with honest tit
 """
 
 from dataclasses import dataclass, field
+from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Q
+from django.utils import timezone
 
 from apps.catalog import selectors
 from apps.catalog.compatibility import profiles
 from apps.catalog.compatibility.rules import NOT
 from apps.catalog.compatibility.service import CompatibilityService
-from apps.catalog.models import Category, ProductRelation
+from apps.catalog.models import Category, Product, ProductRelation
 from apps.core.exceptions import NotFoundError
 
 from ..models import RecommendationRule
@@ -87,25 +90,85 @@ def _in_categories(qs, category_ids):
     return qs.filter(Q(category_id__in=category_ids) | Q(subcategory_id__in=category_ids))
 
 
-def co_purchased(product_id: int, limit: int = GROUP_LIMIT) -> list[tuple[int, int]]:
-    """(product_id, orders) bought in the same orders as `product_id`, most often first. Cached."""
-    key = f"shopping:fbt:{product_id}"
+@dataclass(frozen=True)
+class CoPurchase:
+    """Another product bought in the same orders as the anchor. `together` orders had both; `confidence` is the
+    share of the anchor's orders that had it; `lift` how much likelier it is with the anchor than in any order."""
+
+    product_id: int
+    together: int
+    confidence: float
+    lift: float
+
+    @property
+    def reason(self) -> str:
+        return f"Bought together in {self.together} orders ({self.confidence:.0%} of orders with it)."
+
+
+def fbt_settings() -> tuple[int, int, int]:
+    """(window in days, minimum orders together, most recent orders read): settings, with safe defaults."""
+    window = int(getattr(settings, "FBT_WINDOW_DAYS", 180) or 180)
+    support = max(2, int(getattr(settings, "FBT_MIN_SUPPORT", 2) or 2))
+    orders = int(getattr(settings, "FBT_MAX_ORDERS", 5000) or 5000)
+    return window, support, orders
+
+
+def _co_purchase_stats(product_id: int) -> list[CoPurchase]:
+    """The ranked statistics (cached): recent sold orders only, at least `support` orders together, best lift
+    first. Raw, before the live/demo filter (stock and publishing change faster than the cache)."""
+    from apps.orders.models import Order, OrderItem
+
+    window, support, max_orders = fbt_settings()
+    key = f"shopping:fbt:v2:{product_id}:{window}:{support}:{max_orders}"
     cached = cache.get(key)
     if cached is not None:
         return cached
-    from apps.orders.models import OrderItem
-
-    orders = OrderItem.objects.filter(product_id=product_id, order__status__in=SOLD).values("order_id")[:500]
-    rows = list(
-        OrderItem.objects.filter(order_id__in=orders, product__isnull=False)
-        .exclude(product_id=product_id)
-        .values("product_id")
-        .annotate(orders=Count("order_id", distinct=True))
-        .order_by("-orders", "product_id")[: limit * 2]
+    since = timezone.now() - timedelta(days=window)
+    recent = list(
+        Order.objects.filter(status__in=SOLD, created_at__gte=since)
+        .order_by("-created_at", "-pk")
+        .values_list("pk", flat=True)[:max_orders]
     )
-    result = [(row["product_id"], row["orders"]) for row in rows]
+    result: list[CoPurchase] = []
+    anchor_orders = set(
+        OrderItem.objects.filter(order_id__in=recent, product_id=product_id).values_list("order_id", flat=True)
+    )
+    if len(anchor_orders) >= support:
+        pairs = (
+            OrderItem.objects.filter(order_id__in=anchor_orders, product__isnull=False)
+            .exclude(product_id=product_id)
+            .values("product_id")
+            .annotate(together=Count("order_id", distinct=True))
+            .filter(together__gte=support)
+        )
+        together = {row["product_id"]: row["together"] for row in pairs}
+        base = {
+            row["product_id"]: row["n"]
+            for row in OrderItem.objects.filter(order_id__in=recent, product_id__in=together)
+            .values("product_id")
+            .annotate(n=Count("order_id", distinct=True))
+        }
+        total = len(recent)
+        for pid, n in together.items():
+            confidence = n / len(anchor_orders)
+            lift = confidence / (base.get(pid, n) / total)
+            result.append(CoPurchase(pid, n, round(confidence, 4), round(lift, 4)))
+        result.sort(key=lambda r: (-r.lift, -r.confidence, -r.together, r.product_id))
     cache.set(key, result, CACHE_SECONDS)
     return result
+
+
+def co_purchased(product_id: int, limit: int = GROUP_LIMIT) -> list[CoPurchase]:
+    """Frequently bought together with `product_id`: published, active, in-stock products, never the product itself,
+    and never mixing demo and real catalogue rows (a demo anchor gets demo products, a real one real products)."""
+    stats = _co_purchase_stats(product_id)
+    if not stats:
+        return []
+    anchor_demo = Product.all_objects.filter(pk=product_id).values_list("is_demo", flat=True).first()
+    if anchor_demo is None:
+        return []
+    ok = set(live().filter(pk__in=[r.product_id for r in stats], is_demo=anchor_demo).values_list("pk", flat=True))
+    return [r for r in stats if r.product_id in ok][:limit]
 
 
 class RecommendationService:
@@ -157,13 +220,15 @@ class RecommendationService:
         for s in confirmed:
             s.reason = self.checked.get(s.product_id) or s.reason
         take("works_with", works + confirmed)
-        # 3. Frequently bought together: real orders, else the shop's "goes with" links
-        bought = co_purchased(product.pk)
-        live_bought = self._stocked([pid for pid, _ in bought])
+        # 3. Frequently bought together: recent real orders (support, confidence, lift), else the shop's links
         together = [
-            Suggestion(pid, f"Bought together in {n} order{'s' if n != 1 else ''}.", n, extra={"orders": n})
-            for pid, n in bought
-            if pid in live_bought
+            Suggestion(
+                r.product_id,
+                r.reason,
+                r.lift,
+                extra={"orders": r.together, "confidence": r.confidence, "lift": r.lift},
+            )
+            for r in co_purchased(product.pk)
         ]
         together += [
             Suggestion(r.related_id, r.note or "Often bought with this.", 1)

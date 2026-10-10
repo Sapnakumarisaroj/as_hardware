@@ -37,6 +37,7 @@ def apply_movement(
 
     inv = Inventory.objects.select_for_update().get(pk=inventory.pk)
     available, reserved = inv.available_quantity, inv.reserved_quantity
+    before = available
 
     if movement_type in (Type.PURCHASE, Type.RETURN):
         available += quantity
@@ -64,6 +65,8 @@ def apply_movement(
     inv.available_quantity, inv.reserved_quantity = available, reserved
     inv.save(update_fields=["available_quantity", "reserved_quantity", "updated_at"])
     inventory.available_quantity, inventory.reserved_quantity = available, reserved
+    if before > inv.low_stock_threshold >= available:
+        _alert_low_stock(inv)
     return StockMovement.objects.create(
         inventory=inv,
         movement_type=movement_type,
@@ -74,6 +77,38 @@ def apply_movement(
         reference_type=reference_type,
         reference_id=str(reference_id),
         created_by=actor if getattr(actor, "is_authenticated", False) else None,
+    )
+
+
+def _alert_low_stock(inv: Inventory) -> None:
+    """Stock just fell to its alert level: tell the store's managers and the administrators, at most
+    once per stock row per day (the notification key). Sent after commit; never blocks the movement."""
+    if not inv.is_active:
+        return
+    from django.contrib.auth import get_user_model
+    from django.db.models import Q
+    from django.utils import timezone
+
+    from apps.notifications.services import notify_many
+
+    User = get_user_model()
+    people = User.objects.filter(
+        Q(managed_stores=inv.store_id) | Q(role="admin") | Q(is_superuser=True), is_active=True
+    ).distinct()
+    variant = inv.variant
+    data = {"inventory_id": inv.pk, "sku": variant.sku}
+    notify_many(
+        list(people),
+        event="staff.low_stock",
+        context={
+            "product_name": variant.product.name,
+            "sku": variant.sku,
+            "store_name": inv.store.name,
+            "available": inv.available_quantity,
+            "threshold": inv.low_stock_threshold,
+        },
+        data=data,
+        key=f"low_stock:{inv.pk}:{timezone.localdate().isoformat()}",
     )
 
 

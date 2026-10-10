@@ -661,6 +661,7 @@ class VariantWriteSerializer(serializers.ModelSerializer):
             "attributes",
             "mrp",
             "price",
+            "cost_price",  # admin write only; never in a customer-facing serializer
             "weight_grams",
             "length_mm",
             "width_mm",

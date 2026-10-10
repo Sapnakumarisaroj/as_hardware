@@ -20,7 +20,7 @@ from apps.ai.services import vocabulary as V
 # (pattern, catalogue words). Patterns are matched against the lower-cased query.
 SYNONYMS: list[tuple[str, tuple[str, ...]]] = [
     # drilling and fixing to walls
-    (r"\b(hole|holes|drill\w*|bore|boring|chhed|ched)\b|छेद|सुराख़?|ड्रिल", ("drill", "drill bit")),
+    (r"\b(hole|holes|drill\w*|bore|boring|chhed|ched|barma)\b|छेद|सुराख़?|ड्रिल", ("drill", "drill bit")),
     (
         r"\b(concrete|masonry|brick|cement wall|diwar|deewar|deevar|dewar|wall)\b.*\b(hole|drill\w*|karne|karna|bore)\b|\b(hole|drill\w*)\b.*\b(concrete|masonry|brick|wall|diwar|deewar)\b|दीवार.*(छेद|ड्रिल|होल)",
         ("impact drill", "masonry drill bit", "wall plug"),
@@ -30,8 +30,8 @@ SYNONYMS: list[tuple[str, tuple[str, ...]]] = [
         r"\b(hang|hanging|mount|fix|fitting|put up|lagana|latkana)\b.*\b(shelf|shelves|rack|frame|mirror|tv|picture)\b|\b(shelf|shelves|rack)\b.*\b(wall|hang|fix|mount)\b|\bwall\b.*\b(shelf|rack|bracket)\b",
         ("wall plug", "screw", "anchor", "drill"),
     ),
-    (r"\b(nail|nails|kil|keel|kill)\b|कील", ("hammer", "screw")),
-    (r"\b(screw|screws|tight|tighten|loosen|screwing)\b|\bpech\b|पेंच", ("screw", "screwdriver")),
+    (r"\b(nail|nails|kil|keel|keelein|kill)\b|कील", ("nails", "hammer")),
+    (r"\b(screw|screws|tight|tighten|loosen|screwing)\b|\b(pech|pench)\b|पेंच", ("screw", "screwdriver")),
     (r"\b(bolt|bolts|nut|nuts)\b", ("bolt", "nut")),
     # water, leaks, plumbing
     (
@@ -64,14 +64,14 @@ SYNONYMS: list[tuple[str, tuple[str, ...]]] = [
     ),
     (r"\b(insulat\w*|electric\w*\s+tape|joint\s+cover)\b", ("insulation tape",)),
     # tools
-    (r"\b(hammer|hit|smash|break)\b|हथौड़ा", ("hammer",)),
+    (r"\b(hammer|hit|smash|break|hathoda|hathauda|hathodi)\b|हथौड़ा", ("hammer",)),
     (r"\b(cut|cutting|saw|hacksaw|blade)\b|\bkaatna\b|\bkatna\b", ("hacksaw",)),
     (r"\b(measure|measuring|length|tape\s*measure|nap|naap)\b|\bnaapna\b", ("measuring tape",)),
     (
         r"\b(spanner|open\s*end|nut\s+tighten\w*)\b|\btighten\w*\b.*\b(nut|nuts|bolt|bolts)\b|\b(nut|nuts|bolt|bolts)\b.*\btighten\w*",
         ("spanner", "wrench"),
     ),
-    (r"\b(screwdriver|driver)\b", ("screwdriver",)),
+    (r"\b(screwdriver|driver|pechkas|pechkash)\b", ("screwdriver",)),
     (r"\b(cordless|battery\s+drill|drill\s+machine)\b", ("cordless", "drill")),
     # building and gluing
     (r"\b(cement|concrete\s+work|plaster|construction|building\s+work)\b|सीमेंट", ("cement",)),
@@ -79,36 +79,37 @@ SYNONYMS: list[tuple[str, tuple[str, ...]]] = [
     (r"\b(glue|stick|sticking|bond|fevicol|gum|adhesive|jod\w*)\b", ("adhesive", "glue")),
     (r"\b(wood|wooden|furniture|carpentry|lakdi)\b|लकड़ी", ("wood", "screw", "adhesive")),
     # boards and furniture hardware (approved categories, 2026-10-07)
-    (r"\b(ply|plywood|plyboard|marine\s+ply|bwp)\b|प्लाई", ("plywood",)),
+    (r"\b(ply|plywood|plyboard|plai|plaai|marine\s+ply|bwp)\b|प्लाई", ("plywood",)),
     (r"\b(mdf|hdhmr|particle\s*board|board|boards)\b", ("mdf", "hdhmr", "plywood")),
     (
-        r"\b(laminate|sunmica|veneer)\b.*\b(glue|adhesive|stick\w*)\b|\bcontact\s+adhesive\b",
+        r"\b(laminate|sunmica|sunmika|veneer)\b.*\b(glue|adhesive|stick\w*)\b|\bcontact\s+adhesive\b",
         ("contact adhesive",),
     ),
-    (r"\b(hinge|hinges|kabja|kabje|soft\s*close)\b|कब्ज़?ा", ("hinge",)),
-    (r"\b(drawer|drawers|channel|channels|telescopic)\b", ("drawer channel",)),
-    (r"\b(handle|handles|knob|knobs)\b|हैंडल", ("handle",)),
+    (r"\b(hinge|hinges|kab[jz][aeo]\w*|soft\s*close)\b|कब्ज़?[ाे]", ("hinge",)),
+    (r"\b(drawer|drawers|channel|channels|telescopic|daraa?z)\b", ("drawer channel",)),
+    (r"\b(handle|handles|knob|knobs|handal|hendal|hendle|mutthi|muthi)\b|हैंडल", ("handle",)),
     (
         r"\b(modular\s+kitchen|kitchen\s+(basket|fitting|cabinet|drawer)s?|cutlery|thali|pantry)\b",
         ("kitchen basket", "pantry unit"),
     ),
-    (r"\b(wardrobe|almirah|almari|cupboard|hanger\s+rod)\b|अलमारी", ("wardrobe",)),
+    (r"\b(wardrobe|almirah|almari|almaari|almira|cupboard|hanger\s+rod)\b|अलमारी", ("wardrobe",)),
     (r"\b(storage\s+bed|hydraulic\s+bed|bed\s+fitting\w*)\b", ("bed fitting", "hydraulic bed")),
-    (r"\b(lock|locks|taala|tala|latch)\b|ताला", ("lock", "door lock")),
-    (r"\b(door\s+closer|closer|stopper|tower\s+bolt|aldrop)\b", ("door closer", "tower bolt")),
+    (r"\b(lock|locks|taala|tala|taale|chabi|chaabi|latch)\b|ताला", ("lock", "door lock")),
+    (r"\b(door\s+closer|closer|stopper)\b", ("door closer",)),
+    (r"\b(tower\s+bolt|aldrop|aldrap|chitkani|chatkani|chitkini|sitkani|kunda|kundi)\b", ("tower bolt",)),
     (
-        r"\b(glass\s+door|toughened\s+glass|patch\s+fitting|floor\s+spring)\b",
+        r"\b(glass\s+door|toughened\s+glass|patch\s+fitting|floor\s+spring|ka+nch\s+ka\s+darwaz\w*|ka+nch)\b",
         ("glass door", "patch fitting", "floor spring"),
     ),
     (r"\b(grinder|grinding|angle\s+grinder|cutting\s+disc)\b", ("angle grinder",)),
     (r"\b(vest|reflective|hi\s*vis|workwear)\b", ("safety vest",)),
     # safety
     (r"\b(safety|protect\w*|ppe|hand\s+protect\w*|cut\s+resist\w*)\b", ("gloves", "goggles", "helmet", "mask")),
-    (r"\b(glove|gloves|hands|dastane)\b|दस्ताने", ("gloves",)),
+    (r"\b(glove|gloves|hands|dastane|dastana|dastaane)\b|दस्ताने", ("gloves",)),
     (r"\b(dust|mask|breath\w*|cement\s+dust|sanding)\b", ("mask",)),
-    (r"\b(eye|eyes|goggle|goggles|splash|chashma)\b", ("goggles",)),
+    (r"\b(eye|eyes|goggle|goggles|splash|chashma|chasma)\b", ("goggles",)),
     (r"\b(head|helmet|hard\s*hat|site\s+safety)\b", ("helmet",)),
-    (r"\b(shoe|shoes|boots|foot|feet|joote)\b", ("safety shoes",)),
+    (r"\b(shoe|shoes|boots|foot|feet|joote|joota)\b", ("safety shoes",)),
 ]
 
 _COMPILED = [(re.compile(p, re.IGNORECASE), terms) for p, terms in SYNONYMS]

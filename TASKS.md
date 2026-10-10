@@ -354,6 +354,7 @@ deliver), `orders.returns` (receive) and `orders.pricing` (credits as the last d
 - [x] Tests: backend 1177 pass (32 new: ledger, sign/reference constraints, FIFO, 20 % cap incl. API, opt-in, free delivery unchanged, switched off, changed balance 409, lifecycle incl. once-only release/expiry, partial expiry, fixed/first-order/category rules, cashback after credits, cancel restore incl. expired lots, partial/two-step/full returns, open return waits, snapshot vs. rule change, referral abuse cases and rewards, permissions, admin promo + audit, settings validation, order detail; 4 threaded: same credit spent once, concurrent checkouts, release/expiry once, concurrent cancellations); frontend 312 (wallet, history filters, empty/error/sign-in, referral errors, checkout credits and order request, hidden when nothing to use, order detail, dashboard settings validation and promo credit)
 - [x] Verified: ruff, Django check, `makemigrations --check`, OpenAPI 0 errors (14 cosmetic enum-name warnings), tsc, eslint, production build (wallet 9 kB and loyalty dashboard 14 kB lazy chunks)
 - [x] Live: 36/36 HTTP checks on a **copy** of the dev DB (temporary customers and admin only in the copy): empty wallet, customer can't create credit, admin rule + promo credits, preview cap (₹798 of ₹3,990), oldest-expiry first, cancel restores ₹798 and reverses cashback, delivery → eligible, partial return restores credits and shrinks cashback, refund leaves out the credit share, release after the window (once), expiry, `run_jobs` runs both loyalty jobs, referral rules, security
+- [x] Later: welcome reward (`LoyaltySettings.welcome_reward`, 0 = off) on a customer's first delivered order, once ever, on cashback terms (usable after the return window, `expiry_days`), reversed on a full return or cancellation; admin setting with validation; wallet shows the welcome reward state and referral status (friends joined / waiting / rewarded, referral credit received and waiting) from `Referral` rows and the ledger
 - [~] Not built: points (credits are rupees), credits on the delivery fee, wallet top-ups or cash-out (never), notifications by email for credits (in-app only), credits on orders placed by staff
 
 ### Phase 18 — Voice shopping ✅
@@ -608,7 +609,8 @@ entries under Overview.
   questions with Ollama `qwen2.5:3b` (3.8–10 s when the model words the answer; 0.1 s for exact answers). The first run
   showed the model turning "realised 77% of MRP" into "profit margin 77%": fixed by never rewording profit answers and a
   stricter prompt
-- [~] Not done: purchase costs (so no profit or gross margin), scheduled/emailed reports, PDF export, a report builder
+- [x] Later: profit in the margin report from `OrderItem.unit_cost` only (goods revenue net of refunded returns, purchase cost, gross profit, margin %, cost coverage; per category; CSV), plain message when no costs; assistant profit answers use them and are never reworded; offers/coupons tables show the net goods value of their orders; purchase cost per variant in the admin product form (administrators only, never in customer APIs)
+- [~] Not done: scheduled/emailed reports, PDF export, a report builder
   for custom queries (deliberately: only whitelisted reports), live push of KPIs (pages refresh on demand), cashback/
   credit cost per rule (credits used are shown), period-over-period comparison in the Reports page itself (the assistant
   does it); the assistant's sentences are English (Hindi/Hinglish questions are understood)

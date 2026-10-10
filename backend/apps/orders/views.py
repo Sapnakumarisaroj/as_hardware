@@ -129,6 +129,7 @@ class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         serializer.is_valid(raise_exception=True)
         data = dict(serializer.validated_data)
         body_key = data.pop("idempotency_key", None)
+        data["quote"] = data.pop("quote_id", None)
         key = request.headers.get(IDEMPOTENCY_HEADER) or body_key or None
         if key and not IDEMPOTENCY_KEY_RE.match(key):
             key = None  # malformed header: ignore rather than store junk
@@ -177,6 +178,19 @@ class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             "cart": CartSerializer(summarize_cart(request.user), context={"request": request}).data,
         }
         return Response(ReorderResultSerializer(payload).data)
+
+    @extend_schema(request=None, responses={(200, "text/html"): OpenApiTypes.STR})
+    @action(detail=True, methods=["get"])
+    def invoice(self, request, order_number=None):
+        """Printable invoice (HTML; print or save as PDF in the browser). Same visibility as the
+        order itself: the customer who ordered, the store's staff, admins."""
+        from django.http import HttpResponse
+
+        from .invoice import render_invoice
+
+        response = HttpResponse(render_invoice(self.get_object()), content_type="text/html; charset=utf-8")
+        response["Cache-Control"] = "private, no-store"
+        return response
 
     @extend_schema(request=None, responses=OrderDetailSerializer)
     @action(detail=True, methods=["post"], url_path=r"shipments/(?P<sequence>\d+)/delivery-code")
@@ -237,6 +251,7 @@ class CheckoutPreviewView(APIView):
             address_id=serializer.validated_data.get("address_id"),
             coupon_code=serializer.validated_data["coupon_code"],
             use_credits=serializer.validated_data["use_credits"],
+            quote_id=serializer.validated_data.get("quote_id"),
         )
         return Response(CheckoutPreviewSerializer(summary, context={"request": request}).data)
 

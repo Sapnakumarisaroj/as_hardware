@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from .auth_services import validate_new_password
 from .models import CustomerProfile
-from .serializers import PhoneField
+from .serializers import GSTINField, PhoneField
 
 User = get_user_model()
 
@@ -90,10 +90,25 @@ class MeSerializer(serializers.ModelSerializer):
 
     avatar = serializers.SerializerMethodField()
     managed_stores = serializers.SerializerMethodField()
+    buyer_type = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "email", "full_name", "phone", "role", "email_verified", "avatar", "managed_stores"]
+        fields = [
+            "id",
+            "email",
+            "full_name",
+            "phone",
+            "role",
+            "email_verified",
+            "avatar",
+            "managed_stores",
+            "buyer_type",
+        ]
+
+    def get_buyer_type(self, obj) -> str:
+        profile = getattr(obj, "profile", None)
+        return profile.buyer_type if profile else CustomerProfile.BuyerType.INDIVIDUAL
 
     def get_avatar(self, obj) -> str | None:
         profile = getattr(obj, "profile", None)
@@ -132,6 +147,14 @@ class ProfileSerializer(serializers.Serializer):
     marketing_opt_in = serializers.BooleanField(source="profile.marketing_opt_in", required=False)
     whatsapp_opt_in = serializers.BooleanField(source="profile.whatsapp_opt_in", required=False)
     personalization_opt_in = serializers.BooleanField(source="profile.personalization_opt_in", required=False)
+    # Professional buying (self-declared). GSTIN: format + check character only, never looked up.
+    buyer_type = serializers.ChoiceField(
+        choices=CustomerProfile.BuyerType.choices, source="profile.buyer_type", required=False
+    )
+    business_name = serializers.CharField(
+        max_length=150, source="profile.business_name", required=False, allow_blank=True
+    )
+    gstin = GSTINField(source="profile.gstin", required=False)
 
     def get_avatar(self, obj) -> str | None:
         return MeSerializer(obj, context=self.context).get_avatar(obj)

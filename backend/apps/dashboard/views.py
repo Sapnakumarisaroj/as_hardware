@@ -17,11 +17,11 @@ ADMIN_SECTIONS = [
     "warehouses",
     "delivery", "offers", "coupons", "customers", "returns", "refunds", "support", "analytics", "search",
     "options", "collections", "free-delivery", "payment-settings", "loyalty", "bundles", "recommendations",
-    "notifications",
+    "notifications", "quotes",
 ]  # fmt: skip
 MANAGER_SECTIONS = [
     "dashboard", "reports", "assistant", "orders", "inventory", "stores", "delivery", "returns", "refunds",
-    "support", "analytics",
+    "support", "analytics", "quotes",
 ]  # fmt: skip
 STORE_PARAM = OpenApiParameter("store", int, description="One store (administrators: any; managers: their own)")
 

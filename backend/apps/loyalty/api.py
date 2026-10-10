@@ -44,6 +44,12 @@ class CreditEntrySerializer(serializers.ModelSerializer):
     order_number = serializers.CharField(source="order.order_number", default=None)
     remaining = serializers.SerializerMethodField()
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if ledger.is_welcome(instance):
+            data["kind_label"] = "Welcome reward"
+        return data
+
     class Meta:
         model = CreditEntry
         fields = [
@@ -83,6 +89,10 @@ def wallet_summary(user) -> dict:
     soon, first_expiry = ledger.expiring_soon(user)
     code = ReferralCode.for_user(user)
     referral = Referral.objects.filter(referee=user).select_related("referrer").first()
+    made = Referral.objects.filter(referrer=user)
+    # Rewards for friends' orders (the friend's own referral reward is on their order, not this user's).
+    for_friends = rows.filter(kind=K.REFERRAL).exclude(order__user=user)
+    welcome = rows.filter(kind=K.PROMO, reference__startswith=ledger.WELCOME_PREFIX).first()
     return {
         "balance": str(ledger.balance(user)),
         "spendable": str(ledger.spendable(user)),
@@ -101,15 +111,41 @@ def wallet_summary(user) -> dict:
             "never_cash": True,
             "referral_reward": str(rules.referral_reward),
             "referee_reward": str(rules.referee_reward),
+            "welcome_reward": str(rules.welcome_reward),
         },
         "referral": {
             "code": code.code,
             "rewards_on": rules.referral_reward > 0 or rules.referee_reward > 0,
-            "joined": Referral.objects.filter(referrer=user).count(),
-            "rewarded": Referral.objects.filter(referrer=user, status=Referral.Status.REWARDED).count(),
+            "joined": made.count(),
+            "rewarded": made.filter(status=Referral.Status.REWARDED).count(),
+            # Joined with the code, first order not delivered yet.
+            "waiting": made.filter(status=Referral.Status.JOINED).count(),
+            "credited": str(total(kind=K.REFERRAL, status__in=(S.AVAILABLE, S.EXPIRED), pk__in=for_friends)),
+            "pending": str(total(kind=K.REFERRAL, status__in=CreditEntry.WAITING, pk__in=for_friends)),
             "used_code": bool(referral),
         },
+        "welcome": _welcome_state(user, rules, welcome),
     }
+
+
+def _welcome_state(user, rules, entry) -> dict | None:
+    """The welcome reward as this customer sees it: the one they earned (with its status), the offer if
+    their first order hasn't been delivered yet, or nothing."""
+    if entry is not None:
+        return {
+            "amount": str(entry.amount),
+            "status": entry.status,
+            "status_label": entry.get_status_display(),
+            "available_at": entry.available_at,
+            "order_number": entry.reference.removeprefix(ledger.WELCOME_PREFIX),
+        }
+    if rules.welcome_reward <= 0:
+        return None
+    from apps.orders.models import Order
+
+    if Order.objects.filter(user=user, delivered_at__isnull=False).exists():
+        return None
+    return {"amount": str(rules.welcome_reward), "status": "offer", "status_label": "On your first delivered order"}
 
 
 class WalletView(APIView):
@@ -171,6 +207,7 @@ class LoyaltySettingsSerializer(serializers.ModelSerializer):
             "expiry_days",
             "referral_reward",
             "referee_reward",
+            "welcome_reward",
             "updated_at",
         ]
         read_only_fields = ["updated_at"]

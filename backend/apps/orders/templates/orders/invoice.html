@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if is_tax_invoice %}Tax invoice{% else %}Order receipt{% endif %} {{ order.order_number }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #1f2937; margin: 0; padding: 24px; background: #fff; font-size: 13px; }
+  .sheet { max-width: 860px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; border-bottom: 2px solid #1f2937; padding-bottom: 12px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; margin: 0 0 4px; }
+  .muted { color: #6b7280; }
+  .parties { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0; }
+  .note { background: #fef3c7; border: 1px solid #f59e0b; padding: 8px 10px; border-radius: 6px; margin: 12px 0; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { border-bottom: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f3f4f6; font-weight: 600; }
+  .num { text-align: right; white-space: nowrap; }
+  .totals { margin-left: auto; width: min(100%, 360px); }
+  .totals td { border: 0; padding: 3px 8px; }
+  .grand td { border-top: 2px solid #1f2937; font-weight: 700; font-size: 15px; }
+  .actions { margin: 16px 0; }
+  button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid #1f2937; background: #1f2937; color: #fff; cursor: pointer; }
+  footer { margin-top: 24px; font-size: 12px; }
+  @media print { body { padding: 0; } .actions { display: none; } }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="actions"><button type="button" onclick="window.print()">Print or save as PDF</button></div>
+  <header>
+    <div>
+      <h1>{% if is_tax_invoice %}Tax invoice{% else %}Order receipt{% endif %}</h1>
+      <div>Order <strong>{{ order.order_number }}</strong></div>
+      <div class="muted">Date {{ invoice_date|date:"d M Y" }} · Status {{ order.get_status_display }}</div>
+    </div>
+    <div>
+      <h2>Sold by</h2>
+      {% if seller.name %}<div><strong>{{ seller.name }}</strong></div>{% endif %}
+      {% if seller.address %}<div>{{ seller.address|linebreaksbr }}</div>{% endif %}
+      {% if seller.gstin %}<div>GSTIN {{ seller.gstin }}</div>{% endif %}
+      {% if order.store %}<div class="muted">Dispatched from {{ order.store.name }}</div>{% endif %}
+    </div>
+  </header>
+
+  {% if not is_tax_invoice %}
+  <p class="note">This is a receipt, not a GST tax invoice: the shop's GSTIN has not been configured yet.</p>
+  {% endif %}
+
+  <section class="parties">
+    <div>
+      <h2>Billed to</h2>
+      {% if buyer.business_name %}<div><strong>{{ buyer.business_name }}</strong></div>{% endif %}
+      <div>{{ buyer.name }}</div>
+      {% if buyer.gstin %}<div>GSTIN {{ buyer.gstin }}</div>{% endif %}
+    </div>
+    <div>
+      <h2>Delivered to</h2>
+      <div>{{ buyer.address.address_line1 }}{% if buyer.address.address_line2 %}, {{ buyer.address.address_line2 }}{% endif %}</div>
+      <div>{% if buyer.address.area %}{{ buyer.address.area }}, {% endif %}{{ buyer.address.city }}{% if buyer.address.state %}, {{ buyer.address.state }}{% endif %} {{ buyer.address.postal_code }}</div>
+      {% if buyer.address.phone %}<div class="muted">{{ buyer.address.phone }}</div>{% endif %}
+    </div>
+  </section>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th>Item</th><th>HSN</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Taxable value</th><th class="num">GST</th><th class="num">Amount</th></tr>
+    </thead>
+    <tbody>
+      {% for line in lines %}
+      <tr>
+        <td>{{ line.name }}<div class="muted">{{ line.sku }}</div></td>
+        <td>{{ line.hsn_code|default:"—" }}</td>
+        <td class="num">{{ line.quantity }}{% if line.unit %} {{ line.unit }}{% endif %}</td>
+        <td class="num">₹{{ line.unit_price }}</td>
+        <td class="num">₹{{ line.taxable }}</td>
+        <td class="num">{{ line.gst_rate|floatformat:"-2" }}% · ₹{{ line.gst }}</td>
+        <td class="num">₹{{ line.gross }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if rates %}
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>GST rate</th><th class="num">Taxable value</th>
+        {% if split == "intra" %}<th class="num">CGST</th><th class="num">SGST</th>{% elif split == "inter" %}<th class="num">IGST</th>{% else %}<th class="num">GST</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rates %}
+      <tr>
+        <td>{{ row.rate|floatformat:"-2" }}%</td>
+        <td class="num">₹{{ row.taxable }}</td>
+        {% if split == "intra" %}
+        <td class="num">{{ row.half_rate|floatformat:"-2" }}% · ₹{{ row.half }}</td><td class="num">{{ row.half_rate|floatformat:"-2" }}% · ₹{{ row.half }}</td>
+        {% else %}
+        <td class="num">₹{{ row.gst }}</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+
+  <table class="totals">
+    <tr><td>Items</td><td class="num">₹{{ order.subtotal }}</td></tr>
+    {% if order.offer_discount %}<tr><td>Offers</td><td class="num">−₹{{ order.offer_discount }}</td></tr>{% endif %}
+    {% if order.coupon_discount %}<tr><td>Coupon{% if order.coupon_code %} {{ order.coupon_code }}{% endif %}</td><td class="num">−₹{{ order.coupon_discount }}</td></tr>{% endif %}
+    {% if order.credit_discount %}<tr><td>Store credit</td><td class="num">−₹{{ order.credit_discount }}</td></tr>{% endif %}
+    <tr><td>Delivery</td><td class="num">{% if order.delivery_fee %}₹{{ order.delivery_fee }}{% else %}Free{% endif %}</td></tr>
+    <tr class="grand"><td>Total</td><td class="num">₹{{ order.grand_total }}</td></tr>
+    <tr><td class="muted">GST included</td><td class="num muted">₹{{ order.tax_total }}</td></tr>
+    <tr><td class="muted">Payment</td><td class="num muted">{{ order.get_payment_method_display }} · {{ order.get_payment_status_display }}</td></tr>
+  </table>
+
+  <footer class="muted">
+    All prices include GST. Printed {{ printed_at|date:"d M Y, H:i" }}.
+  </footer>
+</div>
+</body>
+</html>

@@ -73,10 +73,11 @@ INTENTS: tuple[Intent, ...] = (
         "Profit and margin",
         "margin",
         (r"\b(profit|margin|munafa|munaafa|kamai\s+kitni\s+bachi)\b", r"मुनाफ़?ा", r"\bmarkup\b"),
-        ("mrp_value", "selling_value", "promotions", "realisation", "gross_margin"),
+        ("gross_profit", "gross_margin", "cost_coverage", "costed_revenue", "goods_revenue", "realisation"),
         "categories",
         "What is our profit margin this month?",
-        "Profit and gross margin can't be calculated yet: purchase costs aren't recorded. What the data does show:",
+        # Replaced by `_profit_lead` (it depends on how much of the revenue has a purchase cost).
+        "",
         exact=True,
     ),
     Intent(
@@ -392,9 +393,23 @@ def _display(value, fmt: str) -> str:
     return f"{value:,}" if isinstance(value, int) else str(value)
 
 
+def _profit_lead(kpis: dict) -> str:
+    """Profit answers say plainly how far the purchase costs reach (never reworded by a model)."""
+    coverage = (kpis.get("cost_coverage") or {}).get("value")
+    if not coverage:
+        return (
+            "Profit and gross margin can't be calculated for this period: the items sold have no purchase cost. "
+            "Add purchase costs to products to see profit. What the data does show:"
+        )
+    if coverage < 100:
+        return f"Profit counts only items with a purchase cost ({coverage}% of goods revenue); the rest is left out."
+    return "Profit from the purchase costs of everything sold:"
+
+
 def _sentence(intent: Intent, kpis: dict, label: str) -> str:
     parts = [f"{kpis[k]['label']}: {_display(kpis[k]['value'], kpis[k]['format'])}" for k in intent.kpis if k in kpis]
-    lead = f"{intent.lead} " if intent.lead else ""
+    lead = _profit_lead(kpis) if intent.key == "profit" else intent.lead
+    lead = f"{lead} " if lead else ""
     return f"{lead}{intent.label} for {label} — " + "; ".join(parts) + "."
 
 
@@ -441,8 +456,8 @@ def answer(question: str, *, store_ids, stores: list, today: date | None = None,
             **base,
             "intent": None,
             "text": "I can answer questions about sales, orders, products, categories, brands, stock, fast delivery, "
-            "riders, customers, returns and refunds, offers and coupons, stores, and price realisation. Try one of the "
-            "suggestions.",
+            "riders, customers, returns and refunds, offers and coupons, stores, and profit and price realisation. "
+            "Try one of the suggestions.",
             "source": "rules",
         }
     scope_ids = store_ids

@@ -107,12 +107,17 @@ class SmartCartView(APIView):
                     ids.add(item["product_id"])
                 ids.update(o["product_id"] for o in item.get("options", []))
                 ids.update(a["product_id"] for a in item.get("alternatives", []))
+                ids.update(line["product_id"] for line in item.get("lines", []))
         found = cards(ids, request)
         for section in data["sections"]:
             for item in section["items"]:
                 item["product"] = found.get(item.get("product_id"))
                 for option in item.get("options", []):
                     option["product"] = found.get(option["product_id"])
+                for line in item.get("lines", []):  # "complete the set": a line that went off sale is dropped
+                    line["product"] = found.get(line["product_id"])
+                if item.get("lines"):
+                    item["lines"] = [line for line in item["lines"] if line["product"]]
         return Response(data)
 
 

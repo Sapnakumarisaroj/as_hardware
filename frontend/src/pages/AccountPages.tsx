@@ -7,6 +7,7 @@ import { Pagination } from '@/components/Pagination'
 import { useAddresses } from '@/features/addresses/api'
 import { AddressFormModal, AddressList, AddressText } from '@/features/addresses/components'
 import { useAuth } from '@/features/auth/context'
+import { BusinessProfileCard } from '@/features/business/BusinessProfile'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { OrderDeliveryCard } from '@/features/delivery/components'
 import { DeliveryTracking } from '@/features/delivery/tracking'
@@ -22,6 +23,7 @@ import {
 } from '@/features/orders/components'
 import { BuyAgainButton, ReturnCard, ReturnDialog } from '@/features/orders/returns'
 import type { OrderDetail } from '@/features/orders/types'
+import { api } from '@/lib/api/client'
 import { isNotFound } from '@/lib/api/errors'
 import { formatDate, formatPrice } from '@/lib/format'
 import { usePageMeta } from '@/lib/usePageMeta'
@@ -53,6 +55,7 @@ export function AccountPage() {
   const tiles = [
     { to: '/account/orders', title: 'Orders', text: 'Track, cancel, return and buy again' },
     { to: '/account/returns', title: 'Returns', text: 'Return requests and refunds' },
+    { to: '/account/quotes', title: 'Quotes', text: 'Bulk quote requests and quotations' },
     { to: '/account/wallet', title: 'Wallet', text: 'Credits, cashback and your referral code' },
     { to: '/account/addresses', title: 'Addresses', text: 'Manage delivery addresses' },
     { to: '/wishlist', title: 'Wishlist', text: 'Items you saved' },
@@ -75,6 +78,7 @@ export function AccountPage() {
           <dd className="font-medium">{user.phone || '—'}</dd>
         </div>
       </dl>
+      <BusinessProfileCard />
       <ul className="mt-6 grid gap-3 sm:grid-cols-2">
         {tiles.map((t) => (
           <li key={t.to}>
@@ -242,7 +246,7 @@ function OrderCredits({ order }: { order: OrderDetail }) {
       )}
       {live.map((entry, index) => (
         <p key={index} className="mt-1">
-          {entry.kind === 'cashback' ? 'Cashback' : 'Reward'}:{' '}
+          {entry.kind === 'cashback' ? 'Cashback' : entry.kind === 'promo' ? 'Welcome reward' : 'Reward'}:{' '}
           <span className="font-semibold text-success-600">{formatPrice(entry.amount)}</span> · {entry.status_label}
           {entry.status === 'eligible' && entry.available_at && ` (usable from ${formatDate(entry.available_at)})`}
           {entry.status === 'pending' && ' (usable after delivery and the return window)'}
@@ -252,6 +256,52 @@ function OrderCredits({ order }: { order: OrderDetail }) {
         Your wallet
       </Link>
     </section>
+  )
+}
+
+/**
+ * The invoice is an HTML page behind the customer's token, so it is fetched here and shown from
+ * memory in a new tab, where it can be printed or saved as PDF.
+ */
+function InvoiceButton({ orderNumber }: { orderNumber: string }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function open() {
+    // Open the tab now (inside the click) so pop-up blockers allow it; fill it once loaded.
+    const tab = window.open('', '_blank')
+    setBusy(true)
+    setError('')
+    try {
+      const response = await api.get<Blob>(`/orders/${encodeURIComponent(orderNumber)}/invoice/`, { responseType: 'blob' })
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'text/html' }))
+      if (tab) tab.location.href = url
+      else {
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `invoice-${orderNumber}.html`
+        link.click()
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      tab?.close()
+      setError('Couldn’t load the invoice. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div>
+      <button type="button" onClick={() => void open()} disabled={busy} className="btn-secondary w-full">
+        {busy ? 'Opening invoice…' : 'Download invoice'}
+      </button>
+      {error && (
+        <p role="alert" className="mt-1 text-xs text-danger-600">
+          {error}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -364,6 +414,7 @@ export function OrderDetailPage() {
             {data.customer_note && <p className="mt-2 text-xs text-ink-600">Note: {data.customer_note}</p>}
           </section>
           {data.can_reorder && <BuyAgainButton orderNumber={data.order_number} />}
+          {!['pending', 'cancelled'].includes(data.status) && <InvoiceButton orderNumber={data.order_number} />}
           {data.can_return && (
             <div>
               <button type="button" onClick={() => setReturning(true)} className="btn-secondary w-full">

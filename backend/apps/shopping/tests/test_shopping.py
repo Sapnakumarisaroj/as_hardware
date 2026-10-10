@@ -118,13 +118,15 @@ def test_frequently_bought_together_comes_from_real_orders(hw, user, other_user)
     order(user, hw["impact"], hw["hammer"])
     order(other_user, hw["impact"], hw["hammer"], hw["bulb"])
     order(other_user, hw["impact"], hw["bulb"], status="cancelled")  # cancelled orders don't count
-    assert co_purchased(hw["impact"].pk)[:2] == [(hw["hammer"].pk, 2), (hw["bulb"].pk, 1)]
+    # the bulb was bought with the drill once (support 1 < 2): not "frequently" bought together
+    assert [(r.product_id, r.together) for r in co_purchased(hw["impact"].pk)] == [(hw["hammer"].pk, 2)]
     data = RecommendationService().for_product(hw["impact"].pk)
     rows = data["groups"]["frequently_bought_together"]
     assert (
         rows[0]["product_id"] == hw["hammer"].pk
-        and rows[0]["reason"] == "Bought together in 2 orders."
+        and rows[0]["reason"] == "Bought together in 2 orders (100% of orders with it)."
         and rows[0]["orders"] == 2
+        and rows[0]["confidence"] == 1.0
     )
 
 
@@ -221,7 +223,7 @@ def test_smart_cart_duplicates_quantity_mismatch_and_stock(hw, user, auth_client
 
 def test_free_delivery_opportunity_and_coupons(hw, user, auth_client, settings):  # noqa: F811
     settings.DELIVERY_FEE = D("40.00")
-    settings.FREE_DELIVERY_MIN_ORDER = D("5000.00")
+    settings.FREE_DELIVERY_MIN_ORDER = D("1500.00")
     create_coupon("SAVE10", show_in_checkout=True)
     add_item(user, hw["hammer"].variants.first().pk, 1)
     data = auth_client.get(CART).json()
@@ -233,19 +235,25 @@ def test_free_delivery_opportunity_and_coupons(hw, user, auth_client, settings):
 
 
 def test_cheaper_equivalent_must_fit_the_rest_of_the_cart(hw, user, auth_client):  # noqa: F811
-    hw["cordless"].variants.update(price=D("500"))
+    from apps.catalog.models import ProductSpecification
+    from apps.core.testing import create_product
+    from apps.shopping.services.smart_cart import SmartCartService
+
+    hw["cordless"].variants.update(price=D("500"))  # cheaper, but a 10 mm chuck: differs from the 13 mm drill
+    budget, _ = create_product(name="Budget Impact Drill", category=hw["tools"], price="700.00", stock=10)
+    for name, value, unit in (("Chuck Size", "13", "mm"), ("Impact Function", "Yes", "")):
+        ProductSpecification.objects.create(product=budget, name=name, value=value, unit=unit)
     add_item(user, hw["impact"].variants.first().pk, 1)
     add_item(user, hw["masonry"].variants.first().pk, 1)
-    alternatives = section(auth_client.get(CART).json(), "alternatives")
-    # the cordless drill is cheaper but doesn't take the 12 mm masonry bits in the cart: not suggested
-    assert alternatives is None or all(i["product_id"] != hw["cordless"].pk for i in alternatives["items"])
-    CartItem.objects.filter(cart__user=user, variant__product=hw["masonry"]).delete()
     alternatives = section(auth_client.get(CART).json(), "alternatives")["items"]
-    assert (
-        alternatives[0]["product_id"] == hw["cordless"].pk
-        and alternatives[0]["action"] == "replace"
-        and "Compare the specifications" in alternatives[0]["message"]
-    )
+    assert [a["product_id"] for a in alternatives] == [budget.pk]  # never the cordless one: another chuck size
+    assert alternatives[0]["action"] == "replace" and "with the same Chuck Size 13 mm" in alternatives[0]["message"]
+    assert "fits the rest of your cart" in alternatives[0]["reason"]
+    # the fit check: the cordless drill doesn't take the 12 mm masonry bits in the cart as surely as the impact one
+    items = list(CartItem.objects.filter(cart__user=user).select_related("variant__product").order_by("id"))
+    service = SmartCartService()
+    assert service._fits_others(hw["cordless"], items[0], {"items": items}) is False
+    assert service._fits_others(budget, items[0], {"items": items}) is True
 
 
 def test_smart_cart_budget_and_empty_cart(hw, user, auth_client, api_client):  # noqa: F811
@@ -267,10 +275,16 @@ def test_smart_cart_budget_and_empty_cart(hw, user, auth_client, api_client):  #
 def test_bundle_opportunity_in_the_cart(hw, user, auth_client):  # noqa: F811
     bundle = Bundle.objects.create(name="Drilling kit", slug="drilling-kit", kind="drilling")
     BundleItem.objects.create(bundle=bundle, product=hw["impact"], quantity=1)
-    BundleItem.objects.create(bundle=bundle, product=hw["masonry"], quantity=1, sort_order=1)
+    BundleItem.objects.create(bundle=bundle, product=hw["hammer"], quantity=1, sort_order=1)
+    BundleItem.objects.create(bundle=bundle, product=hw["bulb"], quantity=1, sort_order=2)
     add_item(user, hw["impact"].variants.first().pk, 1)
-    item = section(auth_client.get(CART).json(), "bundles")["items"][0]
-    assert item["action"] == "apply_bundle" and item["bundle"]["missing"] == [hw["masonry"].pk]
+    bundles = section(auth_client.get(CART).json(), "bundles")
+    # one item of the set in the cart is not "partially matching": no offer yet
+    assert bundles is None or all(i["type"] != "bundle" for i in bundles["items"])
+    add_item(user, hw["hammer"].variants.first().pk, 1)
+    item = next(i for i in section(auth_client.get(CART).json(), "bundles")["items"] if i["type"] == "bundle")
+    assert item["action"] == "apply_bundle" and item["bundle"]["missing"] == [hw["bulb"].pk]
+    assert D(item["total"]) == hw["bulb"].variants.first().price and item["reason"] == "You have 2 of its 3 items."
     response = auth_client.post(f"{BUNDLES}drilling-kit/add-to-cart/", {"only_missing": True}, format="json")
     assert response.status_code == 200 and response.json()["added_lines"] == 1
     assert CartItem.objects.get(cart__user=user, variant__product=hw["impact"]).quantity == 1  # not doubled

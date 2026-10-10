@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 
 import { ChatIcon, ClockIcon, MailIcon, PhoneIcon, PinIcon } from '@/components/icons'
 import { useNavGroups } from '@/features/catalog/navGroups'
+import { CompareTray } from '@/features/compare/CompareTray'
 import { env } from '@/lib/env'
 
 const link = 'text-sm text-steel-200 transition-colors hover:text-amber-400'
@@ -132,6 +133,8 @@ export function Footer() {
           <span>Delivering across Bengaluru</span>
         </p>
       </div>
+      {/* Fixed to the bottom of the screen; rendered here so its spacer sits under the footer. */}
+      <CompareTray />
     </footer>
   )
 }

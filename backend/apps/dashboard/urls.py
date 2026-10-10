@@ -1,7 +1,15 @@
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
-from .catalog import AdminBrandViewSet, AdminCategoryViewSet, AdminProductViewSet, VariantSearchView
+from .catalog import (
+    AdminBrandViewSet,
+    AdminCategoryViewSet,
+    AdminProductViewSet,
+    CatalogExportView,
+    CatalogImportView,
+    CatalogTemplateView,
+    VariantSearchView,
+)
 from .commerce import (
     AdminCollectionViewSet,
     AdminFreeDeliveryRuleViewSet,
@@ -43,6 +51,9 @@ urlpatterns = [
     path("admin/search/index/rebuild/", SearchIndexRebuildView.as_view(), name="admin-search-rebuild"),
     path("admin/search/index/products/<int:pk>/", SearchIndexProductView.as_view(), name="admin-search-product"),
     path("admin/search/explain/", SearchExplainView.as_view(), name="admin-search-explain"),
+    path("admin/catalog/import/", CatalogImportView.as_view(), name="admin-catalog-import"),
+    path("admin/catalog/export/", CatalogExportView.as_view(), name="admin-catalog-export"),
+    path("admin/catalog/template/", CatalogTemplateView.as_view(), name="admin-catalog-template"),
     path("admin/payment-settings/", PaymentSettingsView.as_view(), name="admin-payment-settings"),
     *router.urls,
 ]

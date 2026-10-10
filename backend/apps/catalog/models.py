@@ -158,6 +158,9 @@ class Brand(SoftDeleteModel):
     logo = models.ImageField(upload_to=brand_logo_path, blank=True, validators=IMAGE_VALIDATORS)
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    # Demo/sample data from `manage.py seed_demo_data` (never real stock or prices). `purge_demo_data`
+    # removes it; imports and the admin create real rows (False).
+    is_demo = models.BooleanField(default=False, db_index=True, editable=False)
 
     class Meta:
         ordering = ["name"]
@@ -209,6 +212,9 @@ class Product(SoftDeleteModel):
     is_published = models.BooleanField(default=False, help_text="Visible to customers once published.")
     is_featured = models.BooleanField(default=False)
     is_returnable = models.BooleanField(default=True)
+    # Demo/sample data from `manage.py seed_demo_data` (never real stock or prices). `purge_demo_data`
+    # removes it; imports and the admin create real rows (False).
+    is_demo = models.BooleanField(default=False, db_index=True, editable=False)
     launch_date = models.DateField(
         null=True, blank=True, help_text="When the product was launched; drives the automatic 'New launches' list."
     )
@@ -277,6 +283,15 @@ class ProductVariant(TimeStampedModel):
         **MONEY_FIELD_KWARGS,
         validators=[MinValueValidator(Decimal("0.01"))],
         help_text="Selling price (GST inclusive).",
+    )
+    # What the shop pays per unit (GST inclusive, like the price). Optional: profit and margin are
+    # reported only for sales whose cost is known, never estimated.
+    cost_price = models.DecimalField(
+        **MONEY_FIELD_KWARGS,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text="Purchase cost per unit (optional; used only for profit reports).",
     )
     weight_grams = models.PositiveIntegerField(null=True, blank=True)
     length_mm = models.PositiveIntegerField(null=True, blank=True)

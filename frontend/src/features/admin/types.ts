@@ -2,6 +2,7 @@
  * Money is a decimal string calculated by the server; the dashboard only displays it. */
 
 import type { OrderDetail, OrderStatus, PaymentMethod, PaymentStatus } from '@/features/orders/types'
+import type { SupportAttachment, SupportProductRef } from '@/features/support/types'
 
 export type Section =
   | 'bundles'
@@ -31,6 +32,7 @@ export type Section =
   | 'notifications'
   | 'reports'
   | 'assistant'
+  | 'quotes'
 
 export interface StoreRef {
   id: number
@@ -283,6 +285,8 @@ export interface AdminProductRow {
   is_featured: boolean
   is_returnable: boolean
   is_deleted: boolean
+  /** Sample data from the demo seed (never real stock or prices); `purge_demo_data` removes it. */
+  is_demo?: boolean
   state: ProductState
   variant_count: number
   price_from: string | null
@@ -299,6 +303,8 @@ export interface AdminVariant {
   attributes: Record<string, string>
   mrp: string
   price: string
+  /** Purchase cost per unit (GST incl.) for profit reports. Sent to administrators only; null = not entered. */
+  cost_price?: string | null
   is_default: boolean
   is_active: boolean
   sort_order: number
@@ -307,6 +313,19 @@ export interface AdminVariant {
   /** Bulk prices (Phase 15): from `min_quantity` units, `unit_price` each. */
   price_tiers?: { min_quantity: number; unit_price: string }[]
   options?: { option_type: number; option_name: string; value_id: number; value: string }[]
+}
+
+/** POST /admin/catalog/import/: what a spreadsheet import did (or, for a dry run, would do). */
+export interface CatalogImportReport {
+  ok: boolean
+  dry_run: boolean
+  committed: boolean
+  filename: string
+  /** rows, products/variants created and updated, unchanged, stock_movements, brands_created */
+  counts: Record<string, number>
+  rows: { row: number; product_sku: string; variant_sku: string; action: 'create' | 'update' | 'unchanged' }[]
+  /** row null = the whole file; column '' = the whole row */
+  errors: { row: number | null; column: string; sku: string; message: string }[]
 }
 
 export interface AdminProductImage {
@@ -349,6 +368,8 @@ export interface VariantInput {
   name: string
   mrp: string
   price: string
+  /** Purchase cost ('' or null = not known). Left out = unchanged. */
+  cost_price?: string | null
   is_default: boolean
   is_active: boolean
   /** Replace-all lists; the server checks every rule (no overlaps, cheaper with quantity, ≤ MRP). */
@@ -725,6 +746,8 @@ export interface SupportRow {
   waiting_for_reply: boolean
   last_message_at: string | null
   created_at: string
+  /** The product a product-page or WhatsApp enquiry is about. */
+  product?: SupportProductRef | null
 }
 
 export interface SupportDetail extends SupportRow {
@@ -733,6 +756,8 @@ export interface SupportDetail extends SupportRow {
     sender_type: 'customer' | 'agent' | 'bot' | 'system'
     sender_name: string
     body: string
+    /** Photos/documents sent on WhatsApp; staff open them through the support media endpoint. */
+    attachments?: SupportAttachment[]
     created_at: string
   }[]
 }
@@ -889,6 +914,8 @@ export interface LoyaltySettings {
   expiry_days: number
   referral_reward: string
   referee_reward: string
+  /** Credit on every customer's first delivered order (cashback terms). 0 = off. */
+  welcome_reward: string
   updated_at: string
 }
 

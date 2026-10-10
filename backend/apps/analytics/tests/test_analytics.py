@@ -18,8 +18,8 @@ from apps.core.testing import create_coupon, create_product
 from apps.dashboard.scope import local_day_start
 from apps.delivery.tests.helpers import advance, assign, create_partner, deliver_job, packed_order, store_at, zone_for
 from apps.inventory.models import Inventory
-from apps.orders.models import Order
-from apps.orders.returns import approve_return, request_return
+from apps.orders.models import Order, OrderItem
+from apps.orders.returns import approve_return, receive_return, request_return
 from apps.orders.services import cancel_order_by_customer
 from apps.orders.tests.helpers import deliver, order_with, pay
 from integrations.llm import LLMReply
@@ -156,9 +156,9 @@ def test_customers_offers_returns_stores_and_margin(shop, user, admin_user):
 
     offers = reports.build("offers", scope_for())
     assert kpis(offers)["coupon_discount"] == "50.00"
-    assert rows(offers, "coupons") == [
-        {"code": "SAVE50", "orders": 1, "discount": "50.00", "revenue": str(shop["online"].grand_total)}
-    ]
+    online = shop["online"]
+    goods = online.subtotal - online.offer_discount - online.coupon_discount  # net goods value, no delivery fee
+    assert rows(offers, "coupons") == [{"code": "SAVE50", "orders": 1, "discount": "50.00", "revenue": str(goods)}]
 
     item = shop["delivered"].items.get()
     ret = request_return(
@@ -177,8 +177,73 @@ def test_customers_offers_returns_stores_and_margin(shop, user, admin_user):
     margin = reports.build("margin", scope_for())
     k = kpis(margin)
     paid = [shop["delivered"], shop["online"]]
-    assert k["mrp_value"] == str(sum(o.mrp_total for o in paid)) and k["gross_margin"] is None
-    assert any("purchase" in note for note in margin["notes"])
+    assert k["mrp_value"] == str(sum(o.mrp_total for o in paid))
+    # No purchase costs: no profit, and the report says so.
+    assert (k["gross_profit"], k["gross_margin"], k["cost_of_goods"], k["cost_coverage"]) == (None, None, None, 0.0)
+    assert any("Add purchase costs to products to see profit" in note for note in margin["notes"])
+
+
+def test_margin_profit_uses_only_lines_with_a_cost_and_reports_coverage(shop):
+    # Drills cost ₹600 (snapshot on the order lines); hinges have no cost.
+    OrderItem.objects.filter(variant=shop["drill"]).update(unit_cost=Decimal("600.00"))
+    margin = reports.build("margin", scope_for())
+    k = kpis(margin)
+    # Paid for goods: delivered 2 × 1000; online drill 1000 and hinges 600 share the ₹50 coupon pro rata.
+    assert k["goods_revenue"] == "3550.00"
+    assert k["costed_revenue"] == "2968.75" and k["cost_of_goods"] == "1800.00"
+    assert k["gross_profit"] == "1168.75" and k["gross_margin"] == 39.4
+    assert k["cost_coverage"] == 83.6
+    hint = next(x["hint"] for x in margin["kpis"] if x["key"] == "cost_coverage")
+    assert "2 of 3 order lines" in hint
+    by_cat = {r["category"]: r for r in rows(margin, "categories")}
+    power, hardware = by_cat["Power Tools & Accessories"], by_cat["Hinges, Channels & Handles"]
+    assert (power["revenue"], power["cost"], power["profit"], power["margin"], power["coverage"]) == (
+        "2968.75",
+        "1800.00",
+        "1168.75",
+        39.4,
+        100.0,
+    )
+    assert (hardware["profit"], hardware["margin"], hardware["coverage"]) == (None, None, 0.0)  # never guessed
+    assert any("83.6% of goods revenue" in note for note in margin["notes"])
+
+
+def test_margin_profit_is_net_of_returns_and_counts_quoted_lines_at_their_price(shop, user, admin_user):
+    OrderItem.objects.filter(variant=shop["drill"]).update(unit_cost=Decimal("600.00"))
+    # A quoted hinge line: the quoted price is what was charged, so it counts as is.
+    OrderItem.objects.filter(variant=shop["hinge"]).update(quoted=True, unit_cost=Decimal("200.00"))
+    k = kpis(reports.build("margin", scope_for()))
+    assert k["cost_coverage"] == 100.0 and k["cost_of_goods"] == "2200.00"  # 3 × 600 + 2 × 200
+    assert k["gross_profit"] == "1350.00"  # 3550 − 2200
+
+    item = shop["delivered"].items.get()
+    ret = request_return(
+        shop["delivered"], user=user, items=[{"order_item_id": item.id, "quantity": 1}], reason="defective"
+    )
+    approve_return(ret, actor=admin_user)
+    k = kpis(reports.build("margin", scope_for()))
+    assert k["goods_revenue"] == "3550.00"  # an open return changes nothing yet
+    receive_return(ret, actor=admin_user, restock=True)
+    k = kpis(reports.build("margin", scope_for()))
+    # The refunded drill leaves revenue (−1000) and, back on the shelf, its cost (−600).
+    assert (k["goods_revenue"], k["cost_of_goods"], k["gross_profit"]) == ("2550.00", "1600.00", "950.00")
+
+
+def test_margin_csv_has_the_profit_columns(shop, admin_client):
+    OrderItem.objects.filter(variant=shop["drill"]).update(unit_cost=Decimal("600.00"))
+    text = admin_client.get("/api/admin/reports/margin/export/?table=categories").content.decode("utf-8-sig")
+    header, first = list(csv.reader(io.StringIO(text)))[1:3]
+    assert header[-5:] == ["Goods revenue", "Purchase cost", "Gross profit", "Margin", "Cost coverage"]
+    assert first[0] == "Power Tools & Accessories" and first[-3:] == ["1168.75", "39.4", "100.0"]
+
+
+def test_offers_show_the_net_goods_value_of_orders_that_used_them(shop):
+    from apps.offers.models import OfferRedemption
+
+    redemptions = list(OfferRedemption.objects.all())
+    data = reports.build("offers", scope_for())
+    assert {r["code"]: r["revenue"] for r in rows(data, "coupons")} == {"SAVE50": "1550.00"}
+    assert len(rows(data, "offers")) == len({r.offer_id for r in redemptions})
 
 
 def test_inventory_report_values_stock_and_flags_low_items(shop):
@@ -442,4 +507,20 @@ def test_profit_questions_are_never_reworded_and_say_margin_is_unavailable(shop,
     monkeypatch.setattr(assistant, "get_llm_provider", lambda: fake)
     body = assistant.answer("What is our profit margin this month?", store_ids=None, stores=[])
     assert body["intent"] == "profit" and body["source"] == "rules" and fake.messages == []
-    assert body["text"].startswith("Profit and gross margin can't be calculated yet")
+    assert body["text"].startswith("Profit and gross margin can't be calculated for this period")
+    assert "Add purchase costs to products to see profit" in body["text"] and "77.0" not in body["text"]
+
+
+def test_profit_answers_quote_the_margin_report_with_its_coverage(shop, monkeypatch):
+    OrderItem.objects.filter(variant=shop["drill"]).update(unit_cost=Decimal("600.00"))
+    fake = FakeModel(["Your profit is ₹1,168.75."])
+    monkeypatch.setattr(assistant, "get_llm_provider", lambda: fake)
+    body = assistant.answer("What is our profit this month?", store_ids=None, stores=[])
+    assert body["source"] == "rules" and fake.messages == []  # never reworded, even with matching numbers
+    assert body["text"].startswith("Profit counts only items with a purchase cost (83.6% of goods revenue)")
+    assert "Gross profit: ₹1,168.75" in body["text"] and "Gross margin: 39.4%" in body["text"]
+    assert {k["key"]: k["value"] for k in body["kpis"]}["gross_profit"] == "1168.75"
+
+    OrderItem.objects.filter(variant=shop["hinge"]).update(unit_cost=Decimal("200.00"))
+    body = assistant.answer("What is our profit this month?", store_ids=None, stores=[])
+    assert body["text"].startswith("Profit from the purchase costs of everything sold")

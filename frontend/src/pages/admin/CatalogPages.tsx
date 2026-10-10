@@ -68,6 +68,7 @@ export function AdminProductsPage() {
     state: list.get('state'),
     category: list.get('category'),
     stock: list.get('stock'),
+    demo: list.get('demo'),
     ordering: list.get('ordering'),
   })
   const remove = useDeleteProduct()
@@ -127,6 +128,7 @@ export function AdminProductsPage() {
           <StatusBadge status={product.state} text={product.state === 'live' ? 'On sale' : undefined} />
           {!product.is_returnable && <Badge>No returns</Badge>}
           {product.is_featured && <Badge tone="info">Featured</Badge>}
+          {product.is_demo && <Badge tone="warn">Demo</Badge>}
         </span>
       ),
     },
@@ -189,9 +191,14 @@ export function AdminProductsPage() {
         description={canEdit ? undefined : 'You can look up products here. Changes are made by an administrator.'}
         actions={
           canEdit && (
-            <Link to="/admin/products/new" className="btn-primary">
-              Add product
-            </Link>
+            <>
+              <Link to="/admin/products/import" className="btn-secondary">
+                Import / export
+              </Link>
+              <Link to="/admin/products/new" className="btn-primary">
+                Add product
+              </Link>
+            </>
           )
         }
       />
@@ -216,6 +223,7 @@ export function AdminProductsPage() {
           options={(categories.data ?? []).map((c) => [String(c.id), c.parent_name ? `${c.parent_name} › ${c.name}` : c.name])}
         />
         <FilterSelect list={list} name="stock" label="Stock" options={[['in', 'In stock'], ['out', 'Out of stock']]} />
+        <FilterSelect list={list} name="demo" label="Data" all="Real and demo" options={[['false', 'Real only'], ['true', 'Demo only']]} />
       </FilterBar>
       <ListView
         query={products}
@@ -255,7 +263,8 @@ export function AdminProductsPage() {
 
 // --- Product form --------------------------------------------------------------------------------
 
-const UNITS = ['piece', 'pack', 'box', 'kg', 'g', 'litre', 'ml', 'metre', 'sqft', 'bag', 'set', 'pair', 'roll']
+// Must match catalog.Product.Unit on the server (anything else is rejected on save).
+const UNITS = ['piece', 'pack', 'box', 'm', 'coil', 'kg', 'l', 'bag', 'pair', 'set']
 const EMPTY_VARIANT: VariantInput = { sku: '', name: '', mrp: '', price: '', is_default: false, is_active: true }
 
 function blank(): ProductInput {
@@ -307,6 +316,8 @@ function fromProduct(product: AdminProduct): ProductInput {
       name: v.name,
       mrp: v.mrp,
       price: v.price,
+      // Only administrators receive the purchase cost; without it the field is left out (unchanged).
+      ...('cost_price' in v ? { cost_price: v.cost_price ?? '' } : {}),
       is_default: v.is_default,
       is_active: v.is_active,
       price_tiers: (v.price_tiers ?? []).map((t) => ({ min_quantity: String(t.min_quantity), unit_price: t.unit_price })),
@@ -360,6 +371,8 @@ function problems(form: ProductInput): string[] {
     if (!(Number(variant.price) > 0)) found.push(`${name}: enter the selling price.`)
     if (!(Number(variant.mrp) > 0)) found.push(`${name}: enter the MRP.`)
     if (Number(variant.price) > Number(variant.mrp)) found.push(`${name}: the selling price can’t be higher than the MRP.`)
+    const cost = (variant.cost_price ?? '').trim()
+    if (cost !== '' && !(Number(cost) >= 0)) found.push(`${name}: the purchase cost must be a number, 0 or more.`)
     found.push(...tierProblems(variant, name))
   })
   const skus = form.variants.map((v) => v.sku.trim().toUpperCase()).filter(Boolean)
@@ -662,6 +675,7 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
           ...v,
           sku: v.sku.trim(),
           name: v.name.trim(),
+          ...(v.cost_price === undefined ? {} : { cost_price: v.cost_price?.trim() ? v.cost_price.trim() : null }),
           price_tiers: (v.price_tiers ?? []).filter((t) => t.min_quantity !== '' || t.unit_price !== ''),
           options: (v.options ?? []).filter((o) => o.value.trim() !== '').map((o) => ({ ...o, value: o.value.trim() })),
         })),
@@ -826,6 +840,16 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
                     value={variant.price}
                     onChange={(e) => setVariant(index, { price: e.target.value })}
                   />
+                  {(variant.cost_price !== undefined || variant.id === undefined) && (
+                    <FormField
+                      id={`variant-${index}-cost`}
+                      label="Purchase cost (₹)"
+                      inputMode="decimal"
+                      value={variant.cost_price ?? ''}
+                      onChange={(e) => setVariant(index, { cost_price: e.target.value })}
+                      hint="Optional, GST incl. Only for profit reports; never shown to customers."
+                    />
+                  )}
                 </div>
                 {usableOptions.length > 0 && (
                   <div className="mt-3 grid gap-3 sm:grid-cols-4">

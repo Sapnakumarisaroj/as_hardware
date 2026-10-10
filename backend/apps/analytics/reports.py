@@ -14,9 +14,10 @@ those of the Phase 11 analytics (`apps.dashboard.metrics`):
   cancelled and not waiting for payment.
 - Store managers only ever see their own stores (`store_ids`); administrators see all or one store.
 
-Profit: the catalogue stores selling prices and MRP but no purchase cost, so gross margin can't be
-calculated. The "price realisation" report shows what can be: MRP vs selling value, discounts,
-offers, coupons, credits, delivery fees and GST.
+Profit: each order line keeps the variant's purchase cost when it was placed (`OrderItem.unit_cost`,
+null when unknown). The margin report computes gross profit only from lines with a cost and always
+says how much of the revenue that covers; lines without a cost are left out, never estimated. It also
+shows MRP vs selling value and promotions.
 
 Portability: grouping by day/hour/weekday is done in Python from narrow `values_list` queries, as
 in the Phase 11 metrics (no database date functions, which MySQL on shared hosting may lack).
@@ -26,6 +27,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 
 from django.db.models import Count, F, Max, Q, Sum
 from django.db.models.functions import Coalesce
@@ -38,7 +40,7 @@ from apps.dashboard.scope import scope_orders
 from apps.delivery.models import DeliveryAssignment
 from apps.inventory.models import Inventory, StockMovement
 from apps.offers.models import CouponRedemption, OfferRedemption
-from apps.orders.models import Order, OrderItem, OrderShipment, OrderStatus, ReturnRequest
+from apps.orders.models import Order, OrderItem, OrderShipment, OrderStatus, ReturnItem, ReturnRequest
 from apps.payments.models import Refund
 from apps.stores.models import Store
 
@@ -990,11 +992,23 @@ def offers_report(scope: Scope) -> dict:
     coupon_rows = (
         CouponRedemption.objects.filter(order_id__in=ids)
         .values("coupon__code")
-        .annotate(
-            n=Count("order_id", distinct=True), discount=Sum("discount_amount"), revenue=Sum("order__grand_total")
-        )
+        .annotate(n=Count("order_id", distinct=True), discount=Sum("discount_amount"))
         .order_by("-discount")
     )
+    # Net goods value of the orders that used each offer / coupon (each order once, delivery fee excluded).
+    goods = {
+        pk: subtotal - offer - coupon
+        for pk, subtotal, offer, coupon in orders.values_list("pk", "subtotal", "offer_discount", "coupon_discount")
+    }
+    used_by = defaultdict(set)
+    for name, order_id in OfferRedemption.objects.filter(order_id__in=ids).values_list("offer__name", "order_id"):
+        used_by[("offer", name)].add(order_id)
+    for code, order_id in CouponRedemption.objects.filter(order_id__in=ids).values_list("coupon__code", "order_id"):
+        used_by[("coupon", code)].add(order_id)
+
+    def goods_value(kind: str, name: str) -> str:
+        return money(sum((goods.get(pk, ZERO) for pk in used_by[(kind, name)]), ZERO))
+
     count = orders.count()
     with_offer = orders.filter(Q(offer_discount__gt=0) | Q(coupon_discount__gt=0)).count()
     offer_total, coupon_total = total(orders, "offer_discount"), total(orders, "coupon_discount")
@@ -1012,8 +1026,21 @@ def offers_report(scope: Scope) -> dict:
         table(
             "offers",
             "Automatic offers",
-            [col("offer", "Offer"), col("orders", "Orders", COUNT), col("discount", "Discount given", MONEY)],
-            [{"offer": r["offer__name"], "orders": r["n"], "discount": money(r["discount"])} for r in offer_rows],
+            [
+                col("offer", "Offer"),
+                col("orders", "Orders", COUNT),
+                col("discount", "Discount given", MONEY),
+                col("revenue", "Net goods value of those orders", MONEY),
+            ],
+            [
+                {
+                    "offer": r["offer__name"],
+                    "orders": r["n"],
+                    "discount": money(r["discount"]),
+                    "revenue": goods_value("offer", r["offer__name"]),
+                }
+                for r in offer_rows
+            ],
             bar("offer", "discount"),
         )
     )
@@ -1025,14 +1052,14 @@ def offers_report(scope: Scope) -> dict:
                 col("code", "Code"),
                 col("orders", "Orders", COUNT),
                 col("discount", "Discount given", MONEY),
-                col("revenue", "Revenue of those orders", MONEY),
+                col("revenue", "Net goods value of those orders", MONEY),
             ],
             [
                 {
                     "code": r["coupon__code"],
                     "orders": r["n"],
                     "discount": money(r["discount"]),
-                    "revenue": money(r["revenue"]),
+                    "revenue": goods_value("coupon", r["coupon__code"]),
                 }
                 for r in coupon_rows
             ],
@@ -1051,7 +1078,8 @@ def offers_report(scope: Scope) -> dict:
         )
     )
     out["notes"].append(
-        "Paid orders placed in the period. A coupon's revenue is the full amount paid for those orders."
+        "Paid orders placed in the period. Net goods value: what those orders' goods sold for after offers and "
+        "coupon (before credits, without delivery fees), each order counted once."
     )
     return out
 
@@ -1163,49 +1191,158 @@ def margin_report(scope: Scope) -> dict:
             PERCENT,
             "What customers paid for goods as a share of MRP",
         ),
-        kpi("gross_margin", "Gross margin", None, TEXT, "Needs purchase costs, which are not recorded"),
     ]
     names = _top_categories()
-    groups = defaultdict(lambda: [ZERO, ZERO, ZERO])
-    lines = (
-        sales_lines(scope)
-        .filter(order__payment_status__in=PAID)
-        .values_list("product__category_id", "unit_mrp", "quantity", "line_total", "offer_discount")
-    )
-    for cat_id, unit_mrp, qty, line_total, line_offer in lines.iterator():
-        g = groups[names.get(cat_id, ("Products no longer in the catalogue", ""))[0]]
-        g[0] += (unit_mrp or ZERO) * qty
-        g[1] += line_total
-        g[2] += line_offer
+    groups = defaultdict(_Profit)
+    whole = _Profit()
+    for line in _profit_lines(scope):
+        g = groups[names.get(line["cat_id"], ("Products no longer in the catalogue", ""))[0]]
+        g.mrp += (line["unit_mrp"] or ZERO) * line["quantity"]
+        g.selling += line["line_total"]
+        g.offers += line["offer_discount"]
+        for bucket in (g, whole):
+            bucket.add(line)
+    covered = whole.lines_costed > 0
+    out["kpis"] += [
+        kpi("goods_revenue", "Goods revenue", money(whole.revenue), MONEY, "Paid for goods, minus refunded returns"),
+        kpi("costed_revenue", "Revenue with a known cost", money(whole.costed_revenue), MONEY),
+        kpi("cost_of_goods", "Purchase cost", money(whole.cost) if covered else None, MONEY, "Items with a cost only"),
+        kpi("gross_profit", "Gross profit", money(whole.profit) if covered else None, MONEY, "Items with a cost only"),
+        kpi("gross_margin", "Gross margin", whole.margin, PERCENT, "Gross profit ÷ revenue with a known cost"),
+        kpi(
+            "cost_coverage",
+            "Cost coverage",
+            rate(whole.costed_revenue, whole.revenue),
+            PERCENT,
+            f"Share of goods revenue with a purchase cost ({whole.lines_costed} of {whole.lines} order lines)",
+        ),
+    ]
     out["tables"].append(
         table(
             "categories",
-            "Price realisation by category",
+            "Price realisation and profit by category",
             [
                 col("category", "Category"),
                 col("mrp", "At MRP", MONEY),
                 col("selling", "At selling price", MONEY),
                 col("offers", "Offer discount", MONEY),
                 col("below_mrp", "Below MRP", PERCENT),
+                col("revenue", "Goods revenue", MONEY),
+                col("cost", "Purchase cost", MONEY),
+                col("profit", "Gross profit", MONEY),
+                col("margin", "Margin", PERCENT),
+                col("coverage", "Cost coverage", PERCENT),
             ],
             [
                 {
                     "category": name,
-                    "mrp": money(g[0]),
-                    "selling": money(g[1]),
-                    "offers": money(g[2]),
-                    "below_mrp": rate(g[0] - g[1] + g[2], g[0]),
+                    "mrp": money(g.mrp),
+                    "selling": money(g.selling),
+                    "offers": money(g.offers),
+                    "below_mrp": rate(g.mrp - g.selling + g.offers, g.mrp),
+                    "revenue": money(g.revenue),
+                    "cost": money(g.cost) if g.lines_costed else None,
+                    "profit": money(g.profit) if g.lines_costed else None,
+                    "margin": g.margin,
+                    "coverage": rate(g.costed_revenue, g.revenue),
                 }
-                for name, g in sorted(groups.items(), key=lambda kv: -kv[1][1])
+                for name, g in sorted(groups.items(), key=lambda kv: -kv[1].selling)
             ],
             bar("category", "selling"),
         )
     )
+    if not covered:
+        out["notes"].append(
+            "No purchase costs on the items sold in this period, so profit and margin can't be shown. "
+            "Add purchase costs to products to see profit."
+        )
+    else:
+        out["notes"].append(
+            "Profit and margin count only order lines with a purchase cost recorded when the order was placed "
+            f"({rate(whole.costed_revenue, whole.revenue)}% of goods revenue); the rest is left out, not estimated."
+        )
     out["notes"].append(
-        "Profit and gross margin can't be shown: the system records selling prices and MRP but not what the shop paid "
-        "for the goods. Add purchase costs (a later improvement) to see margins."
+        "Goods revenue is what customers paid for the items (after offers, coupon and credits, quoted prices as "
+        "quoted), minus refunds of received returns. Returned items put back on the shelf carry no cost; items not "
+        "restocked keep their cost. Delivery fees are not included."
     )
     return out
+
+
+class _Profit:
+    """Running totals for the margin report (one category, or the whole period)."""
+
+    def __init__(self):
+        self.mrp = self.selling = self.offers = ZERO
+        self.revenue = self.costed_revenue = self.cost = ZERO
+        self.lines = self.lines_costed = 0
+
+    def add(self, line: dict) -> None:
+        self.revenue += line["revenue"]
+        self.lines += 1
+        if line["cost"] is not None:
+            self.costed_revenue += line["revenue"]
+            self.cost += line["cost"]
+            self.lines_costed += 1
+
+    @property
+    def profit(self) -> Decimal:
+        return self.costed_revenue - self.cost
+
+    @property
+    def margin(self) -> float | None:
+        return rate(self.profit, self.costed_revenue) if self.lines_costed else None
+
+
+def _profit_lines(scope: Scope):
+    """Paid sale lines of the period with what was paid for them net of refunded returns (`revenue`) and,
+    only where the order line has a purchase cost snapshot, the cost of the units kept or written off."""
+    from apps.orders.returns import paid_amounts  # orders.returns imports services; keep it lazy
+
+    lines = list(
+        sales_lines(scope)
+        .filter(order__payment_status__in=PAID)
+        .values_list(
+            "id",
+            "order_id",
+            "product__category_id",
+            "unit_mrp",
+            "quantity",
+            "line_total",
+            "offer_discount",
+            "unit_cost",
+        )
+    )
+    if not lines:
+        return
+    order_rows = Order.objects.filter(pk__in={row[1] for row in lines}).values_list(
+        "pk", "coupon_discount", "credit_discount"
+    )
+    discounts = {pk: (coupon, credit) for pk, coupon, credit in order_rows}
+    by_order = defaultdict(list)
+    for row in lines:
+        by_order[row[1]].append(SimpleNamespace(id=row[0], line_total=row[5], offer_discount=row[6]))
+    paid_by_line = {}
+    for order_id, items in by_order.items():
+        coupon, credit = discounts[order_id]
+        paid_by_line.update(paid_amounts(SimpleNamespace(coupon_discount=coupon, credit_discount=credit), items))
+    back = defaultdict(lambda: [0, ZERO])  # line → [units back on the shelf, refunded]
+    for item_id, qty, refund, restocked in ReturnItem.objects.filter(
+        order_item_id__in=paid_by_line, return_request__status=ReturnRequest.Status.RECEIVED
+    ).values_list("order_item_id", "quantity", "refund_amount", "return_request__restocked"):
+        back[item_id][0] += qty if restocked else 0
+        back[item_id][1] += refund
+    for line_id, _order_id, cat_id, unit_mrp, qty, line_total, offer, unit_cost in lines:
+        restocked, refunded = back.get(line_id, (0, ZERO))
+        yield {
+            "cat_id": cat_id,
+            "unit_mrp": unit_mrp,
+            "quantity": qty,
+            "line_total": line_total,
+            "offer_discount": offer,
+            "revenue": paid_by_line[line_id] - refunded,
+            "cost": None if unit_cost is None else unit_cost * max(qty - restocked, 0),
+        }
 
 
 @dataclass(frozen=True)
@@ -1261,8 +1398,8 @@ REPORTS: dict[str, ReportSpec] = {
         ),
         ReportSpec(
             "margin",
-            "Price realisation",
-            "MRP vs selling price and promotions (margin needs purchase costs).",
+            "Profit and price realisation",
+            "Gross profit from purchase costs (with cost coverage), MRP vs selling price and promotions.",
             margin_report,
         ),
     )

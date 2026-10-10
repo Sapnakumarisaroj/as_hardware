@@ -150,9 +150,22 @@ def quote_from_plan(plan: Plan | None, totals: Totals, fee_rule: FeeRule | None)
 
 
 def build_checkout(
-    user, *, address_id: int | None = None, coupon_code: str = "", use_credits: bool = False
+    user,
+    *,
+    address_id: int | None = None,
+    coupon_code: str = "",
+    use_credits: bool = False,
+    quote_id: int | None = None,
 ) -> CheckoutSummary:
-    cart = summarize_cart(user)
+    """`quote_id`: preview an accepted quotation instead of the cart (quoted prices; no offers or coupon)."""
+    quote = None
+    if quote_id:
+        from apps.quotes.services import summary_for_checkout
+
+        quote, cart = summary_for_checkout(user, quote_id)
+        coupon_code = ""
+    else:
+        cart = summarize_cart(user)
     issues: list[dict] = []
 
     if not cart.lines:
@@ -176,7 +189,10 @@ def build_checkout(
     fee_rule = plan.fee_rule if plan and plan.deliverable and plan.location else None
 
     lines = cart.priced_lines
-    pricing = price_lines(lines, fee_rule=fee_rule, user=user, use_credits=use_credits)  # automatic offers
+    offers_on = quote is None
+    pricing = price_lines(
+        lines, fee_rule=fee_rule, user=user, use_credits=use_credits, automatic_offers=offers_on
+    )  # automatic offers (not on quotations)
     coupon, coupon_error = None, None
     if coupon_code.strip() and lines:
         try:

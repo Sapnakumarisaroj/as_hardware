@@ -21,6 +21,8 @@ const offers = () => import('@/pages/admin/OfferPages')
 const customers = () => import('@/pages/admin/CustomerPages')
 const returns = () => import('@/pages/admin/ReturnRefundPages')
 const support = () => import('@/pages/admin/SupportPages')
+const quotes = () => import('@/pages/QuotePages')
+const quotesAdmin = () => import('@/pages/admin/QuotePages')
 const commerce = () => import('@/pages/admin/CommercePages')
 const shoppingAdmin = () => import('@/pages/admin/ShoppingAdminPages')
 const notificationsAdmin = () => import('@/pages/admin/NotificationPages')
@@ -82,6 +84,7 @@ export const routes: RouteObject[] = [
             lazy: async () => ({ Component: (await import('@/pages/OrderConfirmationPage')).OrderConfirmationPage }),
           },
           { path: 'wishlist', lazy: async () => ({ Component: (await import('@/pages/WishlistPage')).WishlistPage }) },
+          { path: 'compare', lazy: async () => ({ Component: (await import('@/pages/ComparePage')).ComparePage }) },
           { path: 'ai-assistant', lazy: async () => ({ Component: (await import('@/pages/AssistantPage')).AssistantPage }) },
           {
             path: 'image-search',
@@ -99,6 +102,8 @@ export const routes: RouteObject[] = [
           { path: 'account/orders/:number', lazy: async () => ({ Component: (await account()).OrderDetailPage }) },
           { path: 'account/addresses', lazy: async () => ({ Component: (await account()).AddressesPage }) },
           { path: 'account/returns', lazy: async () => ({ Component: (await account()).ReturnsPage }) },
+          { path: 'account/quotes', lazy: async () => ({ Component: (await quotes()).QuotesPage }) },
+          { path: 'account/quotes/:id', lazy: async () => ({ Component: (await quotes()).QuotePage }) },
           { path: 'notifications', lazy: async () => ({ Component: (await import('@/pages/NotificationsPage')).NotificationsPage }) },
           { path: 'account/wallet', lazy: async () => ({ Component: (await import('@/pages/WalletPage')).WalletPage }) },
           { path: '*', element: <NotFoundPage /> },
@@ -130,6 +135,10 @@ export const routes: RouteObject[] = [
           { path: 'orders', lazy: async () => ({ Component: (await adminOrders()).AdminOrdersPage }) },
           { path: 'orders/:number', lazy: async () => ({ Component: (await adminOrders()).AdminOrderDetailPage }) },
           { path: 'products', lazy: async () => ({ Component: (await catalog()).AdminProductsPage }) },
+          {
+            path: 'products/import',
+            lazy: async () => ({ Component: (await import('@/pages/admin/CatalogImportPage')).AdminCatalogImportPage }),
+          },
           { path: 'products/:id', lazy: async () => ({ Component: (await catalog()).AdminProductPage }) },
           { path: 'categories', lazy: async () => ({ Component: (await catalog()).AdminCategoriesPage }) },
           { path: 'brands', lazy: async () => ({ Component: (await catalog()).AdminBrandsPage }) },
@@ -164,6 +173,8 @@ export const routes: RouteObject[] = [
           { path: 'support', lazy: async () => ({ Component: (await support()).AdminSupportPage }) },
           { path: 'notifications', lazy: async () => ({ Component: (await notificationsAdmin()).AdminNotificationsPage }) },
           { path: 'support/:id', lazy: async () => ({ Component: (await support()).AdminConversationPage }) },
+          { path: 'quotes', lazy: async () => ({ Component: (await quotesAdmin()).AdminQuotesPage }) },
+          { path: 'quotes/:id', lazy: async () => ({ Component: (await quotesAdmin()).AdminQuotePage }) },
           {
             path: 'search',
             lazy: async () => ({ Component: (await import('@/pages/admin/SearchPage')).AdminSearchPage }),

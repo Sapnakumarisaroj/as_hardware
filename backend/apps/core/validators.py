@@ -1,3 +1,5 @@
+import re
+
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
 from django.utils.deconstruct import deconstructible
@@ -9,6 +11,31 @@ phone_validator = RegexValidator(
 )
 
 postal_code_validator = RegexValidator(regex=r"^[1-9]\d{5}$", message="Enter a valid 6-digit PIN code.")
+
+
+_GSTIN_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_GSTIN_SHAPE = r"^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$"
+
+
+def gstin_checksum(first14: str) -> str:
+    """The 15th GSTIN character: the GSTN mod-36 check over the first 14."""
+    total = 0
+    for position, char in enumerate(first14):
+        product = _GSTIN_CHARS.index(char) * (2 if position % 2 else 1)
+        total += product // 36 + product % 36
+    return _GSTIN_CHARS[(36 - total % 36) % 36]
+
+
+def gstin_validator(value: str) -> None:
+    """A GSTIN in the official shape (state code, PAN, entity number, 'Z', check character).
+    Only the format and check character are verified; registration is not looked up online."""
+    value = (value or "").strip().upper()
+    if not re.match(_GSTIN_SHAPE, value):
+        raise ValidationError("Enter a valid 15-character GSTIN, e.g. 29ABCDE1234F1ZW.")
+    if not 1 <= int(value[:2]) <= 38 and value[:2] not in {"97", "99"}:
+        raise ValidationError("The GSTIN state code isn't valid.")
+    if gstin_checksum(value[:14]) != value[14]:
+        raise ValidationError("This GSTIN's check character doesn't match. Please check it for typos.")
 
 
 def normalize_phone(value: str) -> str:

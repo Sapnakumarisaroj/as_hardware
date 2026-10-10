@@ -23,6 +23,7 @@ import {
   useListParams,
   type Column,
 } from '@/features/admin/ui'
+import { MessageAttachments } from '@/features/support/Attachments'
 import { isNotFound } from '@/lib/api/errors'
 import { usePageMeta } from '@/lib/usePageMeta'
 
@@ -148,7 +149,8 @@ function Conversation({ conversation }: { conversation: SupportDetail }) {
                       <p className={`text-xs font-semibold ${staff ? 'text-steel-200' : 'text-ink-600'}`}>
                         {message.sender_name} · {dateTime(message.created_at)}
                       </p>
-                      <p className="mt-0.5 whitespace-pre-wrap break-words">{message.body}</p>
+                      {message.body && <p className="mt-0.5 whitespace-pre-wrap break-words">{message.body}</p>}
+                      <MessageAttachments messageId={message.id} attachments={message.attachments} />
                     </div>
                   </li>
                 )
@@ -202,6 +204,16 @@ function Conversation({ conversation }: { conversation: SupportDetail }) {
                 conversation.order_number ? (
                   <Link to={`/admin/orders/${conversation.order_number}`} className="underline-offset-2 hover:underline">
                     {conversation.order_number}
+                  </Link>
+                ) : (
+                  '—'
+                ),
+              ],
+              [
+                'Product',
+                conversation.product ? (
+                  <Link to={`/p/${conversation.product.slug}`} className="underline-offset-2 hover:underline">
+                    {conversation.product.name}
                   </Link>
                 ) : (
                   '—'
