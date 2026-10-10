@@ -6,13 +6,15 @@ interface Props {
   open: boolean
   onClose: () => void
   title: string
+  /** Shown instead of the title text at the top (e.g. the logo); the dialog is still labelled by `title`. */
+  heading?: ReactNode
   side?: 'left' | 'right'
   children: ReactNode
   footer?: ReactNode
 }
 
 /** Accessible slide-over panel (mobile filters, mobile menu). Escape or backdrop closes it. */
-export function Drawer({ open, onClose, title, side = 'left', children, footer }: Props) {
+export function Drawer({ open, onClose, title, heading, side = 'left', children, footer }: Props) {
   const panelRef = useRef<HTMLDivElement>(null)
 
   // The latest onClose, without re-running the effect below when the parent passes a new
@@ -52,7 +54,7 @@ export function Drawer({ open, onClose, title, side = 'left', children, footer }
         className={`absolute inset-y-0 ${side === 'left' ? 'left-0' : 'right-0'} flex w-[88vw] max-w-sm flex-col bg-white shadow-xl focus:outline-none`}
       >
         <div className="flex items-center justify-between border-b border-steel-200 px-4 py-3">
-          <h2 className="text-base font-bold">{title}</h2>
+          {heading ?? <h2 className="text-base font-bold">{title}</h2>}
           <button type="button" onClick={onClose} aria-label={`Close ${title.toLowerCase()}`} className="p-1">
             <CloseIcon className="size-5" />
           </button>

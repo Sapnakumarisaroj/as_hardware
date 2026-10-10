@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Hammer, screwdriver, screws and measuring tape">
+  <rect width="400" height="300" fill="#F4F0E8"/>
+  <ellipse cx="200" cy="258" rx="160" ry="12" fill="#1C1F24" opacity=".08"/>
+  <!-- Hammer -->
+  <g transform="rotate(-28 140 140)">
+    <rect x="128" y="70" width="18" height="150" rx="8" fill="#C68B4E"/>
+    <rect x="128" y="168" width="18" height="52" rx="8" fill="#2A2E35"/>
+    <path d="M92 50 h86 a8 8 0 0 1 8 8 v14 a8 8 0 0 1 -8 8 h-86 l-14 -8 v-14 z" fill="#6B7480"/>
+    <path d="M186 56 c18 0 26 8 30 20 c-12 -6 -20 -6 -30 -2 z" fill="#6B7480"/>
+  </g>
+  <!-- Screwdriver -->
+  <g transform="rotate(24 270 120)">
+    <rect x="262" y="40" width="22" height="70" rx="10" fill="#F5A300"/>
+    <rect x="266" y="48" width="4" height="54" rx="2" fill="#FFC64D"/>
+    <rect x="268" y="110" width="10" height="16" rx="2" fill="#2A2E35"/>
+    <rect x="270" y="126" width="6" height="74" rx="2" fill="#9AA3AD"/>
+    <path d="M270 200 h6 l-1 10 h-4 z" fill="#7D8691"/>
+  </g>
+  <!-- Measuring tape -->
+  <g transform="translate(250 176)">
+    <rect width="76" height="66" rx="16" fill="#2A2E35"/>
+    <circle cx="38" cy="33" r="18" fill="#3A3F47"/>
+    <circle cx="38" cy="33" r="6" fill="#F5A300"/>
+    <path d="M76 50 h52 v12 h-52 z" fill="#F5A300"/>
+    <g stroke="#2A2E35" stroke-width="1.5">
+      <line x1="86" y1="50" x2="86" y2="56"/><line x1="96" y1="50" x2="96" y2="58"/>
+      <line x1="106" y1="50" x2="106" y2="56"/><line x1="116" y1="50" x2="116" y2="58"/>
+    </g>
+    <rect x="126" y="46" width="4" height="20" fill="#6B7480"/>
+  </g>
+  <!-- Screws -->
+  <g fill="#9AA3AD">
+    <g transform="translate(64 214)"><ellipse cx="10" cy="4" rx="10" ry="4"/><path d="M6 6 h8 v24 l-4 8 l-4 -8 z"/></g>
+    <g transform="translate(96 222) rotate(70 10 16)"><ellipse cx="10" cy="4" rx="10" ry="4"/><path d="M6 6 h8 v24 l-4 8 l-4 -8 z"/></g>
+    <g transform="translate(150 226) rotate(-60 10 16)"><ellipse cx="10" cy="4" rx="10" ry="4"/><path d="M6 6 h8 v24 l-4 8 l-4 -8 z"/></g>
+  </g>
+</svg>

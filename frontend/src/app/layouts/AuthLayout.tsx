@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 
-import { env } from '@/lib/env'
+import { BrandLogo } from '@/components/BrandLogo'
+import { business } from '@/lib/business'
 
 /**
  * A focused shell for login, register and password reset: the brand, the form and a way back to the
@@ -16,11 +17,18 @@ export function AuthLayout() {
   return (
     <div className="flex min-h-dvh flex-col bg-steel-50 bg-[radial-gradient(ellipse_at_top,_var(--color-amber-100),_transparent_55%)]">
       <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-5 sm:px-6">
-        <Link to="/" className="flex items-center gap-2 text-lg font-extrabold tracking-tight text-ink-950">
-          <img src="/favicon.svg" alt="" className="size-8" />
-          <span>{env.appName}</span>
+        <Link
+          to="/"
+          aria-label={`${business.name} home`}
+          className="flex min-w-0 items-center gap-2.5 font-extrabold tracking-tight text-ink-950"
+        >
+          <BrandLogo size="size-11 sm:size-14" nameClassName={null} />
+          <span className="min-w-0 leading-tight">
+            <span className="block text-base sm:text-lg">{business.name}</span>
+            <span className="hidden text-xs font-medium text-ink-600 sm:block">{business.tagline}</span>
+          </span>
         </Link>
-        <Link to="/" className="text-sm font-semibold text-ink-600 hover:text-ink-950">
+        <Link to="/" className="shrink-0 text-sm font-semibold text-ink-600 hover:text-ink-950">
           ← Back to the shop
         </Link>
       </header>

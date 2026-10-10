@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router'
 
-import { env } from '@/lib/env'
+import { business } from '@/lib/business'
 
 const DEFAULT_DESCRIPTION =
   'Plywood, Fevicol, furniture fittings, door locks, tools and safety gear from local stores, with clear prices and live stock.'
@@ -51,7 +51,7 @@ export function usePageMeta(title: string | null | undefined, description?: stri
   const jsonText = jsonLd ? JSON.stringify(jsonLd) : ''
 
   useEffect(() => {
-    const fullTitle = title ? `${title} | ${env.appName}` : `${env.appName} — Hardware & tools`
+    const fullTitle = title ? `${title} | ${business.name}` : `${business.name} — ${business.tagline}, Bengaluru`
     const text = (description || DEFAULT_DESCRIPTION).slice(0, 160)
     document.title = fullTitle
     setMeta('name', 'description', text)

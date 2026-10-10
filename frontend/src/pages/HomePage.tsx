@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import { HeroArt } from '@/components/HeroArt'
 import {
   BoltIcon,
   CalculatorIcon,
@@ -12,6 +11,7 @@ import {
   ImageIcon,
   LayersIcon,
   MicIcon,
+  PhoneIcon,
   PinIcon,
   ReceiptIcon,
   ReturnIcon,
@@ -30,7 +30,7 @@ import { LiveOffersStrip } from '@/features/offers/components'
 import { useHomeRecommendations } from '@/features/shopping/api'
 import { RecommendationRails } from '@/features/shopping/components'
 import { useWishlist } from '@/features/wishlist/api'
-import { env } from '@/lib/env'
+import { business } from '@/lib/business'
 import { pluralize } from '@/lib/format'
 import { usePageMeta } from '@/lib/usePageMeta'
 
@@ -61,6 +61,31 @@ function useDeliveryClaims() {
   }
 }
 
+/** The four product groups as quick links beside the headline (same groups as the main menu). */
+function HeroGroups() {
+  const { groups } = useNavGroups()
+  return (
+    <nav aria-label="Product groups" className="animate-rise [animation-delay:120ms]">
+      <ul className="grid grid-cols-2 gap-3">
+        {groups.map((group) => (
+          <li key={group.slug}>
+            <Link
+              to={group.href}
+              className="group flex h-full flex-col justify-between rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/15 transition hover:bg-white/10 hover:ring-amber-400 sm:p-5"
+            >
+              <span className="text-base font-bold leading-snug sm:text-lg">{group.name}</span>
+              <span className="mt-3 flex items-center justify-between gap-2 text-xs text-steel-200 sm:text-sm">
+                {group.entries.length} {group.entries.length === 1 ? 'category' : 'categories'}
+                <ChevronRightIcon className="size-4 text-amber-400 transition-transform group-hover:translate-x-0.5" />
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
+
 /** 1. Hero: headline, the two main actions and an honest delivery line. */
 function Hero() {
   const { minutes, pincode, check, fastHere, notServed } = useDeliveryClaims()
@@ -77,7 +102,7 @@ function Hero() {
         <div className="animate-rise">
           <p className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-amber-400 ring-1 ring-white/15">
             <PinIcon className="size-3.5" />
-            Delivering across Bengaluru
+            {business.name} · Delivering across Bengaluru
           </p>
           <h1 className="mt-4 text-4xl font-extrabold leading-[1.08] sm:text-5xl lg:text-6xl">
             Hardware for <span className="text-amber-400">every project</span>
@@ -115,9 +140,7 @@ function Hero() {
             )}
           </ul>
         </div>
-        <div className="animate-rise [animation-delay:120ms]">
-          <HeroArt className="mx-auto w-full max-w-[18rem] drop-shadow-2xl sm:max-w-md lg:max-w-xl" />
-        </div>
+        <HeroGroups />
       </div>
     </section>
   )
@@ -446,6 +469,39 @@ function AiSection() {
   )
 }
 
+/** The shop itself: address and real contact links (lib/business.ts). */
+function VisitStore() {
+  return (
+    <section
+      aria-labelledby="visit-heading"
+      className="mb-4 flex flex-col gap-5 rounded-3xl border border-steel-200 bg-white p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between"
+    >
+      <div>
+        <p className="eyebrow">{business.tagline}</p>
+        <h2 id="visit-heading" className="section-title">
+          Visit {business.name}
+        </h2>
+        <address className="mt-2 not-italic text-ink-700">{business.addressText}</address>
+      </div>
+      <div className="flex flex-wrap gap-3 lg:shrink-0 lg:justify-end">
+        <a href={business.directionsUrl} target="_blank" rel="noopener noreferrer" className="btn-primary">
+          <PinIcon className="size-4" />
+          Get directions<span className="sr-only"> (opens Google Maps)</span>
+        </a>
+        {business.phone && (
+          <a href={business.phoneHref} className="btn-secondary">
+            <PhoneIcon className="size-4" />
+            Call {business.phone}
+          </a>
+        )}
+        <Link to="/contact" className="btn-secondary">
+          Contact details
+        </Link>
+      </div>
+    </section>
+  )
+}
+
 /** Recently viewed — slugs from this browser, products always loaded fresh. */
 function useRecentProducts() {
   const slugs = useRecentlyViewed()
@@ -506,7 +562,7 @@ function ForYou() {
  * can't be loaded, so an empty shop or a backend outage leaves no bare headings.
  */
 export function HomePage() {
-  usePageMeta(null, `${env.appName}: plywood, Fevicol, hinges, kitchen and wardrobe fittings, door locks, tools and safety gear delivered across Bengaluru.`)
+  usePageMeta(null, `${business.name}, ${business.tagline.toLowerCase()}: plywood, Fevicol, hinges, kitchen and wardrobe fittings, door locks, tools and safety gear delivered across Bengaluru.`)
   const collections = useCollections()
   const lists = collections.data ?? []
   const [first, second, third] = collections.isPending ? [] : mainRails(lists)
@@ -525,6 +581,7 @@ export function HomePage() {
         {!collections.isPending && <BulkBuyingRail collections={lists} />}
         {third}
         <AiSection />
+        <VisitStore />
       </div>
     </>
   )

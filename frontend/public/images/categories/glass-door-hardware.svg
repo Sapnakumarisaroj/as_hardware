@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Glass door with patch fittings, clamps and handle">
+  <rect width="400" height="300" fill="#F4F0E8"/>
+  <ellipse cx="200" cy="262" rx="160" ry="10" fill="#1C1F24" opacity=".08"/>
+  <!-- Glass panel -->
+  <rect x="96" y="30" width="150" height="222" rx="3" fill="#CFE8F3" opacity=".85"/>
+  <rect x="96" y="30" width="150" height="222" rx="3" fill="none" stroke="#9CC9DD" stroke-width="3"/>
+  <path d="M112 50 l40 -12 M112 70 l70 -22" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" opacity=".8"/>
+  <!-- Top and bottom patch fittings -->
+  <rect x="88" y="26" width="58" height="34" rx="4" fill="#B8BFC7"/>
+  <rect x="94" y="32" width="46" height="22" rx="3" fill="#D7DCE1"/>
+  <rect x="88" y="222" width="58" height="34" rx="4" fill="#B8BFC7"/>
+  <rect x="94" y="228" width="46" height="22" rx="3" fill="#D7DCE1"/>
+  <!-- D handle -->
+  <g fill="none" stroke="#8D96A1" stroke-width="10" stroke-linecap="round">
+    <path d="M226 100 h22 v86 h-22"/>
+  </g>
+  <rect x="216" y="94" width="14" height="14" rx="3" fill="#6B7480"/>
+  <rect x="216" y="178" width="14" height="14" rx="3" fill="#6B7480"/>
+  <!-- Glass clamps / hinges to the side -->
+  <g transform="translate(290 70)">
+    <rect width="54" height="40" rx="6" fill="#B8BFC7"/>
+    <rect x="22" y="4" width="10" height="32" rx="3" fill="#8D96A1"/>
+    <circle cx="11" cy="20" r="4" fill="#6B7480"/><circle cx="43" cy="20" r="4" fill="#6B7480"/>
+  </g>
+  <g transform="translate(290 130)">
+    <rect width="54" height="40" rx="6" fill="#B8BFC7"/>
+    <rect x="22" y="4" width="10" height="32" rx="3" fill="#8D96A1"/>
+    <circle cx="11" cy="20" r="4" fill="#6B7480"/><circle cx="43" cy="20" r="4" fill="#6B7480"/>
+  </g>
+  <!-- Floor spring plate -->
+  <rect x="270" y="212" width="94" height="28" rx="4" fill="#9AA3AD"/>
+  <rect x="278" y="218" width="78" height="16" rx="3" fill="#C9CED4"/>
+  <circle cx="300" cy="226" r="4" fill="#6B7480"/>
+</svg>

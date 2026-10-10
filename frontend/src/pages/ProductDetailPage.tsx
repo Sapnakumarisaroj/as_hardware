@@ -384,6 +384,11 @@ export function ProductDetailPage() {
               </Link>
             )}
             <h1 className="mt-1 text-2xl font-bold leading-tight text-ink-950 sm:text-3xl lg:text-[2rem]">{data.name}</h1>
+            {data.is_demo && (
+              <p className="mt-2 inline-flex rounded-full bg-ink-900 px-2.5 py-0.5 text-xs font-semibold text-white" data-testid="demo-notice">
+                Demo product: sample listing for the website preview
+              </p>
+            )}
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-ink-600">
               {data.rating_count > 0 ? (
                 <a href="#reviews" className="hover:underline">

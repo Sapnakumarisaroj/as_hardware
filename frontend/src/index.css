@@ -112,6 +112,31 @@
   .container-page {
     @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
   }
+  /* Long-form text on the company and policy pages. */
+  .prose-page {
+    @apply text-[0.95rem] leading-relaxed text-ink-800;
+  }
+  .prose-page h2 {
+    @apply mt-10 scroll-mt-40 text-xl font-bold tracking-tight text-ink-950 first:mt-0 sm:text-2xl;
+  }
+  .prose-page h3 {
+    @apply mt-6 text-base font-semibold text-ink-950;
+  }
+  .prose-page p:not([class]) {
+    @apply mt-3;
+  }
+  .prose-page ul:not([class]) {
+    @apply mt-3 list-disc space-y-1.5 pl-5 marker:text-amber-600;
+  }
+  .prose-page ol:not([class]) {
+    @apply mt-3 list-decimal space-y-1.5 pl-5 marker:font-semibold marker:text-ink-600;
+  }
+  .prose-page a:not([class]) {
+    @apply font-semibold text-ink-950 underline decoration-amber-500 decoration-2 underline-offset-2 hover:decoration-ink-950;
+  }
+  .prose-page strong {
+    @apply font-semibold text-ink-950;
+  }
 }
 
 @utility scrollbar-none {

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Kitchen pull-out basket and drawer fittings">
+  <rect width="400" height="300" fill="#F4F0E8"/>
+  <ellipse cx="200" cy="258" rx="160" ry="12" fill="#1C1F24" opacity=".08"/>
+  <!-- Wire pull-out basket -->
+  <g fill="none" stroke="#8D96A1" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M52 128 h170 l28 -26 h-170 z"/>
+    <path d="M52 128 v100 h170 v-100"/>
+    <path d="M222 228 l28 -26 v-100"/>
+    <path d="M52 228 l28 -26 h170" opacity=".45"/>
+  </g>
+  <g stroke="#A9B1BA" stroke-width="3" stroke-linecap="round">
+    <line x1="72" y1="128" x2="72" y2="228"/><line x1="92" y1="128" x2="92" y2="228"/>
+    <line x1="112" y1="128" x2="112" y2="228"/><line x1="132" y1="128" x2="132" y2="228"/>
+    <line x1="152" y1="128" x2="152" y2="228"/><line x1="172" y1="128" x2="172" y2="228"/>
+    <line x1="192" y1="128" x2="192" y2="228"/><line x1="212" y1="128" x2="212" y2="228"/>
+    <line x1="52" y1="178" x2="222" y2="178"/>
+  </g>
+  <rect x="52" y="226" width="170" height="8" rx="3" fill="#6B7480"/>
+  <!-- Plates in the basket -->
+  <g fill="#FFFFFF" stroke="#D5D8DC" stroke-width="2">
+    <ellipse cx="100" cy="150" rx="10" ry="36"/><ellipse cx="118" cy="150" rx="10" ry="36"/><ellipse cx="136" cy="150" rx="10" ry="36"/>
+  </g>
+  <!-- Cutlery organiser tray -->
+  <g transform="translate(262 150)">
+    <rect width="104" height="80" rx="8" fill="#E9E4DA" stroke="#C9C2B4" stroke-width="2"/>
+    <rect x="8" y="8" width="26" height="64" rx="4" fill="#F7F4EE"/>
+    <rect x="39" y="8" width="26" height="64" rx="4" fill="#F7F4EE"/>
+    <rect x="70" y="8" width="26" height="64" rx="4" fill="#F7F4EE"/>
+    <g fill="#9AA3AD">
+      <rect x="18" y="16" width="6" height="48" rx="3"/><ellipse cx="21" cy="18" rx="6" ry="8"/>
+      <rect x="49" y="16" width="6" height="48" rx="3"/>
+      <rect x="80" y="22" width="6" height="42" rx="3"/><path d="M77 14 h12 v12 h-12 z"/>
+    </g>
+  </g>
+  <!-- Soft-close runner -->
+  <rect x="262" y="236" width="104" height="10" rx="3" fill="#B8BFC7"/>
+</svg>

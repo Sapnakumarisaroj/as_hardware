@@ -23,6 +23,7 @@ const returns = () => import('@/pages/admin/ReturnRefundPages')
 const support = () => import('@/pages/admin/SupportPages')
 const quotes = () => import('@/pages/QuotePages')
 const quotesAdmin = () => import('@/pages/admin/QuotePages')
+const policies = () => import('@/pages/company/PolicyPages')
 const commerce = () => import('@/pages/admin/CommercePages')
 const shoppingAdmin = () => import('@/pages/admin/ShoppingAdminPages')
 const notificationsAdmin = () => import('@/pages/admin/NotificationPages')
@@ -76,6 +77,16 @@ export const routes: RouteObject[] = [
           { path: 'p/:slug', lazy: async () => ({ Component: (await import('@/pages/ProductDetailPage')).ProductDetailPage }) },
           { path: 'brands', lazy: async () => ({ Component: (await brands()).BrandsPage }) },
           { path: 'brand/:slug', lazy: async () => ({ Component: (await brands()).BrandPage }) },
+          { path: 'contact', lazy: async () => ({ Component: (await import('@/pages/ContactPage')).ContactPage }) },
+          { path: 'about', lazy: async () => ({ Component: (await import('@/pages/company/AboutPage')).AboutPage }) },
+          { path: 'price-lists', lazy: async () => ({ Component: (await import('@/pages/company/PriceListsPage')).PriceListsPage }) },
+          { path: 'knowledge-hub', lazy: async () => ({ Component: (await import('@/pages/company/KnowledgeHubPage')).KnowledgeHubPage }) },
+          { path: 'shop-by-category', lazy: async () => ({ Component: (await import('@/pages/company/ShopByCategoryPage')).ShopByCategoryPage }) },
+          { path: 'faq', lazy: async () => ({ Component: (await import('@/pages/company/FaqPage')).FaqPage }) },
+          { path: 'policies/refund-policy', lazy: async () => ({ Component: (await policies()).RefundPolicyPage }) },
+          { path: 'policies/privacy-policy', lazy: async () => ({ Component: (await policies()).PrivacyPolicyPage }) },
+          { path: 'policies/terms-of-service', lazy: async () => ({ Component: (await policies()).TermsOfServicePage }) },
+          { path: 'policies/shipping-policy', lazy: async () => ({ Component: (await policies()).ShippingPolicyPage }) },
           { path: 'cart', lazy: async () => ({ Component: (await import('@/pages/CartPage')).CartPage }) },
           { path: 'checkout', lazy: async () => ({ Component: (await import('@/pages/CheckoutPage')).CheckoutPage }) },
           { path: 'orders/:number/pay', lazy: async () => ({ Component: (await import('@/pages/PaymentPage')).PaymentPage }) },

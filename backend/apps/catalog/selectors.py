@@ -117,6 +117,7 @@ def annotate_listing(qs: QuerySet[Product]) -> QuerySet[Product]:
         price=Subquery(cheapest.values("price")[:1]),
         mrp=Subquery(cheapest.values("mrp")[:1]),
         cheapest_variant_id=Subquery(cheapest.values("id")[:1]),
+        cheapest_variant_name=Subquery(cheapest.values("name")[:1]),
         variant_count=Coalesce(Subquery(variant_count, output_field=IntegerField()), Value(0)),
         stock_total=_product_stock(_fulfillment_inventory()),
         fast_stock=_product_stock(_fast_delivery_inventory()),

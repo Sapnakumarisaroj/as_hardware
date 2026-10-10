@@ -10,11 +10,11 @@ function mapCenter() {
 }
 
 export const env = {
-  appName: import.meta.env.VITE_APP_NAME || 'BoltRun',
+  appName: import.meta.env.VITE_APP_NAME || 'AS Hardware & Plywood',
   apiBaseUrl: (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/+$/, ''),
-  supportPhone: import.meta.env.VITE_SUPPORT_PHONE || '',
+  supportPhone: import.meta.env.VITE_SUPPORT_PHONE || '7338192616',
   supportWhatsApp: import.meta.env.VITE_SUPPORT_WHATSAPP || '',
-  supportEmail: import.meta.env.VITE_SUPPORT_EMAIL || '',
+  supportEmail: import.meta.env.VITE_SUPPORT_EMAIL || 'ashardwareplywood@gmail.com',
   /** The slim strip above the storefront header; empty hides it. */
   storeHours: import.meta.env.VITE_STORE_HOURS ?? 'Open 8 am to 8 pm all days',
   /** Map tiles for the address pin picker (OpenStreetMap by default; see docs/FREE_TOOLS.md for its usage policy). */

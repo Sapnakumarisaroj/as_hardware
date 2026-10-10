@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Door lock, lever handle and key">
+  <rect width="400" height="300" fill="#F4F0E8"/>
+  <ellipse cx="200" cy="258" rx="160" ry="12" fill="#1C1F24" opacity=".08"/>
+  <!-- Mortise lock body -->
+  <g transform="translate(46 60)">
+    <rect x="0" y="0" width="22" height="180" rx="4" fill="#C9A24A"/>
+    <rect x="22" y="14" width="100" height="152" rx="6" fill="#B8BFC7"/>
+    <rect x="30" y="22" width="84" height="136" rx="4" fill="#D7DCE1"/>
+    <rect x="-6" y="40" width="18" height="16" rx="3" fill="#A88634"/>
+    <rect x="-6" y="110" width="18" height="22" rx="3" fill="#A88634"/>
+    <circle cx="72" cy="60" r="10" fill="#6B7480"/>
+    <circle cx="72" cy="118" r="12" fill="#6B7480"/>
+    <rect x="68" y="118" width="8" height="22" rx="3" fill="#6B7480"/>
+  </g>
+  <!-- Lever handle on backplate -->
+  <g transform="translate(210 56)">
+    <rect x="0" y="0" width="46" height="188" rx="23" fill="#C9A24A"/>
+    <rect x="8" y="10" width="30" height="168" rx="15" fill="#D9B65E"/>
+    <circle cx="23" cy="56" r="16" fill="#A88634"/>
+    <rect x="14" y="48" width="132" height="18" rx="9" fill="#C9A24A"/>
+    <rect x="20" y="51" width="120" height="5" rx="2.5" fill="#E8CC86"/>
+    <circle cx="23" cy="132" r="9" fill="#A88634"/>
+    <rect x="20" y="132" width="6" height="20" rx="2" fill="#A88634"/>
+  </g>
+  <!-- Key -->
+  <g transform="translate(276 176)">
+    <circle cx="20" cy="22" r="18" fill="#8D96A1"/>
+    <circle cx="20" cy="22" r="7" fill="#F4F0E8"/>
+    <path d="M36 18 h62 v8 h-8 v8 h-8 v-8 h-6 v10 h-8 v-10 h-32 z" fill="#8D96A1"/>
+  </g>
+</svg>

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useSearchParams } from 'react-router'
 
+import { BrandLogo } from '@/components/BrandLogo'
 import { Drawer } from '@/components/Drawer'
 import { CameraIcon, CartIcon, ChevronDownIcon, ChevronRightIcon, ClockIcon, HeartIcon, ImageIcon, MenuIcon, MicIcon, SparkIcon, UserIcon } from '@/components/icons'
 import { useAuth } from '@/features/auth/context'
@@ -11,6 +12,7 @@ import { LocationSelector } from '@/features/location/LocationSelector'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { SearchBar } from '@/features/search/SearchBar'
 import { useWishlistIds } from '@/features/wishlist/api'
+import { business } from '@/lib/business'
 import { env } from '@/lib/env'
 import { pluralize } from '@/lib/format'
 
@@ -31,6 +33,7 @@ const MORE_LINKS: [string, string, ReactNode?][] = [
   ['Quantity calculator', '/quantity'],
   ['All products', '/products'],
   ['Brands', '/brands'],
+  ['Contact us', '/contact'],
 ]
 
 function CountBadge({ count, label }: { count: number; label: string }) {
@@ -45,9 +48,13 @@ function CountBadge({ count, label }: { count: number; label: string }) {
 
 function Logo() {
   return (
-    <Link to="/" className="flex shrink-0 items-center gap-2 text-base font-extrabold tracking-tight sm:text-lg">
-      <img src="/favicon.svg" alt="" className="size-7 sm:size-8" />
-      <span className="whitespace-nowrap">{env.appName}</span>
+    <Link
+      to="/"
+      aria-label={`${business.name} home`}
+      className="flex shrink-0 items-center gap-2 text-base font-extrabold tracking-tight sm:text-lg"
+    >
+      {/* The round mark (it reads "AS") stands alone below 360px and at 768–1023px, where row 1 needs the room. */}
+      <BrandLogo size="size-10 md:size-12" nameClassName="hidden whitespace-nowrap min-[360px]:inline md:hidden lg:inline" short />
     </Link>
   )
 }
@@ -269,7 +276,16 @@ function MobileMenu({ open, onClose, groups }: { open: boolean; onClose: () => v
   const link = 'flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-steel-50'
   const heading = 'px-2 text-xs font-bold uppercase tracking-wide text-ink-600'
   return (
-    <Drawer open={open} onClose={onClose} title="Menu">
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Menu"
+      heading={
+        <Link to="/" onClick={onClose} className="flex items-center gap-2 font-extrabold tracking-tight text-ink-950">
+          <BrandLogo size="size-10" />
+        </Link>
+      }
+    >
       <nav aria-label="Mobile menu" className="space-y-5">
         <div>
           <h3 className={heading}>Shop by category</h3>

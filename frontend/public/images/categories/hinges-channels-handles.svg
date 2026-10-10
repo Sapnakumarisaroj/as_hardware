@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Cabinet hinge, drawer channel and handle">
+  <rect width="400" height="300" fill="#F4F0E8"/>
+  <ellipse cx="200" cy="258" rx="160" ry="12" fill="#1C1F24" opacity=".08"/>
+  <!-- Drawer channel (telescopic rail) -->
+  <g transform="translate(40 206)">
+    <rect width="320" height="26" rx="4" fill="#B8BFC7"/>
+    <rect x="6" y="5" width="308" height="16" rx="3" fill="#D7DCE1"/>
+    <rect x="150" y="8" width="160" height="10" rx="2" fill="#9AA3AD"/>
+    <g fill="#6B7480">
+      <circle cx="30" cy="13" r="3.5"/><circle cx="80" cy="13" r="3.5"/><circle cx="120" cy="13" r="3.5"/>
+      <circle cx="190" cy="13" r="3"/><circle cx="250" cy="13" r="3"/><circle cx="290" cy="13" r="3"/>
+    </g>
+  </g>
+  <!-- Concealed hinge: cup + arm + mounting plate -->
+  <g transform="translate(52 64)">
+    <rect x="70" y="36" width="96" height="30" rx="8" fill="#9AA3AD"/>
+    <rect x="80" y="44" width="76" height="14" rx="5" fill="#C9CED4"/>
+    <circle cx="96" cy="51" r="4" fill="#6B7480"/><circle cx="140" cy="51" r="4" fill="#6B7480"/>
+    <rect x="150" y="30" width="46" height="42" rx="6" fill="#B8BFC7"/>
+    <circle cx="173" cy="40" r="4" fill="#6B7480"/><circle cx="173" cy="62" r="4" fill="#6B7480"/>
+    <circle cx="44" cy="51" r="38" fill="#C9CED4"/>
+    <circle cx="44" cy="51" r="28" fill="#9AA3AD"/>
+    <circle cx="44" cy="51" r="18" fill="#7D8691"/>
+    <rect x="40" y="38" width="44" height="26" rx="6" fill="#B8BFC7"/>
+  </g>
+  <!-- Bar handle -->
+  <g transform="translate(270 70)">
+    <rect x="0" y="0" width="16" height="122" rx="8" fill="#2A2E35"/>
+    <rect x="16" y="14" width="22" height="12" rx="4" fill="#3A3F47"/>
+    <rect x="16" y="96" width="22" height="12" rx="4" fill="#3A3F47"/>
+    <rect x="3" y="8" width="4" height="106" rx="2" fill="#6B7480" opacity=".6"/>
+  </g>
+</svg>

@@ -290,6 +290,7 @@ class ProductListSerializer(serializers.ModelSerializer):
     fast_delivery = serializers.SerializerMethodField()
     variant_count = serializers.SerializerMethodField()
     default_variant_id = serializers.SerializerMethodField()
+    variant_label = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
     image_alt = serializers.SerializerMethodField()
     offer = serializers.SerializerMethodField()
@@ -317,7 +318,9 @@ class ProductListSerializer(serializers.ModelSerializer):
             "fast_delivery",
             "variant_count",
             "default_variant_id",
+            "variant_label",
             "is_featured",
+            "is_demo",
             "rating_avg",
             "rating_count",
             "image",
@@ -421,6 +424,10 @@ class ProductListSerializer(serializers.ModelSerializer):
     def get_default_variant_id(self, obj) -> int | None:
         """The variant whose price is shown (cheapest active one)."""
         return getattr(obj, "cheapest_variant_id", None)
+
+    def get_variant_label(self, obj) -> str:
+        """Name of the variant whose price is shown (size, finish or pack), '' when it has none."""
+        return getattr(obj, "cheapest_variant_name", None) or ""
 
     def _primary_image(self, obj):
         images = list(obj.images.all())  # ordered primary-first

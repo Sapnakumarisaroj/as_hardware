@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
 
+import { BrandLogo } from '@/components/BrandLogo'
 import { useAuth } from '@/features/auth/context'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
-import { env } from '@/lib/env'
 
 /** A plain shell for delivery partners: large targets, no shop navigation to get lost in. */
 export function RiderLayout() {
@@ -26,10 +26,7 @@ export function RiderLayout() {
       <header className="sticky top-0 z-30 bg-ink-900 text-white shadow">
         <div className="container-page flex h-14 max-w-3xl items-center gap-3">
           <Link to="/rider" className="flex items-center gap-2 font-extrabold tracking-tight">
-            <img src="/favicon.svg" alt="" className="size-7" />
-            <span>
-              {env.appName} <span className="font-normal text-steel-200">Rider</span>
-            </span>
+            <BrandLogo size="size-8" suffix="Rider" short />
           </Link>
           <nav aria-label="Rider app" className="ml-auto flex items-center gap-1">
             <NavLink to="/rider" end className={link}>

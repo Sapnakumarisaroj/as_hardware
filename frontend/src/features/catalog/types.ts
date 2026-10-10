@@ -26,7 +26,11 @@ export interface ProductSummary {
   fast_delivery: boolean
   variant_count: number
   default_variant_id: number | null
+  /** Name of the variant whose price is shown (size, finish or pack); empty when it has none. */
+  variant_label?: string
   is_featured: boolean
+  /** Sample product from the demo catalogue, labelled on the card until real products replace it. */
+  is_demo?: boolean
   rating_avg: string
   rating_count: number
   image: string | null

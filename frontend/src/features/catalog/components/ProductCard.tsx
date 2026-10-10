@@ -47,10 +47,15 @@ export function ProductCard({ product }: { product: ProductSummary }) {
             className="aspect-square w-full bg-transparent p-3 transition-transform duration-300 ease-out group-hover:scale-[1.04] sm:p-4"
           />
         </Link>
-        {percent && (
-          <span className="absolute left-2.5 top-2.5 rounded-full bg-success-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
-            {percent} off
-          </span>
+        {(percent || product.is_demo) && (
+          <div className="absolute left-2.5 top-2.5 flex flex-col items-start gap-1">
+            {percent && <span className="rounded-full bg-success-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">{percent} off</span>}
+            {product.is_demo && (
+              <span className="rounded-full bg-ink-900/85 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm" data-testid="demo-badge">
+                Demo product
+              </span>
+            )}
+          </div>
         )}
         <div className="absolute right-2 top-2 flex flex-col gap-2 [&>button]:relative [&>button]:after:absolute [&>button]:after:-inset-1 [&>button]:after:content-['']">
           <WishlistButton productId={product.id} productName={product.name} />
@@ -70,6 +75,11 @@ export function ProductCard({ product }: { product: ProductSummary }) {
         {product.match_reason && product.match_type !== 'keyword' && (
           <p className="text-xs italic text-ink-600" data-testid="match-reason">
             {product.match_reason}
+          </p>
+        )}
+        {(product.variant_label || product.unit) && (
+          <p className="truncate text-xs text-ink-600" data-testid="variant-size">
+            {[product.variant_label, product.unit && `per ${product.unit}`].filter(Boolean).join(' · ')}
           </p>
         )}
         <Rating average={product.rating_avg} count={product.rating_count} compact />

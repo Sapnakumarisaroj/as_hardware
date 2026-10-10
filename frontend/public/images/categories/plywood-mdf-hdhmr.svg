@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Stacked plywood, MDF and HDHMR boards">
+  <rect width="400" height="300" fill="#F4F0E8"/>
+  <ellipse cx="200" cy="258" rx="160" ry="14" fill="#1C1F24" opacity=".08"/>
+  <!-- HDHMR (bottom) -->
+  <polygon points="60,226 100,198 350,198 310,226" fill="#8E7356"/>
+  <rect x="60" y="226" width="250" height="22" fill="#6E5640"/>
+  <polygon points="310,226 350,198 350,220 310,248" fill="#5C4735"/>
+  <!-- MDF -->
+  <polygon points="68,200 108,172 352,172 312,200" fill="#C79A6B"/>
+  <rect x="68" y="200" width="244" height="20" fill="#A97C50"/>
+  <polygon points="312,200 352,172 352,192 312,220" fill="#946A43"/>
+  <!-- Plywood -->
+  <polygon points="56,174 96,146 346,146 306,174" fill="#E6C08E"/>
+  <rect x="56" y="174" width="250" height="22" fill="#D9A866"/>
+  <g stroke="#B9844A" stroke-width="2">
+    <line x1="56" y1="179.5" x2="306" y2="179.5"/>
+    <line x1="56" y1="185" x2="306" y2="185"/>
+    <line x1="56" y1="190.5" x2="306" y2="190.5"/>
+  </g>
+  <polygon points="306,174 346,146 346,168 306,196" fill="#C38E52"/>
+  <!-- Plywood top sheet -->
+  <polygon points="72,148 112,120 340,120 300,148" fill="#EFD3A8"/>
+  <g fill="none" stroke="#DDB47E" stroke-width="2" stroke-linecap="round">
+    <path d="M110 132 C150 126 190 138 236 130 S300 128 320 126"/>
+    <path d="M96 141 C140 135 184 146 232 139 S290 136 312 134"/>
+  </g>
+  <rect x="72" y="148" width="228" height="20" fill="#DFAE6E"/>
+  <g stroke="#BF8A4E" stroke-width="2">
+    <line x1="72" y1="153" x2="300" y2="153"/>
+    <line x1="72" y1="158" x2="300" y2="158"/>
+    <line x1="72" y1="163" x2="300" y2="163"/>
+  </g>
+  <polygon points="300,148 340,120 340,140 300,168" fill="#C8955A"/>
+</svg>

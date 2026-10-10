@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 
+import { BrandLogo } from '@/components/BrandLogo'
 import { Drawer } from '@/components/Drawer'
 import { EmptyState, ErrorState, PageSpinner, SignInPrompt } from '@/components/feedback'
 import { useAdminSession, useSummary } from '@/features/admin/api'
 import type { AdminSession, Section } from '@/features/admin/types'
 import { useAuth } from '@/features/auth/context'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
-import { env } from '@/lib/env'
 
 const MENU: { title: string; items: [Section, string, string][] }[] = [
   {
@@ -196,10 +196,7 @@ function Frame({ session }: { session: AdminSession }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const brand = (
     <Link to="/admin" className="flex items-center gap-2 font-extrabold tracking-tight text-white">
-      <img src="/favicon.svg" alt="" className="size-7" />
-      <span>
-        {env.appName} <span className="font-normal text-steel-200">Admin</span>
-      </span>
+      <BrandLogo size="size-8" suffix="Admin" short />
     </Link>
   )
 

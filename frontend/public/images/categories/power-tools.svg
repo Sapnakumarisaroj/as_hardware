@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Cordless drill and drill bits">
+  <rect width="400" height="300" fill="#F4F0E8"/>
+  <ellipse cx="190" cy="258" rx="160" ry="12" fill="#1C1F24" opacity=".08"/>
+  <!-- Drill -->
+  <g transform="translate(76 52)">
+    <path d="M60 20 h120 a24 24 0 0 1 24 24 v26 a24 24 0 0 1 -24 24 h-120 z" fill="#F5A300"/>
+    <path d="M30 34 h30 v46 h-30 a8 8 0 0 1 -8 -8 v-30 a8 8 0 0 1 8 -8 z" fill="#2A2E35"/>
+    <rect x="-6" y="48" width="36" height="18" rx="3" fill="#6B7480"/>
+    <rect x="-58" y="54" width="54" height="6" rx="3" fill="#9AA3AD"/>
+    <path d="M-58 54 l-10 3 l10 3 z" fill="#9AA3AD"/>
+    <rect x="80" y="30" width="80" height="6" rx="3" fill="#FFC64D" opacity=".8"/>
+    <path d="M120 94 h52 l-14 86 h-46 z" fill="#2A2E35"/>
+    <rect x="114" y="104" width="10" height="26" rx="4" fill="#F5A300"/>
+    <rect x="96" y="178" width="94" height="34" rx="8" fill="#2A2E35"/>
+    <rect x="104" y="186" width="78" height="6" rx="3" fill="#4B525C"/>
+    <rect x="164" y="198" width="12" height="6" rx="2" fill="#F5A300"/>
+    <circle cx="186" cy="57" r="10" fill="#2A2E35"/>
+  </g>
+  <!-- Drill bit set -->
+  <g transform="translate(294 120)">
+    <rect width="92" height="116" rx="10" fill="#2A2E35"/>
+    <rect x="8" y="8" width="76" height="100" rx="6" fill="#3A3F47"/>
+    <g fill="#B8BFC7">
+      <rect x="16" y="22" width="6" height="76" rx="3"/><rect x="30" y="32" width="6" height="66" rx="3"/>
+      <rect x="44" y="40" width="6" height="58" rx="3"/><rect x="58" y="48" width="6" height="50" rx="3"/>
+      <rect x="72" y="56" width="5" height="42" rx="2.5"/>
+    </g>
+    <g stroke="#7D8691" stroke-width="1.5">
+      <line x1="16" y1="34" x2="22" y2="40"/><line x1="16" y1="44" x2="22" y2="50"/>
+      <line x1="30" y1="44" x2="36" y2="50"/><line x1="44" y1="52" x2="50" y2="58"/>
+    </g>
+  </g>
+</svg>
