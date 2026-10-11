@@ -452,6 +452,7 @@ class ProductDetailSerializer(ProductListSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
     options = serializers.SerializerMethodField()
     breadcrumb = serializers.SerializerMethodField()
+    highlights = serializers.SerializerMethodField()
     uses = serializers.SerializerMethodField()
     installation_steps = serializers.SerializerMethodField()
     return_policy = serializers.SerializerMethodField()
@@ -472,6 +473,7 @@ class ProductDetailSerializer(ProductListSerializer):
             "options",
             "breadcrumb",
             "quick_answer",
+            "highlights",
             "uses",
             "installation_steps",
             "faqs",
@@ -482,6 +484,9 @@ class ProductDetailSerializer(ProductListSerializer):
     @staticmethod
     def _lines(text: str) -> list[str]:
         return [line.strip(" -•\t") for line in (text or "").splitlines() if line.strip(" -•\t")]
+
+    def get_highlights(self, obj) -> list[str]:
+        return self._lines(obj.highlights)
 
     def get_uses(self, obj) -> list[str]:
         return self._lines(obj.uses)
@@ -675,6 +680,8 @@ class VariantWriteSerializer(serializers.ModelSerializer):
             "height_mm",
             "is_default",
             "is_active",
+            "price_approved",
+            "price_source",
             "sort_order",
             "price_tiers",
             "options",
@@ -727,6 +734,7 @@ class ProductWriteSerializer(serializers.ModelSerializer):
             "is_returnable",
             "launch_date",
             "quick_answer",
+            "highlights",
             "uses",
             "installation_steps",
             "faqs",

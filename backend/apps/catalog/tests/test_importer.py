@@ -316,3 +316,111 @@ def test_moving_a_product_to_another_category_needs_its_subcategory(store):
     moved = run(csv_file("DR-500,DR-500-STD,safety,gloves", header=header + ",subcategory"), commit=True)
     assert moved.committed, moved.errors
     assert Product.objects.get(sku="DR-500").subcategory.slug == "gloves"
+
+
+# --- Variants awaiting their price -----------------------------------------------------------------
+
+AWAITING_HEADER = (
+    "product_sku,product_name,category,subcategory,brand,gst_rate,highlights,uses,"
+    "variant_sku,variant_name,attributes,mrp,price,stock"
+)
+GLUE = (
+    'FEV-SH,Fevicol SH,Fevicol,Wood Adhesives,Fevicol,18,"Heat resistant\nHigh coverage",Carpentry,'
+    "FEV-SH-1KG,1 kg,Pack Size=1 kg,,,"
+)
+GLUE_5 = "FEV-SH,,,,,,,,FEV-SH-5KG,5 kg,Pack Size=5 kg,,,"
+
+
+def test_rows_without_prices_create_a_draft_product_and_no_variants():
+    report = run(csv_file(GLUE, GLUE_5, header=AWAITING_HEADER), commit=True)
+    assert report.committed, report.errors
+    assert [r["action"] for r in report.rows] == ["awaiting_price", "awaiting_price"]
+    assert report.counts["products_created"] == 1 and report.counts["variants_awaiting_price"] == 2
+    assert report.counts["variants_created"] == 0
+    product = Product.objects.get(sku="FEV-SH")
+    assert not product.is_published and not product.variants.exists()
+    assert product.highlights == "Heat resistant\nHigh coverage" and product.uses == "Carpentry"
+
+
+def test_filling_in_prices_later_creates_the_variants_and_reruns_change_nothing():
+    run(csv_file(GLUE, GLUE_5, header=AWAITING_HEADER), commit=True)
+    priced = GLUE.replace("Pack Size=1 kg,,,", "Pack Size=1 kg,343,297,")
+    report = run(csv_file(priced, GLUE_5, header=AWAITING_HEADER), commit=True)
+    assert report.committed, report.errors
+    assert [r["action"] for r in report.rows] == ["create", "awaiting_price"]
+    variant = ProductVariant.objects.get(sku="FEV-SH-1KG")
+    assert (variant.mrp, variant.price) == (Decimal("343.00"), Decimal("297.00"))
+    again = run(csv_file(priced, GLUE_5, header=AWAITING_HEADER), commit=True)
+    assert [r["action"] for r in again.rows] == ["unchanged", "awaiting_price"]
+    assert Product.objects.filter(sku="FEV-SH").count() == 1 and ProductVariant.objects.count() == 1
+
+
+def test_only_one_of_mrp_and_price_is_still_an_error():
+    half = GLUE.replace("Pack Size=1 kg,,,", "Pack Size=1 kg,343,,")
+    report = run(csv_file(half, header=AWAITING_HEADER))
+    assert errors(report) == [(2, "price")]
+
+
+def test_price_above_mrp_is_refused():
+    wrong = GLUE.replace("Pack Size=1 kg,,,", "Pack Size=1 kg,297,343,")
+    report = run(csv_file(wrong, header=AWAITING_HEADER), commit=True)
+    assert errors(report) == [(2, "price")]
+    assert not Product.all_objects.filter(sku="FEV-SH").exists()
+
+
+def test_an_awaiting_row_cannot_carry_stock(store):
+    stocked = GLUE.replace("Pack Size=1 kg,,,", "Pack Size=1 kg,,,BLR-01:5")
+    report = run(csv_file(stocked, header=AWAITING_HEADER))
+    assert errors(report) == [(2, "stock")]
+
+
+def test_a_product_cannot_be_published_while_all_its_variants_await_prices():
+    header = AWAITING_HEADER.replace(",stock", ",is_published")
+    live = GLUE + "yes"  # the last (stock) column becomes is_published
+    report = run(csv_file(live, header=header), commit=True)
+    assert not report.ok and "no_priced_variant" not in str(report.errors)  # reported in words
+    assert "before publishing" in report.errors[0]["message"]
+    assert not Product.all_objects.filter(sku="FEV-SH").exists()
+
+
+# --- Reference prices awaiting approval ------------------------------------------------------------
+
+REVIEW_HEADER = AWAITING_HEADER.replace(",stock", ",price_approved,price_source")
+REVIEW = GLUE.replace("Pack Size=1 kg,,,", "Pack Size=1 kg,343,297,no,Reference list 10-Oct-2026")
+
+
+def test_an_unapproved_price_is_stored_off_sale_and_the_product_cannot_go_live():
+    report = run(csv_file(REVIEW, header=REVIEW_HEADER), commit=True)
+    assert report.committed, report.errors
+    variant = ProductVariant.objects.get(sku="FEV-SH-1KG")
+    assert (variant.mrp, variant.price, variant.price_approved, variant.is_active) == (
+        Decimal("343.00"), Decimal("297.00"), False, False,
+    )  # fmt: skip
+    assert variant.price_source == "Reference list 10-Oct-2026"
+    again = run(csv_file(REVIEW, header=REVIEW_HEADER), commit=True)
+    assert [r["action"] for r in again.rows] == ["unchanged"]
+    live = run(csv_file(REVIEW + ",yes", header=REVIEW_HEADER + ",is_published"), commit=True)
+    assert not live.ok and "before publishing" in live.errors[0]["message"]
+
+
+def test_approving_the_price_puts_the_variant_on_sale():
+    run(csv_file(REVIEW, header=REVIEW_HEADER), commit=True)
+    report = run(csv_file(REVIEW.replace(",no,", ",yes,"), header=REVIEW_HEADER), commit=True)
+    assert report.committed, report.errors
+    variant = ProductVariant.objects.get(sku="FEV-SH-1KG")
+    assert variant.price_approved and variant.is_active
+    row = next(r for r in export_rows() if r["variant_sku"] == "FEV-SH-1KG")
+    assert (row["price_approved"], row["price_source"]) == ("yes", "Reference list 10-Oct-2026")
+
+
+def test_an_unapproved_variant_cannot_be_switched_on():
+    from django.core.exceptions import ValidationError
+    from django.db import IntegrityError, transaction
+
+    run(csv_file(REVIEW, header=REVIEW_HEADER), commit=True)
+    variant = ProductVariant.objects.get(sku="FEV-SH-1KG")
+    variant.is_active = True
+    with pytest.raises(ValidationError):
+        variant.full_clean(exclude=["product"])
+    with pytest.raises(IntegrityError), transaction.atomic():
+        ProductVariant.objects.filter(pk=variant.pk).update(is_active=True)

@@ -246,6 +246,11 @@ def set_variant_options(variant: ProductVariant, options: list[dict]) -> None:
 def _check_product_rules(product: Product) -> None:
     """Rules across all variants of a product, after a save."""
     variants = list(product.variants.filter(is_active=True).prefetch_related("price_tiers", "option_values"))
+    if product.is_published and not variants:
+        # A draft may wait for its verified price (e.g. created from product photos); a live product may not.
+        raise CatalogRuleError(
+            "Add at least one active variant with its MRP and price before publishing.", code="no_priced_variant"
+        )
     for variant in variants:
         tiers = [{"min_quantity": t.min_quantity, "unit_price": t.unit_price} for t in variant.price_tiers.all()]
         if tiers:
@@ -313,3 +318,44 @@ def delete_category(category: Category) -> None:
     if Product.objects.filter(category=category).exists() or Product.objects.filter(subcategory=category).exists():
         raise ConflictError("Move its products to another category first.", code="category_has_products")
     category.delete()  # soft delete
+
+
+# --- Product pictures ----------------------------------------------------------------------------
+
+MAX_IMAGES_PER_PRODUCT = 12
+
+
+@transaction.atomic
+def add_product_image(product: Product, file, *, variant=None, alt_text="", is_primary=False, **source):
+    """Store one picture for a product (optionally for one of its variants) through the media storage.
+
+    The first picture becomes the primary one; a new primary picture demotes the others. `source` takes
+    the ProductImage provenance fields (source_type, image_type, source_url, licence). Used by the
+    dashboard upload and by `manage.py import_product_images`.
+    """
+    from .models import ProductImage
+
+    if variant is not None and variant.product_id != product.pk:
+        raise ServiceError("That variant does not belong to this product.", code="invalid_variant")
+    if product.is_published and source.get("source_type") == ProductImage.SourceType.UNVERIFIED:
+        raise ServiceError(
+            "A live product can't show an unverified picture. Unpublish it first or record the picture's source.",
+            code="unverified_image",
+        )
+    count = product.images.count()
+    if count >= MAX_IMAGES_PER_PRODUCT:
+        raise ServiceError(f"A product can have at most {MAX_IMAGES_PER_PRODUCT} pictures.", code="too_many_images")
+    image = ProductImage(
+        product=product,
+        variant=variant,
+        image=file,
+        alt_text=(alt_text or "")[:200],
+        is_primary=is_primary or count == 0,
+        sort_order=count,
+        **source,
+    )
+    image.full_clean(exclude=["product", "variant"])  # extension and size validators
+    image.save()
+    if image.is_primary:
+        product.images.exclude(pk=image.pk).update(is_primary=False)
+    return image

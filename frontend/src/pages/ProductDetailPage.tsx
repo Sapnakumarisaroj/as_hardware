@@ -196,11 +196,10 @@ function Panel({ id, title, children }: { id: string; title: string; children: R
   )
 }
 
-/** Uses, installation steps and FAQ written by the shop; each block only when filled in. */
+/** Uses and installation steps written by the shop; each block only when filled in. */
 function ProductGuide({ product }: { product: ProductDetail }) {
   const uses = product.uses ?? []
   const steps = product.installation_steps ?? []
-  const faqs = product.faqs ?? []
   return (
     <>
       {uses.length > 0 && (
@@ -221,22 +220,63 @@ function ProductGuide({ product }: { product: ProductDetail }) {
           </ol>
         </Panel>
       )}
+    </>
+  )
+}
+
+function InfoSection({ title, open, children }: { title: string; open?: boolean; children: ReactNode }) {
+  return (
+    <details open={open} className="group/section border-b border-steel-100 last:border-b-0">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-bold text-ink-950 [&::-webkit-details-marker]:hidden">
+        {title}
+        <ChevronDownIcon className="size-4 shrink-0 transition group-open/section:rotate-180" />
+      </summary>
+      <div className="px-4 pb-4 text-sm text-ink-800">{children}</div>
+    </details>
+  )
+}
+
+/** Highlights, description, FAQ and returns as expandable sections; each only when there is something to say. */
+function ProductInfo({ product }: { product: ProductDetail }) {
+  const highlights = product.highlights ?? []
+  const faqs = product.faqs ?? []
+  return (
+    <div className="rounded-2xl bg-white shadow-(--shadow-card) ring-1 ring-steel-200" data-testid="product-info">
+      {highlights.length > 0 && (
+        <InfoSection title="Product highlights" open>
+          <ul className="list-disc space-y-1 pl-5" aria-label="Product highlights">
+            {highlights.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </InfoSection>
+      )}
+      {product.description && (
+        <InfoSection title="Product description" open={highlights.length === 0}>
+          <p className="whitespace-pre-line leading-relaxed">{product.description}</p>
+        </InfoSection>
+      )}
       {faqs.length > 0 && (
-        <Panel id="faq-heading" title="Questions & answers">
+        <InfoSection title="FAQs">
           <div className="divide-y divide-steel-100">
             {faqs.map((faq) => (
               <details key={faq.question} className="group py-2">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-ink-900 [&::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold text-ink-900 [&::-webkit-details-marker]:hidden">
                   {faq.question}
                   <ChevronDownIcon className="size-4 shrink-0 transition group-open:rotate-180" />
                 </summary>
-                <p className="mt-1 text-sm text-ink-800">{faq.answer}</p>
+                <p className="mt-1">{faq.answer}</p>
               </details>
             ))}
           </div>
-        </Panel>
+        </InfoSection>
       )}
-    </>
+      <InfoSection title="Returns policy">
+        <p data-testid="return-policy">
+          {product.return_policy?.text ?? (product.is_returnable ? 'Returnable' : 'Not returnable')}
+        </p>
+      </InfoSection>
+    </div>
   )
 }
 
@@ -475,22 +515,16 @@ export function ProductDetailPage() {
             <DeliveryInfo product={data} variant={variant} quantity={safeQuantity} />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            {!outOfStock && (
-              <div className="rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
-                <h2 className="mb-1 text-sm font-bold text-ink-950">Payment</h2>
-                <PaymentOptionsNote slug={data.slug} variantId={variant.id} quantity={safeQuantity} />
-              </div>
-            )}
+          {!outOfStock && (
             <div className="rounded-2xl bg-white shadow-(--shadow-card) p-4 ring-1 ring-steel-200">
-              <h2 className="mb-1 text-sm font-bold text-ink-950">Returns</h2>
-              <p className="text-sm text-ink-800" data-testid="return-policy">
-                {data.return_policy?.text ?? (data.is_returnable ? 'Returnable' : 'Not returnable')}
-              </p>
+              <h2 className="mb-1 text-sm font-bold text-ink-950">Payment</h2>
+              <PaymentOptionsNote slug={data.slug} variantId={variant.id} quantity={safeQuantity} />
             </div>
-          </div>
+          )}
 
           {data.short_description && <p className="text-ink-800">{data.short_description}</p>}
+
+          <ProductInfo product={data} />
 
           <ProductEnquiry productId={data.id} productName={data.name} />
         </div>
@@ -501,11 +535,6 @@ export function ProductDetailPage() {
           <Panel id="specs-heading" title="Specifications">
             <SpecTable product={data} variant={variant} />
           </Panel>
-          {data.description && (
-            <Panel id="description-heading" title="Description">
-              <p className="whitespace-pre-line text-sm leading-relaxed text-ink-800">{data.description}</p>
-            </Panel>
-          )}
           <ProductGuide product={data} />
         </div>
         <Reviews product={data} />

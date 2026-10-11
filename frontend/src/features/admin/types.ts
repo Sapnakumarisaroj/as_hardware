@@ -307,6 +307,9 @@ export interface AdminVariant {
   cost_price?: string | null
   is_default: boolean
   is_active: boolean
+  /** False: the MRP and price came from a reference list and await the owner's approval (never on sale). */
+  price_approved: boolean
+  price_source: string
   sort_order: number
   stock_available: number
   stock_reserved: number
@@ -334,6 +337,8 @@ export interface AdminProductImage {
   alt_text: string
   is_primary: boolean
   sort_order: number
+  /** 'unverified' = usage rights not confirmed: the product can't be published while it has one. */
+  source_type?: string
 }
 
 export interface AdminProduct extends AdminProductRow {
@@ -351,6 +356,7 @@ export interface AdminProduct extends AdminProductRow {
   option_types?: { id: number; name: string; unit: string; values: { id: number; value: string }[] }[]
   /** Phase 16 product-page content (optional; shown to customers only when filled in). */
   quick_answer?: string
+  highlights?: string
   uses?: string
   installation_steps?: string
   faqs?: ProductFaq[]
@@ -372,6 +378,8 @@ export interface VariantInput {
   cost_price?: string | null
   is_default: boolean
   is_active: boolean
+  /** Left out = unchanged (new variants: approved). */
+  price_approved?: boolean
   /** Replace-all lists; the server checks every rule (no overlaps, cheaper with quantity, ≤ MRP). */
   price_tiers?: { min_quantity: string; unit_price: string }[]
   options?: { option_type: number; value: string }[]
@@ -396,6 +404,7 @@ export interface ProductInput {
   specifications: { name: string; value: string }[]
   launch_date?: string | null
   quick_answer?: string
+  highlights?: string
   uses?: string
   installation_steps?: string
   faqs?: ProductFaq[]

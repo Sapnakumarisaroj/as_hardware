@@ -224,6 +224,7 @@ class Product(SoftDeleteModel):
         blank=True,
         help_text='One-line answer shown near the price, e.g. "Use for RCC slabs and columns".',
     )
+    highlights = models.TextField(blank=True, help_text="Key features, one per line (verified facts only).")
     uses = models.TextField(blank=True, help_text="Recommended uses, one per line.")
     installation_steps = models.TextField(blank=True, help_text="Installation / usage steps, one per line, in order.")
     faqs = models.JSONField(
@@ -256,6 +257,11 @@ class Product(SoftDeleteModel):
             raise ValidationError({"tags": "Tags must be a list of strings."})
         if not valid_faqs(self.faqs):
             raise ValidationError({"faqs": 'FAQs must be a list of {"question": "…", "answer": "…"} with both filled.'})
+        unverified = ProductImage.SourceType.UNVERIFIED
+        if self.is_published and self.pk and self.images.filter(source_type=unverified).exists():
+            raise ValidationError(
+                {"is_published": "Confirm or replace the pictures marked 'unverified' before publishing."}
+            )
         self.sku = normalize_sku(self.sku)
 
     def save(self, *args, **kwargs):
@@ -300,6 +306,14 @@ class ProductVariant(TimeStampedModel):
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
+    # A price taken from a reference list (e.g. another shop's catalogue) is stored for review with
+    # price_approved=False. Such a variant can't be switched on, so customers never see or pay it.
+    price_approved = models.BooleanField(
+        default=True, help_text="The shop's own approved MRP and price. Unapproved variants can't be on sale."
+    )
+    price_source = models.CharField(
+        max_length=200, blank=True, help_text="Where the MRP and price came from, e.g. a supplier list and date."
+    )
 
     class Meta:
         ordering = ["sort_order", "id"]
@@ -307,6 +321,9 @@ class ProductVariant(TimeStampedModel):
         constraints = [
             models.CheckConstraint(condition=Q(price__gt=0), name="variant_price_positive"),
             models.CheckConstraint(condition=Q(price__lte=F("mrp")), name="variant_price_lte_mrp"),
+            models.CheckConstraint(
+                condition=Q(price_approved=True) | Q(is_active=False), name="variant_unapproved_price_inactive"
+            ),
         ]
 
     def __str__(self) -> str:
@@ -315,6 +332,8 @@ class ProductVariant(TimeStampedModel):
     def clean(self):
         if self.price is not None and self.mrp is not None and self.price > self.mrp:
             raise ValidationError({"price": "Selling price cannot exceed MRP."})
+        if self.is_active and not self.price_approved:
+            raise ValidationError({"is_active": "Approve the MRP and price before putting this variant on sale."})
         self.sku = normalize_sku(self.sku)
 
     def save(self, *args, **kwargs):
@@ -342,8 +361,12 @@ class ProductImage(TimeStampedModel):
         SUPPLIER = "supplier", "Supplier"
         LICENSED = "licensed", "Licensed"
         OWN = "own", "Our own photo"
+        # The owner decided the picture may be used; its origin is in `licence` (rights not checked by us).
+        OWNER_APPROVED = "owner_approved", "Approved for use by the owner"
         GENERATED = "generated", "AI-generated"
         PLACEHOLDER = "placeholder", "Placeholder"
+        # Usage rights not confirmed: the product can't be published while it has one.
+        UNVERIFIED = "unverified", "Unverified (usage rights not confirmed)"
 
     class ImageType(models.TextChoices):
         PHOTO = "photo", "Photo of the product"

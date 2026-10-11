@@ -52,6 +52,8 @@ API details: [API.md › Catalogue import / export](API.md#catalogue-import--exp
 | `option:<Name>` | Any number of extra columns, one option each, e.g. a column `option:Colour` with `Red`. |
 | `mrp` | MRP per unit in rupees, GST inclusive. Required for a new variant. |
 | `price` | Selling price per unit, GST inclusive, not above the MRP. Required for a new variant. |
+| `price_approved` | `yes` / `no`: the MRP and price are the shop's own. `no` stores them for review (e.g. from a reference list) and takes the variant **off sale**; such a variant can't be switched on (database rule) and its product can't be published until a price is approved. `yes` on an unapproved variant puts it on sale. Blank = unchanged (new variants: yes). |
+| `price_source` | Where the MRP and price came from, e.g. `Supplier list 10-Oct-2026` (≤ 200 characters). |
 | `cost_price` | Purchase cost per unit, GST inclusive. Optional; used only for profit reports, never shown to customers. |
 | `bulk_tiers` | `quantity:price` pairs, smallest quantity first: `10:95; 50:90`. Each price lower than the one before and than the normal price; quantities ≥ 2 and ≤ the order limit. Blank (with the column present) removes the tiers. |
 | `stock` | Wanted **available** quantity per store code: `BLR-01:25; BLR-02:10`. Blank = stock unchanged. |
@@ -70,6 +72,12 @@ Everything is checked before anything is saved, and every problem is reported wi
 - product columns repeated on a product's later rows may be left blank, but where they are filled they must match the
   first row;
 - a new product needs its name, category and GST rate; a new variant its MRP and price. Nothing is guessed.
+- **awaiting price:** a new variant row whose `mrp` and `price` cells are *both* blank (with both columns in the file) is
+  reported as `awaiting_price` and not created; its product is still saved (new products as drafts). Fill in the shop's
+  own prices later and import the same sheet again to create those variants. An awaiting row can't carry `stock` or
+  `bulk_tiers`, and a product can't be published while it has no priced variant. (The export lists variants only, so a
+  product whose variants all await prices is not in it: keep the staging sheet.)
+- `highlights`, `uses` and `installation_steps` take one item per line (a line break inside the cell).
 
 **All or nothing:** the import runs in one database transaction. If any row fails — during the checks or while saving —
 nothing at all is saved. A dry run performs the whole import and rolls it back, so its result (create / update /
@@ -87,9 +95,19 @@ unless `--allow-demo` / `allow_demo=true` is given. The export leaves demo produ
 `python manage.py purge_demo_data [--commit]` removes the demo seed: demo rows still referenced by orders, reviews or
 quotes are archived (soft-deleted, switched off) instead of deleted; real rows are never touched.
 
-**Pictures are not imported.** Upload them on the product page in the dashboard (product › Pictures). The importer never
-downloads files from links in a spreadsheet (`ProductImage` needs a stored file, and copying pictures from other sites
-needs permission).
+**Pictures are not part of this sheet.** Upload them on the product page in the dashboard (product › Pictures), or attach
+files from a local folder with a separate mapping sheet (columns `product_sku`, `file`, optional `variant_sku`,
+`is_primary`, `alt_text`, `source_type`, `image_type`, `source_url`, `licence`):
+
+```
+python manage.py import_product_images map.csv --root ../assets/as-hardware-images            # dry run
+python manage.py import_product_images map.csv --root ../assets/as-hardware-images --commit   # save
+```
+
+It never downloads anything; files must be inside `--root`. Re-running is safe (a picture already on that product is
+skipped), and the same picture listed for two products is refused. `source_type` defaults to **unverified**: a product
+with an unverified picture can't be published (dashboard, import or Django admin) until the picture's source is
+recorded (Django admin › product › images, or the dashboard image API) or the picture is replaced.
 
 **Spreadsheet formulas:** the export prefixes text starting with `=`, `+`, `-` or `@` with `'` so Excel does not run it;
 the importer removes that `'` again. Excel formulas in an uploaded `.xlsx` are read as their saved values.

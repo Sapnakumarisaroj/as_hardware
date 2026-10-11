@@ -31,8 +31,6 @@ from apps.core.exceptions import ConflictError, NotFoundError, ServiceError
 from apps.core.permissions import IsAdminOrStaffReadOnly, IsAdminRole, is_admin, managed_store_ids
 from apps.inventory.models import Inventory
 
-MAX_IMAGES_PER_PRODUCT = 12
-
 
 def _ref(obj) -> dict | None:
     return {"id": obj.pk, "name": obj.name, "slug": obj.slug} if obj else None
@@ -68,6 +66,8 @@ class AdminVariantSerializer(serializers.ModelSerializer):
             "height_mm",
             "is_default",
             "is_active",
+            "price_approved",
+            "price_source",
             "sort_order",
             "stock_available",
             "stock_reserved",
@@ -188,6 +188,7 @@ class AdminProductDetailSerializer(AdminProductListSerializer):
             "images",
             "option_types",
             "quick_answer",
+            "highlights",
             "uses",
             "installation_steps",
             "faqs",
@@ -405,27 +406,19 @@ class AdminProductViewSet(viewsets.ModelViewSet):
         serializer = ImageUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        if product.images.count() >= MAX_IMAGES_PER_PRODUCT:
-            raise ServiceError(f"A product can have at most {MAX_IMAGES_PER_PRODUCT} pictures.", code="too_many_images")
         variant = None
         if data.get("variant"):
             variant = product.variants.filter(pk=data["variant"]).first()
             if variant is None:
                 raise ServiceError("That variant does not belong to this product.", code="invalid_variant")
-        first = not product.images.exists()
-        image = ProductImage(
-            product=product,
+        services.add_product_image(
+            product,
+            data["image"],
             variant=variant,
-            image=data["image"],
             alt_text=data["alt_text"],
-            is_primary=data["is_primary"] or first,
-            sort_order=product.images.count(),
+            is_primary=data["is_primary"],
             **{field: data[field] for field in ("source_type", "image_type", "source_url", "licence") if field in data},
         )
-        image.full_clean(exclude=["product", "variant"])  # extension and size validators
-        image.save()
-        if image.is_primary:
-            product.images.exclude(pk=image.pk).update(is_primary=False)
         record_audit(action="product.image_add", actor=request.user, target=product, request=request)
         return self._detail(product, status.HTTP_201_CREATED)
 

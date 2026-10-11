@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+import { ChevronRightIcon } from '@/components/icons'
+
 import type { ProductImage as ProductImageType } from '../types'
 import { ProductImage } from './ProductImage'
 
@@ -39,16 +41,35 @@ export function ProductGallery({
   ]
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const current = ordered.find((img) => img.id === selectedId) ?? ordered[0]
+  const position = current ? ordered.indexOf(current) : 0
+  const step = (by: number) => setSelectedId(ordered[(position + by + ordered.length) % ordered.length]?.id ?? null)
+  const arrow =
+    'absolute top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-ink-900 shadow ring-1 ring-steel-200 hover:bg-white focus-visible:outline-2 focus-visible:outline-amber-500'
 
   return (
     <div className="flex flex-col gap-3 md:flex-row-reverse">
       <div className="flex-1 overflow-hidden rounded-2xl bg-white shadow-(--shadow-card) ring-1 ring-steel-200">
-        <ProductImage
-          src={current?.image}
-          alt={current?.alt_text || productName}
-          eager
-          className="aspect-square w-full"
-        />
+        <div className="relative">
+          <ProductImage
+            src={current?.image}
+            alt={current?.alt_text || productName}
+            eager
+            className="aspect-square w-full"
+          />
+          {ordered.length > 1 && (
+            <>
+              <button type="button" onClick={() => step(-1)} aria-label="Previous image" className={`${arrow} left-2`}>
+                <ChevronRightIcon className="size-5 rotate-180" />
+              </button>
+              <button type="button" onClick={() => step(1)} aria-label="Next image" className={`${arrow} right-2`}>
+                <ChevronRightIcon className="size-5" />
+              </button>
+              <p className="absolute bottom-2 right-2 rounded-full bg-ink-900/70 px-2 py-0.5 text-xs text-white" aria-live="polite">
+                {position + 1} / {ordered.length}
+              </p>
+            </>
+          )}
+        </div>
         <ImageCredit image={current} />
       </div>
       {ordered.length > 1 && (

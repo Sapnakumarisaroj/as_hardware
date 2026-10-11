@@ -1,0 +1,211 @@
+{
+ "folder": "Wood & Adhesives/favicol",
+ "workbook": "HomeRun_Fevicol_Adhesives_Products.xlsx",
+ "products": [
+  {
+   "source_name": "Fevicol SH Adhesive",
+   "brand": "Fevicol (Pidilite)",
+   "type": "General Wood Adhesive",
+   "group": "",
+   "options": [
+    "1 Kg",
+    "2 Kg",
+    "5 Kg",
+    "10 Kg",
+    "20 Kg",
+    "30 Kg",
+    "50 Kg"
+   ],
+   "stock_flags": [],
+   "images": []
+  },
+  {
+   "source_name": "Fevicol Marine Waterproof Adhesive",
+   "brand": "Fevicol (Pidilite)",
+   "type": "Waterproof & Heat Resistant Adhesive",
+   "group": "",
+   "options": [
+    "1 Kg",
+    "2 Kg",
+    "5 Kg",
+    "10 Kg",
+    "20 Kg",
+    "50 Kg"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Wood & Adhesives/favicol/Fevicol Marine Waterproof Adhesive.webp"
+   ]
+  },
+  {
+   "source_name": "MYK Laticrete LATAPOXY Fast & Clear Epoxy Adhesive",
+   "brand": "MYK Laticrete",
+   "type": "Epoxy Tile Adhesive",
+   "group": "",
+   "options": [
+    "450 g",
+    "1 Kg"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Wood & Adhesives/favicol/MYK Laticrete LATAPOXY® Fast & Clear Epoxy Adhesive.webp"
+   ]
+  },
+  {
+   "source_name": "Fevicol HeatX Heatproof Adhesive",
+   "brand": "Fevicol (Pidilite)",
+   "type": "Waterproof & Heat Resistant Adhesive",
+   "group": "",
+   "options": [
+    "500 ml",
+    "1 L",
+    "5 L"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Wood & Adhesives/favicol/Fevicol HeatX Heatproof Adhesive.webp"
+   ]
+  },
+  {
+   "source_name": "Pidilite M-Seal Phataphat 90g, Multi-Purpose Waterproof Sealant Putty",
+   "brand": "M-Seal (Pidilite)",
+   "type": "Sealant Putty",
+   "group": "",
+   "options": [
+    "90 g"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Wood & Adhesives/favicol/Pidilite M-Seal Phataphat 90g, Multi-Purpose Waterproof Sealant Putty.webp",
+    "Tools & Safety/General Hardware & Tools/Pidilite M-Seal Phataphat 90g, Multi-Purpose Waterproof Sealant Putty.webp"
+   ]
+  },
+  {
+   "source_name": "Pidilite Fevicol Probond Special Adhesive for PVC Sheets & Tapes",
+   "brand": "Fevicol (Pidilite)",
+   "type": "General Wood Adhesive",
+   "group": "",
+   "options": [
+    "1 Kg",
+    "5 Kg",
+    "10 Kg"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Wood & Adhesives/favicol/Pidilite Fevicol Probond Special Adhesive for PVC sheets & Tapes.webp"
+   ]
+  },
+  {
+   "source_name": "Fevicol HI-PER Anti-Bubble Waterproof Adhesive",
+   "brand": "Fevicol (Pidilite)",
+   "type": "Waterproof & Heat Resistant Adhesive",
+   "group": "",
+   "options": [
+    "5 Kg",
+    "10 Kg",
+    "20 Kg",
+    "30 Kg",
+    "50 Kg"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Wood & Adhesives/favicol/Fevicol HI-PER Anti-Bubble Waterproof Adhesive.webp"
+   ]
+  },
+  {
+   "source_name": "Pidilite Masterlok Synthetic Wood Adhesive, 50 Kg",
+   "brand": "Masterlok (Pidilite)",
+   "type": "General Wood Adhesive",
+   "group": "",
+   "options": [
+    "50 Kg"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Wood & Adhesives/favicol/Pidilite Masterlok Synthetic Wood Adhesive, 50Kg.webp"
+   ]
+  },
+  {
+   "source_name": "Araldite Klear5 Epoxy Adhesive",
+   "brand": "Araldite (Pidilite)",
+   "type": "Epoxy Adhesive",
+   "group": "",
+   "options": [
+    "450 g",
+    "1.08 Kg"
+   ],
+   "stock_flags": [],
+   "images": []
+  },
+  {
+   "source_name": "Araldite Standard Epoxy Adhesive",
+   "brand": "Araldite (Pidilite)",
+   "type": "Epoxy Adhesive",
+   "group": "",
+   "options": [
+    "450 g",
+    "1.80 Kg"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Wood & Adhesives/favicol/Araldite Standard Epoxy Adhesive.webp"
+   ]
+  },
+  {
+   "source_name": "Fevicol WoodLok Pro, Moisture Resistant Synthetic Resin Adhesive, 60 Kg",
+   "brand": "Fevicol (Pidilite)",
+   "type": "General Wood Adhesive",
+   "group": "",
+   "options": [
+    "60 Kg"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Wood & Adhesives/favicol/Fevicol WoodLok Pro, Moisture Resistant Synthetic Resin Adhesive, 60Kg.webp"
+   ]
+  },
+  {
+   "source_name": "Fevicol Grippo WG, Synthetic Resin Adhesive, 50 Kg",
+   "brand": "Fevicol (Pidilite)",
+   "type": "General Wood Adhesive",
+   "group": "",
+   "options": [
+    "50 Kg"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Wood & Adhesives/favicol/Fevicol Grippo WG, Synthetic Resin Adhesive, 50Kg.webp"
+   ]
+  },
+  {
+   "source_name": "Fevicol Nail Free Ultra High Strength Adhesive & Sealant",
+   "brand": "Fevicol (Pidilite)",
+   "type": "Construction Adhesive",
+   "group": "",
+   "options": [
+    "435 g / 280 ml"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Wood & Adhesives/favicol/Fevicol Nail Free Ultra High Strength Adhesive & Sealant, 435g.webp"
+   ]
+  },
+  {
+   "source_name": "Fevicol Ezee Spray Instant Contact Adhesive, 383g",
+   "brand": "Fevicol (Pidilite)",
+   "type": "Instant Contact Adhesive",
+   "group": "",
+   "options": [
+    "383 g"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Wood & Adhesives/favicol/Fevicol Ezee Spray Instant Contact Adhesive, 383g.webp"
+   ]
+  }
+ ],
+ "unmatched_images": [
+  "Wood & Adhesives/favicol/1_Araldite_Klear_Epoxy_Adhesive_front.webp",
+  "Wood & Adhesives/favicol/Fevicol SH Adesive.webp"
+ ]
+}

@@ -139,7 +139,7 @@ export interface ProductImage {
   is_primary: boolean
   sort_order: number
   /** Where the picture came from ('' = not recorded). */
-  source_type?: '' | 'manufacturer' | 'supplier' | 'licensed' | 'own' | 'generated' | 'placeholder'
+  source_type?: '' | 'manufacturer' | 'supplier' | 'licensed' | 'own' | 'owner_approved' | 'generated' | 'placeholder' | 'unverified'
   /** 'illustration' = not a photo of the actual product (e.g. AI-generated); the page says so. */
   image_type?: 'photo' | 'illustration'
   source_url?: string
@@ -163,6 +163,8 @@ export interface ProductDetail extends ProductSummary {
   breadcrumb?: NamedRef[]
   /** Phase 16 product-page content written by the shop; empty when not filled in. */
   quick_answer?: string
+  /** Key features, verified facts only. */
+  highlights?: string[]
   uses?: string[]
   installation_steps?: string[]
   faqs?: { question: string; answer: string }[]

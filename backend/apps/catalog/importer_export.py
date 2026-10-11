@@ -51,6 +51,9 @@ def _product_columns(product: Product) -> dict:
         "description": product.description,
         "tags": ", ".join(product.tags or []),
         "specifications": "; ".join(_spec_text(s) for s in product.specifications.all()),
+        "highlights": product.highlights,
+        "uses": product.uses,
+        "installation_steps": product.installation_steps,
         "is_published": "yes" if product.is_published else "no",
         **{column: ", ".join(relations.get(column, [])) for column in RELATION_COLUMNS},
     }
@@ -64,6 +67,8 @@ def _variant_columns(variant: ProductVariant, stock: dict[int, list[tuple[str, i
         "mrp": variant.mrp,
         "price": variant.price,
         "cost_price": variant.cost_price if variant.cost_price is not None else "",
+        "price_approved": "yes" if variant.price_approved else "no",
+        "price_source": variant.price_source,
         "bulk_tiers": "; ".join(f"{t.min_quantity}:{t.unit_price}" for t in variant.price_tiers.all()),
         "stock": "; ".join(f"{code}:{quantity}" for code, quantity in stock.get(variant.pk, [])),
     }

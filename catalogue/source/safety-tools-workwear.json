@@ -1,0 +1,118 @@
+{
+ "folder": "Tools & Safety/Safety Tools & Workwear",
+ "workbook": "HomeRun_Safety_Tools_Workwear.xlsx",
+ "products": [
+  {
+   "source_name": "APEX Industrial Safety Helmet, Head Protection Site Hard Hat",
+   "brand": "APEX",
+   "type": "Safety Helmets",
+   "group": "",
+   "options": [
+    "PVC APEX - White",
+    "PVC APEX - Yellow"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Tools & Safety/Safety Tools & Workwear/APEX Industrial Safety Helmet, Head Protection Site Hard Hat.webp"
+   ]
+  },
+  {
+   "source_name": "Evion Reflective Safety Jacket - Breathable Mesh & Solid Workwear Vests with Zip and Pocket",
+   "brand": "Evion",
+   "type": "Reflective Safety Jackets",
+   "group": "",
+   "options": [
+    "Orange",
+    "Green"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Tools & Safety/Safety Tools & Workwear/Evion Reflective Safety Jacket – Breathable Mesh & Solid Workwear Vests with Zip and Pocket.webp"
+   ]
+  },
+  {
+   "source_name": "Evion Reflective Safety Jacket 1\" (Net and Fabric) - 50GSM",
+   "brand": "Evion",
+   "type": "Reflective Safety Jackets",
+   "group": "",
+   "options": [
+    "Orange",
+    "Green"
+   ],
+   "stock_flags": [],
+   "images": []
+  },
+  {
+   "source_name": "Evion Reflective Safety Jacket, L&T Reflective - 95GSM, Green",
+   "brand": "Evion",
+   "type": "Reflective Safety Jackets",
+   "group": "",
+   "options": [
+    "Standard"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Tools & Safety/Safety Tools & Workwear/Evion Reflective Safety Jacket, L&T Reflective – 95GSM, Green.webp"
+   ]
+  },
+  {
+   "source_name": "Pitbull Mirage Low Ankle Steel Toe Safety Shoes",
+   "brand": "Pitbull",
+   "type": "Safety Shoes",
+   "group": "",
+   "options": [
+    "Size - 7",
+    "Size - 8",
+    "Size - 9"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Tools & Safety/Safety Tools & Workwear/Pitbull Mirage Low Ankle Steel Toe Safety Shoes.webp"
+   ]
+  },
+  {
+   "source_name": "Hillson Dragon Steel Toe Gumboots, 15\" High",
+   "brand": "Hillson",
+   "type": "Gumboots",
+   "group": "",
+   "options": [
+    "Size - 7",
+    "Size - 8",
+    "Size - 9"
+   ],
+   "stock_flags": [],
+   "images": []
+  },
+  {
+   "source_name": "Barricade Caution Tape, Non-Adhesive High-Visibility",
+   "brand": "Unbranded",
+   "type": "Barricade Tapes",
+   "group": "",
+   "options": [
+    "Standard"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Tools & Safety/Safety Tools & Workwear/Barricade Caution Tape, Non-Adhesive High-Visibility.webp"
+   ]
+  },
+  {
+   "source_name": "Fall Protection Safety Harness Belt with Hooks",
+   "brand": "Unbranded",
+   "type": "Safety Harnesses",
+   "group": "",
+   "options": [
+    "Half Body",
+    "Full Body"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Tools & Safety/Safety Tools & Workwear/Fall protection Safety Harness Belt with Hooks.webp"
+   ]
+  }
+ ],
+ "unmatched_images": [
+  "Tools & Safety/Safety Tools & Workwear/Evion Reflective Safety Jacket 1  50GSM.webp",
+  "Tools & Safety/Safety Tools & Workwear/Hillson_Dragon_Steel_Toe_Gumboots_15_Height.webp"
+ ]
+}

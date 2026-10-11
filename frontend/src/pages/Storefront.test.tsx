@@ -87,6 +87,34 @@ describe('product page (Phase 16)', () => {
     expect(JSON.parse(window.localStorage.getItem('boltrun.recently-viewed') ?? '[]')).toEqual(['fr-pvc-copper-wire'])
   })
 
+  it('shows highlights, description, FAQ and returns as expandable sections', async () => {
+    const detail = {
+      ...richDetail,
+      highlights: ['Heat and water resistant', 'High coverage'],
+      description: 'Synthetic resin adhesive for woodworking.',
+    }
+    mockApi({ get: detailRoutes({ '/products/fr-pvc-copper-wire/': detail }) })
+    const { user } = renderRoute('/p/fr-pvc-copper-wire')
+    const info = await screen.findByTestId('product-info')
+    const highlights = within(info).getByRole('list', { name: 'Product highlights' })
+    expect(within(highlights).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Heat and water resistant',
+      'High coverage',
+    ])
+    const sections = Array.from(info.querySelectorAll(':scope > details'))
+    expect(sections.map((s) => s.querySelector('summary')?.textContent)).toEqual([
+      'Product highlights',
+      'Product description',
+      'FAQs',
+      'Returns policy',
+    ])
+    expect(sections[0]).toHaveAttribute('open') // highlights start open; the rest are collapsed
+    expect(sections[1]).not.toHaveAttribute('open')
+    await user.click(within(info).getByText('Product description'))
+    expect(sections[1]).toHaveAttribute('open')
+    expect(sections[1]).toHaveTextContent('Synthetic resin adhesive for woodworking.')
+  })
+
   it('hides content sections the shop has not written', async () => {
     mockApi({ get: detailRoutes({ '/products/fr-pvc-copper-wire/': wireDetail() }) })
     renderRoute('/p/fr-pvc-copper-wire')
@@ -95,6 +123,11 @@ describe('product page (Phase 16)', () => {
       expect(screen.queryByRole('region', { name })).not.toBeInTheDocument()
     }
     expect(screen.queryByTestId('quick-answer')).not.toBeInTheDocument()
+    // Only the returns policy is always there: no empty highlights or FAQ sections.
+    const info = screen.getByTestId('product-info')
+    expect(within(info).queryByText('Product highlights')).not.toBeInTheDocument()
+    expect(within(info).queryByText('FAQs')).not.toBeInTheDocument()
+    expect(within(info).getByText('Returns policy')).toBeInTheDocument()
   })
 
   it('says why cash on delivery isn’t available for this amount', async () => {

@@ -151,6 +151,10 @@ export const routes: RouteObject[] = [
             lazy: async () => ({ Component: (await import('@/pages/admin/CatalogImportPage')).AdminCatalogImportPage }),
           },
           { path: 'products/:id', lazy: async () => ({ Component: (await catalog()).AdminProductPage }) },
+          {
+            path: 'products/:id/preview',
+            lazy: async () => ({ Component: (await import('@/pages/admin/ProductPreviewPage')).AdminProductPreviewPage }),
+          },
           { path: 'categories', lazy: async () => ({ Component: (await catalog()).AdminCategoriesPage }) },
           { path: 'brands', lazy: async () => ({ Component: (await catalog()).AdminBrandsPage }) },
           {

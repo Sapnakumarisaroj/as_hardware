@@ -103,3 +103,27 @@ def test_admin_soft_deletes_product(admin_client):
     product, _ = create_product()
     assert admin_client.delete(f"/api/products/{product.slug}/").status_code == 204
     assert Product.all_objects.get(pk=product.pk).is_deleted
+
+
+def test_unapproved_reference_prices_never_reach_customers(api_client):
+    """Imported reference prices are stored off sale (price_approved=False): drafts stay out of the list,
+    search, category pages and detail, and a live product shows only its approved options."""
+    from apps.catalog.models import ProductVariant
+
+    category = create_category()
+    draft, ref = create_product(name="Draft Plywood", category=category, published=False)
+    ProductVariant.objects.filter(pk=ref.pk).update(price_approved=False, is_active=False)
+    live, approved = create_product(name="Live Plywood", category=category, price="900.00", mrp="1000.00")
+    ProductVariant.objects.create(
+        product=live, sku="LIVE-REF", name="Reference size", mrp="2000.00", price="1500.00",
+        price_approved=False, is_active=False,
+    )  # fmt: skip
+
+    names = [p["name"] for p in api_client.get("/api/products/").json()["results"]]
+    assert names == ["Live Plywood"]
+    assert [p["name"] for p in api_client.get("/api/products/", {"search": "plywood"}).json()["results"]] == names
+    assert [p["name"] for p in api_client.get("/api/products/", {"category": category.slug}).json()["results"]] == names
+    assert api_client.get(f"/api/products/{draft.slug}/").status_code == 404
+    detail = api_client.get(f"/api/products/{live.slug}/").json()
+    assert [v["sku"] for v in detail["variants"]] == [approved.sku]
+    assert "1500" not in str(detail)

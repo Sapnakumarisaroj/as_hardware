@@ -12,7 +12,10 @@ The column reference is `COLUMNS` below (and docs/CATALOG_IMPORT.md). Rules:
   cell clears the value). Exceptions: a blank `stock` cell changes no stock, a blank `is_published`,
   `unit` or `max_order_quantity` keeps the current value (new products: unpublished, piece, 50).
 - Nothing is invented: a new product needs its name, approved category and GST rate; a new variant
-  needs its MRP and price.
+  needs its MRP and price. A new variant row with *both* MRP and price cells blank (the columns
+  present) is "awaiting price": its product is saved (as a draft unless published already) and the
+  variant is reported but not created, so the same sheet can be imported again once the shop's own
+  prices are filled in. An awaiting row can't carry stock or bulk prices.
 - Every row is validated before anything is saved and errors are reported per row and column. The
   import then runs in one transaction: any failure rolls everything back. A dry run (the default)
   runs the whole import and rolls it back, so it reports exactly what a real import would do.
@@ -75,6 +78,9 @@ COLUMNS: list[tuple[str, str]] = [
         "specifications",
         "Name=value pairs separated by ';', with an optional unit in brackets: 'Thickness=18 [mm]; Grade=BWP'.",
     ),
+    ("highlights", "Key features, one per line (verified facts only)."),
+    ("uses", "Recommended uses, one per line."),
+    ("installation_steps", "Installation / usage steps, one per line, in order."),
     ("is_published", "yes or no: visible to customers. Blank = unchanged (new products start unpublished)."),
     *[
         (column, f"Product SKUs linked as '{ProductRelation.Kind(kind).label}', separated by commas.")
@@ -87,8 +93,18 @@ COLUMNS: list[tuple[str, str]] = [
         "Variant options as Name=value pairs separated by ';', e.g. 'Size=2.5 sq mm; Colour=Red'. Extra columns "
         "named 'option:<Name>' add one option each.",
     ),
-    ("mrp", "MRP per unit in rupees, GST inclusive. Required for a new variant."),
+    (
+        "mrp",
+        "MRP per unit in rupees, GST inclusive. Required for a new variant (leave MRP and price both blank for "
+        "a variant awaiting its price).",
+    ),
     ("price", "Selling price per unit, GST inclusive, not above the MRP. Required for a new variant."),
+    (
+        "price_approved",
+        "yes or no: the MRP and price are the shop's own. 'no' stores them for review and takes the variant off "
+        "sale; 'yes' on an unapproved variant puts it on sale. Blank = unchanged (new variants: yes).",
+    ),
+    ("price_source", "Where the MRP and price came from, e.g. 'Supplier list 10-Oct-2026' (up to 200 characters)."),
     ("cost_price", "Purchase cost per unit, GST inclusive. Optional; used only for profit reports, never shown."),
     (
         "bulk_tiers",
@@ -104,7 +120,8 @@ COLUMNS: list[tuple[str, str]] = [
 COLUMN_NAMES = [name for name, _ in COLUMNS]
 PRODUCT_COLUMNS = (
     "product_name", "category", "subcategory", "brand", "unit", "gst_rate", "hsn_code", "max_order_quantity",
-    "short_description", "description", "tags", "specifications", "is_published", *RELATION_COLUMNS,
+    "short_description", "description", "tags", "specifications", "highlights", "uses", "installation_steps",
+    "is_published", *RELATION_COLUMNS,
 )  # fmt: skip
 REQUIRED_COLUMNS = ("product_sku", "variant_sku")
 
@@ -128,8 +145,9 @@ class Table:
     rows: list[tuple[int, dict[str, str]]]  # (row number in the sheet, {column: text})
 
 
-def read_table(content: bytes, filename: str, *, sheet: str | None = None) -> Table:
-    """The header and the non-blank rows of a .csv or .xlsx file, every cell as trimmed text."""
+def read_table(content: bytes, filename: str, *, sheet: str | None = None, check_header: bool = True) -> Table:
+    """The header and the non-blank rows of a .csv or .xlsx file, every cell as trimmed text.
+    `check_header=False` skips the catalogue-column check (for sheets with their own columns)."""
     extension = os.path.splitext((filename or "").lower())[1]
     if extension not in FILE_TYPES:
         raise ImportFileError("Upload a .csv or .xlsx file.", code="unsupported_file_type")
@@ -148,7 +166,8 @@ def read_table(content: bytes, filename: str, *, sheet: str | None = None) -> Ta
         values = list(values)[:MAX_COLUMNS]
         if header is None:
             header = [_header(v) for v in values]
-            _check_header(header)
+            if check_header:
+                _check_header(header)
             continue
         cells = {column: _text(values[i]) if i < len(values) else "" for i, column in enumerate(header) if column}
         if not any(cells.values()):
@@ -388,6 +407,7 @@ class VariantPlan:
     fields: dict = field(default_factory=dict)
     tiers: list[tuple[int, Decimal]] | None = None
     stock: list[tuple[object, int]] | None = None  # [(Store, wanted available quantity)]
+    awaiting_price: bool = False  # new variant with MRP and price both blank: reported, not created
 
 
 @dataclass
@@ -616,6 +636,8 @@ class _Planner:
         parse("max_order_quantity", max_quantity)
         parse("short_description", lambda t: fields.__setitem__("short_description", _length(t, 300)))
         parse("description", lambda t: fields.__setitem__("description", _length(t, 20000)))
+        for column in ("highlights", "uses", "installation_steps"):
+            parse(column, lambda t, column=column: fields.__setitem__(column, _length(t, 5000)))
         parse("tags", tags)
         parse("specifications", specifications)
         parse("is_published", published)
@@ -717,9 +739,29 @@ class _Planner:
             return inner
 
         parse("variant_name", lambda t: fields.__setitem__("name", _length(t, 120)))
+        awaiting = {"mrp", "price"} <= self.columns and not cells.get("mrp") and not cells.get("price")
+        if existing is None and awaiting:
+            variant.awaiting_price = True
+            for column in ("bulk_tiers", "stock"):
+                if cells.get(column):
+                    self.err(row, column, "Fill in the MRP and price first: this variant is awaiting its price.", sku)
+            self._attributes(variant, cells)
+            return variant if len(self.report.errors) == before else None
         parse("mrp", money("mrp", required=True))
         parse("price", money("price", required=True))
         parse("cost_price", money("cost_price", required=False))
+        parse("price_source", lambda t: fields.__setitem__("price_source", _length(t, 200)))
+
+        def approved(text):
+            if not text:
+                return
+            fields["price_approved"] = _bool(text)
+            if not fields["price_approved"]:
+                fields["is_active"] = False  # an unapproved price is never on sale
+            elif existing is None or not existing.price_approved:
+                fields["is_active"] = True
+
+        parse("price_approved", approved)
         self._attributes(variant, cells)
         if existing is None:
             for column in ("mrp", "price"):
@@ -814,6 +856,8 @@ class _Runner:
             data["specifications"] = plan.specifications
         payloads = []
         for variant in plan.variants:
+            if variant.awaiting_price:
+                continue
             payload = {"sku": variant.sku, **variant.fields}
             if variant.existing is not None:
                 payload["id"] = variant.existing.pk
@@ -832,7 +876,7 @@ class _Runner:
         option_types = {t.name.casefold(): t for t in services.option_types_for(product)}
         changed = False
         for plan_variant in plan.variants:
-            if "attributes" not in plan_variant.fields:
+            if plan_variant.awaiting_price or "attributes" not in plan_variant.fields:
                 continue
             variant = ProductVariant.objects.get(sku=plan_variant.sku)
             attributes = {
@@ -858,7 +902,7 @@ class _Runner:
         from apps.inventory.services import apply_movement
 
         for plan_variant in plan.variants:
-            if not plan_variant.stock:
+            if plan_variant.awaiting_price or not plan_variant.stock:
                 continue
             variant = ProductVariant.objects.get(sku=plan_variant.sku)
             for store, wanted in plan_variant.stock:
@@ -943,11 +987,14 @@ def run_import(
             )
             after = snapshot(list(variant_ids.values()))
             counts = {"products_created": 0, "products_updated": 0, "variants_created": 0, "variants_updated": 0}
-            counts["unchanged"] = 0
+            counts["unchanged"] = counts["variants_awaiting_price"] = 0
             for plan in plans:
                 product_changed = False
                 for variant in plan.variants:
-                    if variant.existing is None:
+                    if variant.awaiting_price:
+                        action = "awaiting_price"
+                        counts["variants_awaiting_price"] += 1
+                    elif variant.existing is None:
                         action = "create"
                         counts["variants_created"] += 1
                     elif before.get(variant.existing.pk) == after.get(variant_ids[variant.sku]):
@@ -956,7 +1003,7 @@ def run_import(
                     else:
                         action = "update"
                         counts["variants_updated"] += 1
-                    product_changed |= action != "unchanged"
+                    product_changed |= action not in ("unchanged", "awaiting_price")
                     report.rows.append(
                         {"row": variant.row, "product_sku": plan.sku, "variant_sku": variant.sku, "action": action}
                     )

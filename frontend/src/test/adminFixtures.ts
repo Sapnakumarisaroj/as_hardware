@@ -333,6 +333,8 @@ export function adminProduct(overrides: Partial<AdminProduct> = {}): AdminProduc
         price: '3200.00',
         is_default: true,
         is_active: true,
+        price_approved: true,
+        price_source: '',
         sort_order: 0,
         stock_available: 14,
         stock_reserved: 2,

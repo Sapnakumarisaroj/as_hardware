@@ -69,7 +69,7 @@ class BrandAdmin(admin.ModelAdmin):
 
 class VariantInline(admin.TabularInline):
     model = ProductVariant
-    fields = ("sku", "name", "attributes", "mrp", "price", "weight_grams", "is_default", "is_active", "sort_order")
+    fields = ("sku", "name", "attributes", "mrp", "price", "weight_grams", "is_default", "is_active", "price_approved", "sort_order")
     extra = 0
     min_num = 1
 
@@ -120,7 +120,7 @@ class ProductAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {"fields": ("name", "slug", "sku", "brand", "category", "subcategory", "unit")}),
         ("Content", {"fields": ("short_description", "description", "tags")}),
-        ("Product page", {"fields": ("quick_answer", "uses", "installation_steps", "faqs")}),
+        ("Product page", {"fields": ("quick_answer", "highlights", "uses", "installation_steps", "faqs")}),
         ("Tax & limits", {"fields": ("gst_rate", "hsn_code", "max_order_quantity", "is_returnable")}),
         ("Visibility", {"fields": ("is_active", "is_published", "is_featured", "launch_date")}),
         ("Ratings", {"fields": ("rating_avg", "rating_count", "created_at", "updated_at")}),

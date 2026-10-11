@@ -1,0 +1,202 @@
+{
+ "folder": "Door & Glass Hardware/Door Locks & Hardware",
+ "workbook": "HomeRun_Door_Locks_Hardware.xlsx",
+ "products": [
+  {
+   "source_name": "Europa Main Door Lock Antique Brass/Nickel Steel, Single Door Lock",
+   "brand": "Europa",
+   "type": "Deadbolt & Latchbolt Locks",
+   "group": "",
+   "options": [
+    "Lockable Knob with Key (8123) / AB (Antique Brass)",
+    "Lockable Knob with Key (8123) / NS (Nickel Steel)",
+    "Knob On Inside (8113) / AB (Antique Brass)",
+    "Knob On Inside (8113) / NS (Nickel Steel)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Door & Glass Hardware/Door Locks & Hardware/Europa Main Door Lock Antique Brass Nickel Steel, Single Door Lock.webp"
+   ]
+  },
+  {
+   "source_name": "Godrej Tribolt Ultra Locks",
+   "brand": "Godrej",
+   "type": "Deadbolt & Latchbolt Locks",
+   "group": "",
+   "options": [
+    "Lockable Knob with Key / AB (Antique Brass)",
+    "Lockable Knob with Key / SN (Satin Nickel)",
+    "Knob on Inside / AB (Antique Brass)",
+    "Knob on Inside / SN (Satin Nickel)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Door & Glass Hardware/Door Locks & Hardware/Godrej Tribolt Ultra Locks.webp"
+   ]
+  },
+  {
+   "source_name": "Godrej Centaur Ultra+ 1CK Latchbolt",
+   "brand": "Godrej",
+   "type": "Deadbolt & Latchbolt Locks",
+   "group": "",
+   "options": [
+    "Antique Brass (4453)",
+    "Satin Nickel (4451)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Door & Glass Hardware/Door Locks & Hardware/Godrej Centaur Ultra+ 1CK Latchbolt.webp"
+   ]
+  },
+  {
+   "source_name": "Europa Main Door Lock Hexabolt H341 AB/SN, Single Door",
+   "brand": "Europa",
+   "type": "Deadbolt & Latchbolt Locks",
+   "group": "",
+   "options": [
+    "AB (Antique Brass)",
+    "SN (Satin Nickel)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Door & Glass Hardware/Door Locks & Hardware/Europa Main Door Lock Hexabolt H341 AB SN, Single Door.webp"
+   ]
+  },
+  {
+   "source_name": "Godrej Pentabolt EXS+ 1CK Deadbolt",
+   "brand": "Godrej",
+   "type": "Deadbolt & Latchbolt Locks",
+   "group": "",
+   "options": [
+    "Antique Brass (3348)",
+    "Satin Nickel (3346)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Door & Glass Hardware/Door Locks & Hardware/Godrej Pentabolt EXS+ 1CK Deadbolt.webp"
+   ]
+  },
+  {
+   "source_name": "Europa Parma V321 Main Door Lock - 14-Pin Dimple Key, 3 Deadbolts, Single and Double Door",
+   "brand": "Europa",
+   "type": "Deadbolt & Latchbolt Locks",
+   "group": "",
+   "options": [
+    "Antique Brass (AB), V321-AB",
+    "Nickel Steel (NS), V321-ANS"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Door & Glass Hardware/Door Locks & Hardware/Europa Parma V321 Main Door Lock – 14-Pin Dimple Key, 3 Deadbolts, Single and Double Door.webp"
+   ]
+  },
+  {
+   "source_name": "Europa Jemmy Proof Lock - J320, 14-Pin Dimple Key, 2 Deadbolts, Single, Double and Sliding Doors",
+   "brand": "Europa",
+   "type": "Deadbolt & Latchbolt Locks",
+   "group": "",
+   "options": [
+    "Antique Brass, J320-AB",
+    "Nickel Steel, J320-NS"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Door & Glass Hardware/Door Locks & Hardware/Europa Jemmy Proof Lock – J320, 14-Pin Dimple Key, 2 Deadbolts, Single, Double and Sliding Doors.webp"
+   ]
+  },
+  {
+   "source_name": "Europa Cylindrical Locks Feather Touch",
+   "brand": "Europa",
+   "type": "Cylindrical Door Locks",
+   "group": "",
+   "options": [
+    "Keyless (C320) / SS (Stainless Steel)",
+    "Keyless (C320) / AB (Antique Brass)",
+    "5 Pin Key (C120) / SS (Stainless Steel)",
+    "5 Pin Key (C120) / AB (Antique Brass)",
+    "Dimple Key (D120) / SS (Stainless Steel)",
+    "Dimple Key (D120) / AB (Antique Brass)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Door & Glass Hardware/Door Locks & Hardware/Europa Cylindrical Locks Feather Touch.webp"
+   ]
+  },
+  {
+   "source_name": "Europa Cylindrical Locks SS/AB",
+   "brand": "Europa",
+   "type": "Cylindrical Door Locks",
+   "group": "",
+   "options": [
+    "With Key / SS (Stainless Steel)",
+    "With Key / AB (Antique Brass)",
+    "Keyless / SS (Stainless Steel)",
+    "Keyless / AB (Antique Brass)"
+   ],
+   "stock_flags": [],
+   "images": []
+  },
+  {
+   "source_name": "Godrej Cylindrical Locks SS",
+   "brand": "Godrej",
+   "type": "Cylindrical Door Locks",
+   "group": "",
+   "options": [
+    "Keyless (5805)",
+    "With Keys (5808)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Door & Glass Hardware/Door Locks & Hardware/Godrej Cylindrical Locks SS.webp"
+   ]
+  },
+  {
+   "source_name": "Europa Cupboard & Drawer Locks",
+   "brand": "Europa",
+   "type": "Cupboard & Drawer Locks",
+   "group": "",
+   "options": [
+    "Cupboard Lock (20mm Panel) / IV (Ivory)",
+    "Cupboard Lock (20mm Panel) / SS (Stainless Steel)",
+    "Drawer Lock (16mm Panel) / IV (Ivory)",
+    "Drawer Lock (16mm Panel) / SS (Stainless Steel)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Door & Glass Hardware/Door Locks & Hardware/Europa Cupboard & Drawer Locks.webp"
+   ]
+  },
+  {
+   "source_name": "Premium Door Tower Bolt",
+   "brand": "Premium",
+   "type": "Tower Bolts & Stoppers",
+   "group": "",
+   "options": [
+    "4 Inches / Medium / SS (Stainless Steel)",
+    "4 Inches / Medium / Antique",
+    "4 Inches / Heavy / SS (Stainless Steel)",
+    "4 Inches / Heavy / Antique",
+    "6 Inches / Medium / SS (Stainless Steel)",
+    "6 Inches / Medium / Antique",
+    "6 Inches / Heavy / SS (Stainless Steel)",
+    "6 Inches / Heavy / Antique",
+    "8 Inches / Medium / SS (Stainless Steel)",
+    "8 Inches / Medium / Antique",
+    "8 Inches / Heavy / SS (Stainless Steel)",
+    "8 Inches / Heavy / Antique",
+    "10 Inches / Medium / SS (Stainless Steel)",
+    "10 Inches / Medium / Antique",
+    "10 Inches / Heavy / SS (Stainless Steel)",
+    "10 Inches / Heavy / Antique"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Door & Glass Hardware/Door Locks & Hardware/Premium Door Tower Bolt.webp"
+   ]
+  }
+ ],
+ "unmatched_images": [
+  "Door & Glass Hardware/Door Locks & Hardware/Europa Cylinderical Locks SS AB.webp",
+  "Door & Glass Hardware/Door Locks & Hardware/Liftor Magnetic Door Stopper Catcher.webp"
+ ]
+}

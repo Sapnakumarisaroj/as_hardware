@@ -287,6 +287,7 @@ function blank(): ProductInput {
     specifications: [],
     launch_date: null,
     quick_answer: '',
+    highlights: '',
     uses: '',
     installation_steps: '',
     faqs: [],
@@ -320,12 +321,14 @@ function fromProduct(product: AdminProduct): ProductInput {
       ...('cost_price' in v ? { cost_price: v.cost_price ?? '' } : {}),
       is_default: v.is_default,
       is_active: v.is_active,
+      price_approved: v.price_approved,
       price_tiers: (v.price_tiers ?? []).map((t) => ({ min_quantity: String(t.min_quantity), unit_price: t.unit_price })),
       options: (v.options ?? []).map((o) => ({ option_type: o.option_type, value: o.value })),
     })),
     specifications: product.specifications.map((s) => ({ name: s.name, value: s.value })),
     launch_date: product.launch_date ?? null,
     quick_answer: product.quick_answer ?? '',
+    highlights: product.highlights ?? '',
     uses: product.uses ?? '',
     installation_steps: product.installation_steps ?? '',
     faqs: product.faqs ?? [],
@@ -426,6 +429,13 @@ function ProductPageContent({
           onChange={(e) => set('quick_answer', e.target.value)}
           maxLength={300}
           hint="One line shown under the name, e.g. “For RCC slabs, beams and columns”."
+        />
+        <TextAreaField
+          id="highlights"
+          label="Highlights (one per line, verified facts only)"
+          rows={3}
+          value={form.highlights ?? ''}
+          onChange={(v) => set('highlights', v)}
         />
         <TextAreaField id="uses" label="Recommended uses (one per line)" rows={3} value={form.uses ?? ''} onChange={(v) => set('uses', v)} />
         <TextAreaField
@@ -938,6 +948,14 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
                     checked={variant.is_active}
                     onChange={(checked) => setVariant(index, { is_active: checked })}
                   />
+                  {variant.price_approved !== undefined && (
+                    <CheckField
+                      id={`variant-${index}-price-approved`}
+                      label="Price approved (MRP and price are ours)"
+                      checked={variant.price_approved}
+                      onChange={(checked) => setVariant(index, { price_approved: checked })}
+                    />
+                  )}
                   {variant.id === undefined && form.variants.length > 1 && (
                     <button
                       type="button"
@@ -1100,6 +1118,7 @@ function ProductSummary({ product }: { product: AdminProduct }) {
                   <span className="block text-xs font-normal text-ink-600">
                     SKU {variant.sku}
                     {!variant.is_active && ' · not on sale'}
+                    {!variant.price_approved && ' · price not approved'}
                   </span>
                 </th>
                 <td className="py-1.5 pl-3 text-right">{formatPrice(variant.mrp)}</td>
@@ -1162,9 +1181,13 @@ export function AdminProductPage() {
         actions={
           <>
             <StatusBadge status={product.state} text={product.state === 'live' ? 'On sale' : undefined} />
-            {product.state === 'live' && (
+            {product.state === 'live' ? (
               <Link to={`/p/${product.slug}`} className="btn-secondary">
                 View in the shop
+              </Link>
+            ) : (
+              <Link to={`/admin/products/${product.id}/preview`} className="btn-secondary">
+                Preview draft
               </Link>
             )}
           </>

@@ -1,0 +1,384 @@
+{
+ "folder": "Furniture Hardware/Kitchen Systems & Accessories",
+ "workbook": "HomeRun_Kitchen_Systems_Accessories - Copy.xlsx",
+ "products": [
+  {
+   "source_name": "Ebco Pro Motion Tandem Box, S3 Series, 50Kg, Full Set, Anthracite",
+   "brand": "Ebco",
+   "type": "Tandem Box Systems",
+   "group": "",
+   "options": [
+    "16\" (400mm) / 4\" (90mm)",
+    "16\" (400mm) / 6\" (122mm)",
+    "16\" (400mm) / 8\" (172mm)",
+    "16\" (400mm) / 10\" (203mm)",
+    "18\" (450mm) / 4\" (90mm)",
+    "18\" (450mm) / 6\" (122mm)",
+    "18\" (450mm) / 8\" (172mm)",
+    "18\" (450mm) / 10\" (203mm)",
+    "20\" (500mm) / 4\" (90mm)",
+    "20\" (500mm) / 6\" (122mm)",
+    "20\" (500mm) / 8\" (172mm)",
+    "20\" (500mm) / 10\" (203mm)"
+   ],
+   "stock_flags": [
+    "16\" (400mm) / 10\" (203mm)"
+   ],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Ebco Pro Motion Tandem Box, S3 Series, 50Kg, Full Set, Anthracite.webp"
+   ]
+  },
+  {
+   "source_name": "Hettich InnoTech Tandem Box, Silver, 470mm, 30Kg, Full Set",
+   "brand": "Hettich",
+   "type": "Tandem Box Systems",
+   "group": "",
+   "options": [
+    "70mm/4\" (9243085)",
+    "144mm/6\" (9243093)",
+    "176mm/8\" (9346354)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Hettich InnoTech Tandem Box, Silver, 470mm, 30Kg, Full Set.webp"
+   ]
+  },
+  {
+   "source_name": "Hettich AvanTech Tandem Box Anthracite, 500mm, 30Kg, Full Set",
+   "brand": "Hettich",
+   "type": "Tandem Box Systems",
+   "group": "",
+   "options": [
+    "101mm/4\" (9343355)",
+    "187mm/7\" (9343356)",
+    "251mm/10\" (9343357)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Hettich AvanTech Tandem Box Anthracite, 500mm, 30Kg, Full Set.webp"
+   ]
+  },
+  {
+   "source_name": "Hettich OrgaTray 440 Trimmable (Fixed Partition) Cutlery Insert, Silver",
+   "brand": "Hettich",
+   "type": "Cutlery Inserts & Trays",
+   "group": "",
+   "options": [
+    "351-400mm/16\" (9194934)",
+    "401-450mm/18\" (9194935)",
+    "451-500mm/20\" (9194936)",
+    "501-600mm/24\" (9194937)",
+    "601-700mm/28\" (9194938)",
+    "701-800mm/32\" (9194939)",
+    "801-900mm/36\" (9194940)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Hettich OrgaTray 440 Trimmable (Fixed Partition) Cutlery Insert, Silver.webp"
+   ]
+  },
+  {
+   "source_name": "Ebco Anti Skid Mat 5, Anthracite, Cross, 5m (L) X 51cm (W), 16.4' X 20\", ASM5-ATC",
+   "brand": "Ebco",
+   "type": "Anti-Skid Mats",
+   "group": "",
+   "options": [
+    "Standard"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Ebco Anti Skid Mat 5, Anthracite, Cross, 5m L X 51cm W, 16.4 X 20, ASM5 ATC.webp"
+   ]
+  },
+  {
+   "source_name": "Hettich Wicker Basket with 19mm wide Beech Runners, 500mm Depth",
+   "brand": "Hettich",
+   "type": "Wicker Baskets",
+   "group": "",
+   "options": [
+    "320mm/12.5\" / 120mm/5\"",
+    "320mm/12.5\" / 210mm/8\"",
+    "320mm/12.5\" / 300mm/12\"",
+    "370mm/14.5\" / 120mm/5\"",
+    "370mm/14.5\" / 210mm/8\"",
+    "370mm/14.5\" / 300mm/12\"",
+    "420mm/16.5\" / 120mm/5\"",
+    "420mm/16.5\" / 210mm/8\"",
+    "420mm/16.5\" / 300mm/12\"",
+    "520mm/20.5\" / 120mm/5\"",
+    "520mm/20.5\" / 210mm/8\"",
+    "520mm/20.5\" / 300mm/12\""
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Hettich Wicker Basket with 19mm wide Beech Runners, 500mm Depth.webp"
+   ]
+  },
+  {
+   "source_name": "Ebco Wicker Basket, Soft Close",
+   "brand": "Ebco",
+   "type": "Wicker Baskets",
+   "group": "",
+   "options": [
+    "450mm/18\" / 100mm/4\"",
+    "450mm/18\" / 150mm/6\"",
+    "450mm/18\" / 200mm/8\"",
+    "600mm/24\" / 100mm/4\"",
+    "600mm/24\" / 150mm/6\"",
+    "600mm/24\" / 200mm/8\""
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Ebco Wicker Basket, Soft Close.webp"
+   ]
+  },
+  {
+   "source_name": "Ebco Bottle Pullout, Soft Close, 2 Tier",
+   "brand": "Ebco",
+   "type": "Bottle Pullouts",
+   "group": "",
+   "options": [
+    "150mm/6\" Wide, Fits 200mm/8\" Cabinet, BPO2SC2-150",
+    "200mm/8\" Wide, Fits 250mm/10\" Cabinet, BPO2SC2-200",
+    "250mm/10\" Wide, Fits 300mm/12\" Cabinet, BPO2SC2-250"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Ebco Bottle Pullout, Soft Close, 2 Tier.webp"
+   ]
+  },
+  {
+   "source_name": "Ebco Roll Top Pro Vertical Rolling Shutter with Overlay Rails & Cover Profile",
+   "brand": "Ebco",
+   "type": "Rolling Shutter Systems",
+   "group": "",
+   "options": [
+    "450mm/18\" / SL (Silver)",
+    "450mm/18\" / AT (Anthracite)",
+    "450mm/18\" / FG (Frozen Glass)",
+    "450mm/18\" / SF (Special Finish)",
+    "450mm/18\" / BL (Black)",
+    "450mm/18\" / GW (Glossy White)",
+    "450mm/18\" / MC (Mocha)",
+    "600mm/24\" / SL (Silver)",
+    "600mm/24\" / AT (Anthracite)",
+    "600mm/24\" / FG (Frozen Glass)",
+    "600mm/24\" / SF (Special Finish)",
+    "600mm/24\" / BL (Black)",
+    "600mm/24\" / GW (Glossy White)",
+    "600mm/24\" / MC (Mocha)",
+    "600mm/24\" / FW (Frosty White)",
+    "900mm/36\" / SL (Silver)",
+    "900mm/36\" / AT (Anthracite)",
+    "900mm/36\" / FG (Frozen Glass)",
+    "900mm/36\" / SF (Special Finish)",
+    "900mm/36\" / BL (Black)",
+    "900mm/36\" / GW (Glossy White)",
+    "900mm/36\" / MC (Mocha)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Ebco Roll Top Pro Vertical Rolling Shutter with Overlay Rails & Cover Profile.webp"
+   ]
+  },
+  {
+   "source_name": "Hettich Duo 6 Tier Frame with Baskets (Pantry Unit), 50Kg",
+   "brand": "Hettich",
+   "type": "Pantry & Larder Units",
+   "group": "",
+   "options": [
+    "450mm/18\" (9346296 + 9347696)",
+    "600mm/24\" (9346297 + 9347697)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Hettich Duo 6 Tier Frame with Baskets (Pantry Unit), 50Kg.webp"
+   ]
+  },
+  {
+   "source_name": "Ebco Pantry Unit, Soft Close",
+   "brand": "Ebco",
+   "type": "Pantry & Larder Units",
+   "group": "",
+   "options": [
+    "Powder Coated Steel Basket / 450mm/18\"",
+    "Powder Coated Steel Basket / 600mm/24\"",
+    "Tempered Glass Basket / 450mm/18\"",
+    "Tempered Glass Basket / 600mm/24\""
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Ebco Pantry Unit, Soft Close.webp"
+   ]
+  },
+  {
+   "source_name": "Hettich Larder 6 Tier Frame with Baskets for 600mm (24\") Cabinet Pantry Unit, 50Kg (9346304+9347699)",
+   "brand": "Hettich",
+   "type": "Pantry & Larder Units",
+   "group": "",
+   "options": [
+    "Standard"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Hettich Larder 6 Tier Frame with Baskets for 600mm (24) Cabinet Pantry Unit, 50Kg.webp"
+   ]
+  },
+  {
+   "source_name": "Hettich Cargo IQ 300 Bottle Pull Out, 2 Tier",
+   "brand": "Hettich",
+   "type": "Bottle Pullouts",
+   "group": "",
+   "options": [
+    "98mm/4\", Fits 150mm/6\" Cabinet (9191703)",
+    "134mm/5.25\", Fits 200mm/8\" Cabinet (9191708)",
+    "174mm/6.8\", Fits 240mm/9.5\" Cabinet (9247908)",
+    "234mm/9.2\", Fits 300mm/12\" Cabinet (9191711)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Hettich Cargo IQ 300 Bottle Pull Out, 2 Tier.webp"
+   ]
+  },
+  {
+   "source_name": "Ebco Side Pullout, Frameless, SS304",
+   "brand": "Ebco",
+   "type": "Corner & Side Pullouts",
+   "group": "",
+   "options": [
+    "100mm/4\" / 432mm/17\" (2 Tier)",
+    "100mm/4\" / 533mm/21\" (3 Tier)",
+    "150mm/6\" / 432mm/17\" (2 Tier)",
+    "150mm/6\" / 533mm/21\" (3 Tier)",
+    "200mm/8\" / 432mm/17\" (2 Tier)",
+    "200mm/8\" / 533mm/21\" (3 Tier)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Ebco Side Pullout, Frameless, SS304.webp"
+   ]
+  },
+  {
+   "source_name": "Ebco Plain Kitchen Basket, SS304",
+   "brand": "Ebco",
+   "type": "SS Kitchen Baskets",
+   "group": "",
+   "options": [
+    "380mm/15\" / 150mm/6\"",
+    "380mm/15\" / 200mm/8\"",
+    "430mm/17\" / 150mm/6\"",
+    "430mm/17\" / 200mm/8\"",
+    "480mm/19\" / 150mm/6\"",
+    "480mm/19\" / 200mm/8\"",
+    "530mm/21\" / 150mm/6\"",
+    "530mm/21\" / 200mm/8\""
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Ebco Plain Kitchen Basket, SS304.webp"
+   ]
+  },
+  {
+   "source_name": "Ebco Thali Kitchen Basket, SS304, 200mm (H) X 505mm (D), 8\" X 20\"",
+   "brand": "Ebco",
+   "type": "SS Kitchen Baskets",
+   "group": "",
+   "options": [
+    "380mm/15\" / 200mm/8\"",
+    "430mm/17\" / 200mm/8\"",
+    "480mm/19\" / 200mm/8\"",
+    "530mm/21\" / 200mm/8\""
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Ebco Thali Kitchen Basket, SS304, 200mm (H) X 505mm (D), 8 X 20.webp"
+   ]
+  },
+  {
+   "source_name": "Ebco Plate Kitchen Basket, SS304, 150mm (H) X 505mm (D), 6\" X 20\"",
+   "brand": "Ebco",
+   "type": "SS Kitchen Baskets",
+   "group": "",
+   "options": [
+    "380mm/15\" (RA-15-20-6-PL)",
+    "430mm/17\" (RA-17-20-6-PL)",
+    "480mm/19\" (RA-19-20-6-PL)",
+    "530mm/21\" (RA-21-20-6-PL)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Ebco Plate Kitchen Basket, SS304, 150mm (H) X 505mm (D), 6 X 20.webp"
+   ]
+  },
+  {
+   "source_name": "Ebco Cup & Saucer Kitchen Basket, SS304, 100mm (H) X 505mm (D), 4\" X 20\"",
+   "brand": "Ebco",
+   "type": "SS Kitchen Baskets",
+   "group": "",
+   "options": [
+    "380mm/15\" (RA-15-20-4-CS)",
+    "430mm/17\" (RA-17-20-4-CS)",
+    "480mm/19\" (RA-19-20-4-CS)",
+    "530mm/21\" (RA-21-20-4-CS)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Ebco Cup & Saucer Kitchen Basket, SS304, 100mm (H) X 505mm (D), 4 X 20.webp"
+   ]
+  },
+  {
+   "source_name": "Ebco Cutlery Kitchen Basket, SS304, 80mm (H) X 505mm (D), 3.2\" X 20\"",
+   "brand": "Ebco",
+   "type": "SS Kitchen Baskets",
+   "group": "",
+   "options": [
+    "380mm/15\" (RA-15-20-4-CT)",
+    "430mm/17\" (RA-17-20-4-CT)",
+    "480mm/19\" (RA-19-20-4-CT)",
+    "530mm/21\" (RA-21-20-4-CT)"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Ebco Cutlery Kitchen Basket, SS304, 80mm (H) X 505mm (D), 3.2 X 20.webp"
+   ]
+  },
+  {
+   "source_name": "Hettich Universal Magic Corner Double Pullout, 9346281",
+   "brand": "Hettich",
+   "type": "Magic Corners",
+   "group": "",
+   "options": [
+    "Standard"
+   ],
+   "stock_flags": [],
+   "images": [
+    "Furniture Hardware/Kitchen Systems & Accessories/Hettich Universal Magic Corner Double Pullout, 9346281.webp"
+   ]
+  }
+ ],
+ "unmatched_images": [
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Auto Pull Out Waste Bin, Auto Open on Shutter Open, 28L Capacity, 2 X 14L Separate Bins, APDWB-28.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Eurolift Bi-Fold Door System, Soft Close, Anthracite.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Fascia Bracket - POWB4-40-FB-AT.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Kitchen Drip Tray with Rod Supports and Anchor Kit.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Kitchen Plate Tray with Rod Supports and Anchor Kit.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Light Adapter Series 2, 24V 24W Power Supply Unit for LED Lights, PSU2-2424-WH.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Light Linear 2 Way LED Strip Light for 8mm Glass, 4000K, 24V.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Livsmart Pulldown System for 900mm (36) Wide Kitchen Cabinets Mechanism with Glass Baskets,.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Luminor 8C, Set of Aluminium Heat Sink Profile with Diffusor Profile, Length 3m, LUM8C1.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Magic Corner Max 90, Single Pullout.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco PVC Skirting Joints, 100mm, Black (Pack of 1 No.).webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco PVC Skirting Q Plinth and Clip, 100mm.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Pull Out Waste Bin, 40L Capacity, 2 X 20L Separate Bins, POWB4-40-AT.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Swing Out Waste Bin, Rectangular.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Ebco Universal Magic Corner, Double Pullout.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Faber Hood Comet BLDC 60 cm 1600 m³hr Filterless Heat Auto Clean Wall Mounted Chimney.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Faber Hood Dazzle BLDC 60 cm 1500 m³hr Filterless Heat Auto Clean Wall Mounted Chimney.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Faber Hood Glory BLDC 60 cm 1500 m³hr Filterless Heat Auto Clean Wall Mounted Chimney.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Hettich Cargo Detergent Holder Kitchen Accessory, 10.25x14x8.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Hettich Cargo Dish Drainer Set.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Hettich Pull Out 2 Tier Iron Grey.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/Hettich Waste-Bin.It Classic, 13 Litres Capacity, 9343581.webp",
+  "Furniture Hardware/Kitchen Systems & Accessories/ebco-pro-lift-soft-close-silver-hydraulic-gas-spring_500x.webp"
+ ]
+}
