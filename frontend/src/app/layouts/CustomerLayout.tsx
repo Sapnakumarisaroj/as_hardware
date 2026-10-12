@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router'
 
+import { WhatsAppFloat } from '@/features/whatsapp/components'
+
 import { Footer } from './Footer'
 import { Header } from './Header'
 
@@ -23,6 +25,7 @@ export function CustomerLayout() {
         <Outlet />
       </main>
       <Footer />
+      <WhatsAppFloat />
     </div>
   )
 }

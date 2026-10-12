@@ -63,11 +63,13 @@ export function Footer() {
                 </a>
               </Detail>
             )}
-            {business.phone && (
+            {business.phones.length > 0 && (
               <Detail label="Phone:">
-                <a href={business.phoneHref} className={textLink}>
-                  {business.phone}
-                </a>
+                {business.phones.map((phone) => (
+                  <a key={phone.number} href={phone.href} className={`${textLink} block w-fit`}>
+                    {phone.number}
+                  </a>
+                ))}
               </Detail>
             )}
             <Detail label="Address:">

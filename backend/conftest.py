@@ -71,3 +71,20 @@ def staff_client(staff_user) -> APIClient:
     client = APIClient()
     client.force_authenticate(staff_user)
     return client
+
+
+@pytest.fixture(autouse=True)
+def _flat_delivery_charges(request):
+    """Tests written before distance bands and "first N orders free" expect the flat DELIVERY_FEE.
+    Switch both off unless a test asks for the shop defaults (`@pytest.mark.delivery_charges`)."""
+    if "django_db" not in request.keywords and "db" not in request.fixturenames:
+        yield
+        return
+    if request.node.get_closest_marker("delivery_charges"):
+        yield
+        return
+    from apps.delivery.models import DeliveryCharges
+
+    request.getfixturevalue("db")
+    DeliveryCharges.objects.update_or_create(pk=1, defaults={"distance_bands": [], "free_first_orders": 0})
+    yield

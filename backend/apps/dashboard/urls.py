@@ -14,6 +14,7 @@ from .commerce import (
     AdminCollectionViewSet,
     AdminFreeDeliveryRuleViewSet,
     AdminOptionTypeViewSet,
+    DeliveryChargesView,
     PaymentSettingsView,
 )
 from .offers import AdminCouponViewSet, AdminOfferViewSet
@@ -55,5 +56,6 @@ urlpatterns = [
     path("admin/catalog/export/", CatalogExportView.as_view(), name="admin-catalog-export"),
     path("admin/catalog/template/", CatalogTemplateView.as_view(), name="admin-catalog-template"),
     path("admin/payment-settings/", PaymentSettingsView.as_view(), name="admin-payment-settings"),
+    path("admin/delivery-charges/", DeliveryChargesView.as_view(), name="admin-delivery-charges"),
     *router.urls,
 ]

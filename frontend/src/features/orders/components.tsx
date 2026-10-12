@@ -52,6 +52,10 @@ export interface SummaryTotals {
   grand_total: string
   /** Phase 17: shop credit used, already taken off grand_total. */
   credit_discount?: string
+  delivery_charge?: string
+  delivery_discount?: string
+  unloading_fee?: string
+  free_delivery_reason?: string
 }
 
 /** Server-calculated money only: the browser formats these strings but never adds them up. */
@@ -61,6 +65,7 @@ export function PriceSummary({
   offers,
   heading = 'Price details',
   footer,
+  collapsible = false,
 }: {
   totals: SummaryTotals
   couponCode?: string
@@ -68,15 +73,17 @@ export function PriceSummary({
   offers?: { id: number; name: string; discount: string }[]
   heading?: string
   footer?: ReactNode
+  /** Show the breakdown under an expandable "heading · total" row (open by default). */
+  collapsible?: boolean
 }) {
   const row = 'flex justify-between gap-4 py-1 text-sm'
   const mrpSavings = totals.mrp_total !== totals.subtotal
   const hasOffers = totals.offer_discount !== '0.00'
   const hasCoupon = totals.coupon_discount !== '0.00'
   const credits = totals.credit_discount && totals.credit_discount !== '0.00' ? totals.credit_discount : null
-  return (
-    <section aria-label={heading}>
-      <h2 className="mb-2 text-base font-bold">{heading}</h2>
+  const waived = Number(totals.delivery_discount ?? 0) > 0
+  const unloading = totals.unloading_fee && totals.unloading_fee !== '0.00' ? totals.unloading_fee : null
+  const breakdown = (
       <dl>
         {mrpSavings && (
           <div className={row}>
@@ -108,10 +115,29 @@ export function PriceSummary({
             <dd>−{formatPrice(totals.coupon_discount)}</dd>
           </div>
         )}
-        <div className={row}>
-          <dt>Delivery fee</dt>
-          <dd>{totals.delivery_fee === '0.00' ? 'Free' : formatPrice(totals.delivery_fee)}</dd>
-        </div>
+        {waived ? (
+          <>
+            <div className={row}>
+              <dt>Delivery charge</dt>
+              <dd>{formatPrice(totals.delivery_charge ?? '0.00')}</dd>
+            </div>
+            <div className={`${row} text-success-600`} data-testid="delivery-waiver">
+              <dt>{totals.free_delivery_reason || 'Free delivery'}</dt>
+              <dd>−{formatPrice(totals.delivery_discount ?? '0.00')}</dd>
+            </div>
+          </>
+        ) : (
+          <div className={row}>
+            <dt>Delivery fee</dt>
+            <dd>{totals.delivery_fee === '0.00' ? 'Free' : formatPrice(totals.delivery_fee)}</dd>
+          </div>
+        )}
+        {unloading && (
+          <div className={row} data-testid="unloading-row">
+            <dt>Unloading service</dt>
+            <dd>{formatPrice(unloading)}</dd>
+          </div>
+        )}
         {credits && (
           <div className={`${row} text-success-600`} data-testid="credits-row">
             <dt>Credits used</dt>
@@ -123,7 +149,35 @@ export function PriceSummary({
           <dd>{formatPrice(totals.grand_total)}</dd>
         </div>
       </dl>
-      <p className="mt-1 text-xs text-ink-600">Includes GST of {formatPrice(totals.tax_total)}</p>
+  )
+  const gst = <p className="mt-1 text-xs text-ink-600">Includes GST of {formatPrice(totals.tax_total)}</p>
+  if (collapsible) {
+    return (
+      <section aria-label={heading}>
+        <details open className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-base font-bold">
+            <h2>{heading}</h2>
+            <span className="flex items-center gap-2">
+              {formatPrice(totals.grand_total)}
+              <span aria-hidden="true" className="text-xs transition-transform group-open:rotate-180">
+                ▾
+              </span>
+            </span>
+          </summary>
+          <div className="mt-2">
+            {breakdown}
+            {gst}
+          </div>
+        </details>
+        {footer}
+      </section>
+    )
+  }
+  return (
+    <section aria-label={heading}>
+      <h2 className="mb-2 text-base font-bold">{heading}</h2>
+      {breakdown}
+      {gst}
       {footer}
     </section>
   )

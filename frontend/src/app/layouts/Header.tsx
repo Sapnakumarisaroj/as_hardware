@@ -3,7 +3,7 @@ import { Link, NavLink, useLocation, useSearchParams } from 'react-router'
 
 import { BrandLogo } from '@/components/BrandLogo'
 import { Drawer } from '@/components/Drawer'
-import { CameraIcon, CartIcon, ChevronDownIcon, ChevronRightIcon, ClockIcon, HeartIcon, ImageIcon, MenuIcon, MicIcon, SparkIcon, UserIcon } from '@/components/icons'
+import { CameraIcon, CartIcon, ChevronDownIcon, ChevronRightIcon, HeartIcon, ImageIcon, MenuIcon, MicIcon, SparkIcon, UserIcon } from '@/components/icons'
 import { useAuth } from '@/features/auth/context'
 import { useCartCount } from '@/features/cart/api'
 import { useNavGroups, type NavGroup } from '@/features/catalog/navGroups'
@@ -13,7 +13,6 @@ import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { SearchBar } from '@/features/search/SearchBar'
 import { useWishlistIds } from '@/features/wishlist/api'
 import { business } from '@/lib/business'
-import { env } from '@/lib/env'
 import { pluralize } from '@/lib/format'
 
 const ACCOUNT_LINKS: [string, string][] = [
@@ -33,6 +32,7 @@ const MORE_LINKS: [string, string, ReactNode?][] = [
   ['Quantity calculator', '/quantity'],
   ['All products', '/products'],
   ['Brands', '/brands'],
+  ['Order on WhatsApp', '/order-on-whatsapp'],
   ['Contact us', '/contact'],
 ]
 
@@ -51,10 +51,10 @@ function Logo() {
     <Link
       to="/"
       aria-label={`${business.name} home`}
-      className="flex shrink-0 items-center gap-2 text-base font-extrabold tracking-tight sm:text-lg"
+      className="flex shrink-0 items-center"
     >
-      {/* The round mark (it reads "AS") stands alone below 360px and at 768–1023px, where row 1 needs the room. */}
-      <BrandLogo size="size-10 md:size-12" nameClassName="hidden whitespace-nowrap min-[360px]:inline md:hidden lg:inline" short />
+      {/* The official logo carries the name; its 3:2 proportions are kept at every size. */}
+      <BrandLogo size="h-10 sm:h-11 md:h-12" />
     </Link>
   )
 }
@@ -75,18 +75,17 @@ function AccountMenu() {
   const close = () => detailsRef.current?.removeAttribute('open')
 
   if (status === 'loading') {
-    return <span className="h-8 w-9 animate-pulse rounded bg-ink-800 sm:w-20" aria-label="Loading account" />
+    return <span className="h-8 w-9 animate-pulse rounded bg-steel-100 sm:w-20" aria-label="Loading account" />
   }
   if (status !== 'authenticated' || !user) {
     return (
       <Link
         to="/login"
-        aria-label="Login / Register"
-        className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 py-1.5 text-sm font-semibold hover:text-amber-500"
+        aria-label="Login"
+        className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 py-1.5 text-sm font-semibold hover:text-amber-700"
       >
         <UserIcon className="size-6 shrink-0" />
-        <span className="hidden xl:inline">Login / Register</span>
-        <span className="hidden sm:inline xl:hidden">Login</span>
+        <span className="hidden sm:inline">Login</span>
       </Link>
     )
   }
@@ -94,7 +93,7 @@ function AccountMenu() {
   const item = 'block px-4 py-2 hover:bg-steel-50'
   return (
     <details ref={detailsRef} className="relative">
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md px-1.5 py-1.5 text-sm font-semibold hover:text-amber-500 [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md px-1.5 py-1.5 text-sm font-semibold hover:text-amber-700 [&::-webkit-details-marker]:hidden">
         <UserIcon className="size-6 shrink-0" />
         <span className="hidden max-w-28 truncate xl:inline">{firstName}</span>
         <ChevronDownIcon className="hidden size-3.5 sm:block" />
@@ -181,7 +180,7 @@ function NavMenu({ label, children }: { label: string; children: ReactNode }) {
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen((v) => (v && Date.now() - hoverOpenedAt.current < 400 ? true : !v))}
-        className={`flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-2 text-[13px] font-semibold hover:text-amber-500 lg:px-3 lg:text-sm ${open ? 'text-amber-500' : ''}`}
+        className={`flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-2 text-[13px] font-semibold hover:text-amber-700 lg:px-3 lg:text-sm ${open ? 'text-amber-700' : ''}`}
       >
         {label}
         <ChevronDownIcon className={`size-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -248,9 +247,9 @@ function GroupPanel({ group }: { group: NavGroup }) {
 /** Row 2 (from 768px): Home and the four product groups, centred. */
 function MainNav({ groups }: { groups: NavGroup[] }) {
   const link = ({ isActive }: { isActive: boolean }) =>
-    `block whitespace-nowrap rounded-md px-2 py-2 text-[13px] font-semibold hover:text-amber-500 lg:px-3 lg:text-sm ${isActive ? 'text-amber-500' : ''}`
+    `block whitespace-nowrap rounded-md px-2 py-2 text-[13px] font-semibold hover:text-amber-700 lg:px-3 lg:text-sm ${isActive ? 'text-amber-700' : ''}`
   return (
-    <div className="hidden border-t border-white/10 bg-ink-900 md:block">
+    <div className="hidden border-t border-steel-200 bg-white md:block">
       <div className="container-page flex h-11 items-center justify-center">
         <nav aria-label="Main" className="min-w-0">
           <ul className="relative flex items-center gap-0.5 lg:gap-2 xl:gap-4">
@@ -281,8 +280,8 @@ function MobileMenu({ open, onClose, groups }: { open: boolean; onClose: () => v
       onClose={onClose}
       title="Menu"
       heading={
-        <Link to="/" onClick={onClose} className="flex items-center gap-2 font-extrabold tracking-tight text-ink-950">
-          <BrandLogo size="size-10" />
+        <Link to="/" onClick={onClose} aria-label={`${business.name} home`} className="flex items-center">
+          <BrandLogo size="h-11" />
         </Link>
       }
     >
@@ -356,27 +355,11 @@ function MobileMenu({ open, onClose, groups }: { open: boolean; onClose: () => v
               <Link to="/login" onClick={onClose} className={link}>
                 Login
               </Link>
-              <Link to="/register" onClick={onClose} className={link}>
-                Create an account
-              </Link>
             </>
           )}
         </div>
       </nav>
     </Drawer>
-  )
-}
-
-/** The slim strip above the header (opening hours; VITE_STORE_HOURS, empty hides it). */
-function TopStrip() {
-  if (!env.storeHours) return null
-  return (
-    <div className="bg-amber-500 text-ink-950">
-      <p className="container-page flex items-center justify-center gap-1.5 py-1.5 text-center text-xs font-semibold sm:text-sm">
-        <ClockIcon className="size-4 shrink-0" />
-        {env.storeHours}
-      </p>
-    </div>
   )
 }
 
@@ -396,13 +379,12 @@ export function Header() {
   const urlQuery = location.pathname === '/search' ? (params.get('q') ?? '') : ''
   const { status } = useAuth()
   const { groups } = useNavGroups()
-  const icon = 'relative grid size-10 shrink-0 place-items-center rounded-md hover:text-amber-500'
+  const icon = 'relative grid size-10 shrink-0 place-items-center rounded-md hover:text-amber-700'
 
   return (
     <>
-      <TopStrip />
-      <header className="sticky top-0 z-30 bg-ink-950 text-white shadow-lg shadow-ink-950/10">
-        <div className="container-page flex flex-wrap items-center gap-x-1.5 gap-y-2 py-2.5 sm:gap-x-3 md:h-[4.5rem] md:flex-nowrap md:py-0 lg:gap-x-5">
+      <header className="sticky top-0 z-30 border-b border-steel-200 bg-white text-ink-950 shadow-sm">
+        <div className="container-page flex flex-wrap items-center gap-x-1.5 gap-y-2 py-2.5 sm:gap-x-3 md:h-[5.5rem] md:flex-nowrap md:py-0 lg:gap-x-5">
           <button
             type="button"
             onClick={() => setMenuOpen(true)}
@@ -419,7 +401,7 @@ export function Header() {
             <span className="md:hidden lg:contents">
               <FastDeliveryBadge />
             </span>
-            <LocationSelector />
+            <LocationSelector tone="light" />
           </div>
           <div className="order-5 w-full md:order-4 md:w-auto md:min-w-0 md:flex-1">
             <SearchBar key={urlQuery} initialQuery={urlQuery} />
@@ -443,7 +425,7 @@ export function Header() {
         </div>
         <MainNav groups={groups} />
       </header>
-      {/* Outside the header so the drawer does not inherit its white text. */}
+      {/* Outside the header so the drawer keeps its own colours. */}
       <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} groups={groups} />
     </>
   )

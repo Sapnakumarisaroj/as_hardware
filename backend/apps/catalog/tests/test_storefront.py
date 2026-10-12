@@ -290,6 +290,15 @@ def test_quote_reports_cod_with_the_same_rules_as_checkout(api_client, shop):
     assert api_client.get(url, {"quantity": 1}).json()["payment_options"]["cod"]["available"] is True
 
 
+def test_quote_reports_the_free_delivery_threshold(api_client, shop, settings):
+    url = f"/api/products/{shop['drill'].slug}/quote/"
+    settings.FREE_DELIVERY_MIN_ORDER = Decimal("2500.00")
+    assert api_client.get(url, {"quantity": 1}).json()["payment_options"]["free_delivery_from"] == "2500.00"
+    DeliveryZone.objects.filter(pk=shop["near_zone"].pk).update(free_delivery_min_order=Decimal("999"))
+    zoned = api_client.get(url, {"quantity": 1, "postal_code": NEAR_PIN}).json()["payment_options"]
+    assert zoned["free_delivery_from"] == "999.00"
+
+
 # --- Sitemap and security --------------------------------------------------------------------------
 
 

@@ -118,6 +118,7 @@
     {% if order.coupon_discount %}<tr><td>Coupon{% if order.coupon_code %} {{ order.coupon_code }}{% endif %}</td><td class="num">−₹{{ order.coupon_discount }}</td></tr>{% endif %}
     {% if order.credit_discount %}<tr><td>Store credit</td><td class="num">−₹{{ order.credit_discount }}</td></tr>{% endif %}
     <tr><td>Delivery</td><td class="num">{% if order.delivery_fee %}₹{{ order.delivery_fee }}{% else %}Free{% endif %}</td></tr>
+    {% if order.unloading_fee %}<tr><td>Unloading service (ground level)</td><td class="num">₹{{ order.unloading_fee }}</td></tr>{% endif %}
     <tr class="grand"><td>Total</td><td class="num">₹{{ order.grand_total }}</td></tr>
     <tr><td class="muted">GST included</td><td class="num muted">₹{{ order.tax_total }}</td></tr>
     <tr><td class="muted">Payment</td><td class="num muted">{{ order.get_payment_method_display }} · {{ order.get_payment_status_display }}</td></tr>

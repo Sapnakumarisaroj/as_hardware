@@ -24,6 +24,16 @@ export interface CheckoutPreview {
   credits?: CheckoutCredits
   /** Cashback this order would earn (pending until delivery and the return window). */
   cashback?: { amount: string; rule: string; summary: string } | null
+  /** Optional paid unloading service: offered only where the delivery zone allows it. */
+  unloading?: CheckoutUnloading
+}
+
+export interface CheckoutUnloading {
+  available: boolean
+  selected: boolean
+  fee: string
+  /** What it includes and excludes, or why it isn't offered. */
+  message: string
 }
 
 export interface CheckoutCredits {
@@ -52,21 +62,28 @@ export interface PaymentOption {
 
 export const checkoutKeys = {
   all: ['checkout'] as const,
-  preview: (addressId: number | null, couponCode: string, useCredits = false, quoteId: number | null = null) =>
-    ['checkout', 'preview', addressId, couponCode, useCredits, quoteId] as const,
+  preview: (addressId: number | null, couponCode: string, useCredits = false, quoteId: number | null = null, unloading = false) =>
+    ['checkout', 'preview', addressId, couponCode, useCredits, quoteId, unloading] as const,
 }
 
 /** `quoteId`: check out an accepted B2B quotation (its lines at the quoted prices) instead of the cart. */
-export function useCheckoutPreview(addressId: number | null, couponCode: string, useCredits = false, quoteId: number | null = null) {
+export function useCheckoutPreview(
+  addressId: number | null,
+  couponCode: string,
+  useCredits = false,
+  quoteId: number | null = null,
+  unloading = false,
+) {
   const { status } = useAuth()
   return useQuery({
-    queryKey: checkoutKeys.preview(addressId, couponCode, useCredits, quoteId),
+    queryKey: checkoutKeys.preview(addressId, couponCode, useCredits, quoteId, unloading),
     queryFn: async () =>
       (
         await api.post<CheckoutPreview>('/checkout/preview/', {
           address_id: addressId,
           coupon_code: couponCode,
           use_credits: useCredits,
+          unloading,
           ...(quoteId ? { quote_id: quoteId } : {}),
         })
       ).data,

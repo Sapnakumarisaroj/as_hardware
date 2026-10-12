@@ -64,6 +64,8 @@ export interface PlaceOrderInput {
   useCredits?: boolean
   /** Order an accepted quotation instead of the cart (the cart is left alone). */
   quoteId?: number | null
+  /** Add the paid unloading service (the server refuses it where it isn't offered). */
+  unloading?: boolean
 }
 
 export function usePlaceOrder() {
@@ -81,6 +83,7 @@ export function usePlaceOrder() {
             customer_note: input.customerNote,
             expected_total: input.expectedTotal,
             use_credits: input.useCredits ?? false,
+            unloading: input.unloading ?? false,
             ...(input.quoteId ? { quote_id: input.quoteId } : {}),
           },
           { headers: { 'Idempotency-Key': input.idempotencyKey } },

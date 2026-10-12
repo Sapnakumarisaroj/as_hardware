@@ -58,7 +58,7 @@ export function SignInPrompt({ message, next }: { message: string; next: string 
       title="Please sign in"
       action={
         <Link to={`/login?next=${encodeURIComponent(next)}`} className="btn-primary">
-          Login / Register
+          Login
         </Link>
       }
     >

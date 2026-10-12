@@ -129,6 +129,9 @@ export function PaymentOptionsNote({ slug, variantId, quantity }: { slug: string
       ) : (
         <li className="text-ink-600">✗ {cod.message || 'Cash on delivery isn’t available for this order.'}</li>
       )}
+      {options.free_delivery_from && Number(options.free_delivery_from) > 0 && (
+        <li className="text-ink-800">✓ Free delivery on orders of {formatPrice(options.free_delivery_from)} or more</li>
+      )}
     </ul>
   )
 }

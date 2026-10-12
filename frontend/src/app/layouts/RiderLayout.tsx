@@ -26,7 +26,7 @@ export function RiderLayout() {
       <header className="sticky top-0 z-30 bg-ink-900 text-white shadow">
         <div className="container-page flex h-14 max-w-3xl items-center gap-3">
           <Link to="/rider" className="flex items-center gap-2 font-extrabold tracking-tight">
-            <BrandLogo size="size-8" suffix="Rider" short />
+            <span className="rounded-md bg-white px-1.5 py-1"><BrandLogo size="h-8" withName={false} /></span><span>AS Hardware <span className="font-normal opacity-70">Rider</span></span>
           </Link>
           <nav aria-label="Rider app" className="ml-auto flex items-center gap-1">
             <NavLink to="/rider" end className={link}>

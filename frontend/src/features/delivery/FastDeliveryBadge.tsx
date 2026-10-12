@@ -31,9 +31,9 @@ export function FastDeliveryBadge() {
       : data.message
   }
   const tone = {
-    neutral: 'bg-amber-500/15 text-amber-400 ring-amber-500/40',
+    neutral: 'bg-amber-100 text-amber-700 ring-amber-500/40',
     available: 'bg-amber-500 text-ink-950 ring-amber-500',
-    unavailable: 'bg-ink-800 text-steel-400 ring-ink-700',
+    unavailable: 'bg-steel-100 text-ink-600 ring-steel-200',
   }[state]
 
   return (

@@ -78,6 +78,10 @@ export const routes: RouteObject[] = [
           { path: 'brands', lazy: async () => ({ Component: (await brands()).BrandsPage }) },
           { path: 'brand/:slug', lazy: async () => ({ Component: (await brands()).BrandPage }) },
           { path: 'contact', lazy: async () => ({ Component: (await import('@/pages/ContactPage')).ContactPage }) },
+          {
+            path: 'order-on-whatsapp',
+            lazy: async () => ({ Component: (await import('@/pages/WhatsAppOrderPage')).WhatsAppOrderPage }),
+          },
           { path: 'about', lazy: async () => ({ Component: (await import('@/pages/company/AboutPage')).AboutPage }) },
           { path: 'price-lists', lazy: async () => ({ Component: (await import('@/pages/company/PriceListsPage')).PriceListsPage }) },
           { path: 'knowledge-hub', lazy: async () => ({ Component: (await import('@/pages/company/KnowledgeHubPage')).KnowledgeHubPage }) },
@@ -177,6 +181,10 @@ export const routes: RouteObject[] = [
           { path: 'recommendations', lazy: async () => ({ Component: (await shoppingAdmin()).AdminRecommendationRulesPage }) },
           { path: 'free-delivery', lazy: async () => ({ Component: (await commerce()).AdminFreeDeliveryPage }) },
           { path: 'payment-settings', lazy: async () => ({ Component: (await commerce()).AdminPaymentSettingsPage }) },
+          {
+            path: 'delivery-charges',
+            lazy: async () => ({ Component: (await import('@/pages/admin/DeliveryChargesPage')).AdminDeliveryChargesPage }),
+          },
           {
             path: 'loyalty',
             lazy: async () => ({ Component: (await import('@/pages/admin/LoyaltyPages')).AdminLoyaltyPage }),

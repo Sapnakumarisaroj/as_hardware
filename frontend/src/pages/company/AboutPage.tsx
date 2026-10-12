@@ -18,7 +18,7 @@ export function AboutPage() {
     <InfoPage
       group="company"
       title="About Us"
-      intro={`${business.name}: ${business.tagline.toLowerCase()} for furniture, kitchens, wardrobes, doors and related projects in Bengaluru.`}
+      intro={`${business.name}: ${business.tagline.toLowerCase()}. Hardware and plywood for furniture, kitchens, wardrobes, doors and related projects in Bengaluru.`}
     >
       <h2>Who we are</h2>
       <p>

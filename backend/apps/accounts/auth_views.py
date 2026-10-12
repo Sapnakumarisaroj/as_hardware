@@ -11,7 +11,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError
 
-from . import auth_services
+from . import auth_services, otp
 from .auth_serializers import (
     AuthResponseSerializer,
     AvatarSerializer,
@@ -20,6 +20,8 @@ from .auth_serializers import (
     ForgotPasswordSerializer,
     LoginSerializer,
     MeSerializer,
+    OtpRequestSerializer,
+    OtpVerifySerializer,
     ProfileSerializer,
     RefreshSerializer,
     RegisterSerializer,
@@ -170,6 +172,8 @@ class ProfileView(APIView):
                     changed.append(field)
         if "email" in changed:
             user.email_verified = False  # a new address must be verified again (verification: later phase)
+        if "phone" in changed:
+            user.phone_verified = False  # verified again by the next SMS sign-in
         try:
             with transaction.atomic():
                 user.save()
@@ -177,7 +181,7 @@ class ProfileView(APIView):
             raise ConflictError(
                 "That email or phone is already used by another account.", code="account_exists"
             ) from exc
-        if "email" in changed:
+        if "email" in changed and previous_email:
             from apps.accounts.auth_services import EMAIL_CHANGED_JOB
             from apps.core.jobs import enqueue
 
@@ -232,3 +236,34 @@ class DeactivateAccountView(APIView):
         serializer.is_valid(raise_exception=True)
         auth_services.deactivate_account(request.user, request=request, **serializer.validated_data)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class OtpRequestView(_PublicAuthView):
+    """Send a sign-in code by SMS to a customer's own mobile number (never returned in the response)."""
+
+    @extend_schema(request=OtpRequestSerializer, responses=inline_serializer("OtpSent", {
+        "phone": serializers.CharField(), "expires_in": serializers.IntegerField(),
+        "resend_in": serializers.IntegerField(), "length": serializers.IntegerField(),
+        "sms_sent": serializers.BooleanField(),
+    }))  # fmt: skip
+    def post(self, request):
+        serializer = OtpRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        result = otp.request_login_code(data["phone"], country_code=data["country_code"], request=request)
+        return Response({**result, "phone": f"+91 ******{result['phone'][-4:]}"})
+
+
+class OtpVerifyView(_PublicAuthView):
+    """Check the code; signs the customer in (201 when this created their account)."""
+
+    @extend_schema(request=OtpVerifySerializer, responses={200: AuthResponseSerializer, 201: AuthResponseSerializer})
+    def post(self, request):
+        serializer = OtpVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        user, created = otp.verify_login_code(
+            data["phone"], data["code"], country_code=data["country_code"],
+            full_name=data["full_name"], email=data["email"], request=request,
+        )  # fmt: skip
+        return _auth_response(user, request, status.HTTP_201_CREATED if created else status.HTTP_200_OK)

@@ -86,7 +86,7 @@ export function useCreateAddress() {
 
 export function useUpdateAddress() {
   return useAddressMutation(
-    async ({ id, input }: { id: number; input: AddressInput }) => (await api.patch<Address>(`/addresses/${id}/`, input)).data,
+    async ({ id, input }: { id: number; input: Partial<AddressInput> }) => (await api.patch<Address>(`/addresses/${id}/`, input)).data,
   )
 }
 

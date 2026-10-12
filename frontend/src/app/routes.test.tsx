@@ -162,10 +162,11 @@ describe('homepage', () => {
 })
 
 describe('header', () => {
-  it('logged out: offers Login / Register and loads categories into the navigation', async () => {
+  it('logged out: offers Login and loads categories into the navigation', async () => {
     mockApi({ get: catalogRoutes() })
     const { user } = renderRoute('/')
-    expect(screen.getByRole('link', { name: /Login \/ Register/ })).toHaveAttribute('href', '/login')
+    expect(screen.getByRole('link', { name: 'Login' })).toHaveAttribute('href', '/login')
+    expect(screen.queryByRole('link', { name: /register|sign up|create an account/i })).not.toBeInTheDocument()
     const main = await screen.findByRole('navigation', { name: 'Main' })
     const tools = await within(main).findByRole('button', { name: 'Tools & Safety' })
     await user.click(tools)

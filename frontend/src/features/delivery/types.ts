@@ -41,6 +41,11 @@ export interface DeliveryQuote {
   free_delivery_reason?: string
   /** Items that count towards free delivery, e.g. "Cement" (empty = everything). */
   free_delivery_hint?: string
+  /** Delivery charge before free-delivery rules. */
+  charge?: string
+  first_order_free?: boolean
+  /** True unless the fee used a routed road distance: distance_km is then approximate. */
+  distance_estimated?: boolean
 }
 
 /** GET /delivery/check/ */

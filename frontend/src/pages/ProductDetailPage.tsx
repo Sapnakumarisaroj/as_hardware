@@ -28,6 +28,7 @@ import { formatDate, formatPrice } from '@/lib/format'
 import { AccessoryGroups, CompatibilityChecker } from '@/features/compatibility/ProductCompatibility'
 import { ProductRecommendations } from '@/features/shopping/ProductRecommendations'
 import { ProductEnquiry } from '@/features/support/ProductEnquiry'
+import { OrderOnWhatsAppButton } from '@/features/whatsapp/components'
 import { usePageMeta } from '@/lib/usePageMeta'
 
 import { NotFoundPage } from './NotFoundPage'
@@ -525,6 +526,12 @@ export function ProductDetailPage() {
           {data.short_description && <p className="text-ink-800">{data.short_description}</p>}
 
           <ProductInfo product={data} />
+
+          <OrderOnWhatsAppButton
+            product={variant?.name ? `${data.name} (${variant.name})` : data.name}
+            quantity={safeQuantity}
+            className="w-full py-3 text-base"
+          />
 
           <ProductEnquiry productId={data.id} productName={data.name} />
         </div>

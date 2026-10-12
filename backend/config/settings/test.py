@@ -2,6 +2,8 @@ from .base import *  # noqa: F401,F403
 from .base import REST_FRAMEWORK
 
 DEBUG = False
+OTP_MOCK_ALLOWED = True  # tests read the code from the mock SMS outbox
+OTP_LOGIN_ENABLED = False  # the launch default; the OTP tests switch it on
 # Fast hashing for tests only.
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
@@ -30,6 +32,17 @@ GEOCODING_PROVIDER = "none"
 # Engine tests use their own stores and zones; city service-area tests switch the restriction on.
 DELIVERY_RESTRICT_TO_SERVICE_AREAS = False
 ROUTING_PROVIDER = "haversine"
+# Tests assume the documented fee defaults, whatever the developer's .env sets for the shop.
+from decimal import Decimal as _Decimal  # noqa: E402
+
+DELIVERY_FEE = _Decimal("40.00")
+FREE_DELIVERY_MIN_ORDER = _Decimal("499.00")
+# Never use the developer's real (test-mode) payment keys from .env: tests run on the mock provider, and the
+# Razorpay tests set their own fake keys.
+PAYMENT_PROVIDER = "mock"
+RAZORPAY_KEY_ID = ""
+RAZORPAY_KEY_SECRET = ""
+RAZORPAY_WEBHOOK_SECRET = ""
 
 # WhiteNoise isn't needed under the test client (and warns when staticfiles/ is absent).
 from .base import MIDDLEWARE  # noqa: E402

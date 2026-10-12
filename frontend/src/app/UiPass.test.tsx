@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { approvedCategories, categories, customer, productPage } from '@/test/fixtures'
 import { httpError, mockApi, paramsSent, type RequestInfo } from '@/test/mockApi'
-import { renderRoute } from '@/test/utils'
+import { currentUrl, renderRoute } from '@/test/utils'
 
 /* UI pass (2026-10-07): standalone sign-in pages with validation that mirrors the server, and a
    compact storefront header with exactly one search box. */
@@ -38,7 +38,7 @@ describe('storefront header', () => {
   it('shows the four groups and their departments even when the category API is unreachable', async () => {
     mockApi({ get: { ...shopGet, '/categories/': httpError(503, 'Cannot reach the server.') } })
     const { user } = renderRoute('/')
-    const main = screen.getByRole('navigation', { name: 'Main' })
+    const main = await screen.findByRole('navigation', { name: 'Main' })
     const items = [...main.querySelectorAll(':scope > ul > li')].map((li) => li.querySelector('a, button')?.textContent)
     expect(items).toEqual(['Home', ...groupNames])
     const wood = within(main).getByRole('button', { name: 'Wood & Adhesives' })
@@ -106,10 +106,10 @@ describe('header bands and delivery', () => {
   }
   const promise = { '/delivery/promise/': { fast_delivery_max_minutes: 60 } }
 
-  it('has the opening-hours strip, then one row with logo, badge, Deliver to, search and icons', async () => {
+  it('starts with the header (no opening-hours strip): logo, badge, Deliver to, search and icons', async () => {
     mockApi({ get: { ...shopGet, ...promise, '/categories/': approvedCategories } })
     renderRoute('/')
-    expect(within(screen.getByRole('banner').previousElementSibling as HTMLElement).getByText('Open 8 am to 8 pm all days')).toBeInTheDocument()
+    expect(screen.queryByText(/Open 8 am to 8 pm/)).not.toBeInTheDocument()
     const banner = screen.getByRole('banner')
     const badge = await within(banner).findByTestId('fast-badge')
     expect(badge).toHaveTextContent('60 Mins')
@@ -122,7 +122,7 @@ describe('header bands and delivery', () => {
     }
     expect(within(banner).getByRole('link', { name: 'Wishlist' })).toHaveAttribute('href', '/wishlist')
     expect(within(banner).getByRole('link', { name: 'Cart' })).toHaveAttribute('href', '/cart')
-    expect(within(banner).getByRole('link', { name: /Login \/ Register/ })).toHaveAttribute('href', '/login')
+    expect(within(banner).getByRole('link', { name: 'Login' })).toHaveAttribute('href', '/login')
   })
 
   it('the badge follows the delivery engine for the chosen PIN', async () => {
@@ -215,12 +215,49 @@ describe('login', () => {
     expect(screen.queryByRole('combobox', { name: 'Search products' })).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Create an account' })).toHaveAttribute('href', '/register?next=%2F')
-    expect(screen.getByRole('link', { name: 'Forgot password?' })).toHaveAttribute('href', '/forgot-password')
+    // Customers sign in with mobile number + password; staff switch to email and password.
+    expect(screen.getByLabelText('Mobile number')).toBeInTheDocument()
+    expect(screen.getByLabelText('Password')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Sign in with email and password' })).toHaveAttribute('href', '/login?method=email&next=%2F')
+    // SMS-code sign-in is switched off: no OTP button, no link to it.
+    expect(screen.queryByRole('button', { name: 'Send OTP' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /SMS code/i })).not.toBeInTheDocument()
+  })
+
+  it('signs a customer in with mobile number and password', async () => {
+    const api = mockApi({
+      get: { ...shopGet, '/auth/me/': customer },
+      post: { '/auth/login/': { access: 'a', refresh: 'r', user: customer } },
+    })
+    const { user, router } = renderRoute('/login?next=%2Faccount')
+    await user.type(await screen.findByLabelText('Mobile number'), '+91 98765 43210')
+    await user.type(screen.getByLabelText('Password'), 'Hammer2026')
+    await user.click(screen.getByRole('button', { name: 'Login' }))
+    await waitFor(() => expect(currentUrl(router)).toBe('/account'))
+    expect(api.post).toHaveBeenCalledWith('/auth/login/', { phone: '9876543210', password: 'Hammer2026' })
+  })
+
+  it('checks the mobile number and password before asking the server', async () => {
+    const api = mockApi({ get: shopGet })
+    const { user } = renderRoute('/login')
+    await user.click(await screen.findByRole('button', { name: 'Login' }))
+    expect(screen.getByText('Enter your mobile number.')).toBeInTheDocument()
+    expect(screen.getByText('Enter your password.')).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Mobile number'), '12345')
+    expect(screen.getByText('Enter a valid 10-digit Indian mobile number.')).toBeInTheDocument()
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('an SMS-code link falls back to mobile number + password while SMS sign-in is off', async () => {
+    mockApi({ get: shopGet })
+    renderRoute('/login?method=otp')
+    expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send OTP' })).not.toBeInTheDocument()
   })
 
   it('requires both fields and checks the email before asking the server', async () => {
     const api = mockApi({ get: shopGet })
-    const { user } = renderRoute('/login')
+    const { user } = renderRoute('/login?method=email')
     await user.click(await screen.findByRole('button', { name: 'Login' }))
     expect(screen.getByText('Enter your email address.')).toBeInTheDocument()
     expect(screen.getByText('Enter your password.')).toBeInTheDocument()
@@ -232,7 +269,7 @@ describe('login', () => {
 
   it('shows and hides the password', async () => {
     mockApi({ get: shopGet })
-    const { user } = renderRoute('/login')
+    const { user } = renderRoute('/login?method=email')
     const password = await screen.findByLabelText('Password')
     expect(password).toHaveAttribute('type', 'password')
     await user.click(screen.getByRole('button', { name: 'Show password' }))
@@ -243,7 +280,7 @@ describe('login', () => {
 
   it('shows the server’s message when the details are wrong', async () => {
     mockApi({ get: shopGet, post: { '/auth/login/': httpError(401, 'Incorrect email or password.', 'invalid_credentials') } })
-    const { user } = renderRoute('/login')
+    const { user } = renderRoute('/login?method=email')
     await user.type(await screen.findByLabelText('Email'), 'asha@example.com')
     await user.type(screen.getByLabelText('Password'), 'wrong-pass1')
     await user.click(screen.getByRole('button', { name: 'Login' }))
@@ -290,12 +327,12 @@ describe('register', () => {
     await waitFor(() => expect(sent).toMatchObject({ phone: '9876543210', email: 'asha@example.com', full_name: 'Asha Kulkarni' }))
   })
 
-  it('stands alone and links back to login', async () => {
-    mockApi({ get: { ...shopGet, '/auth/me/': customer } })
-    renderRoute('/register')
+  it('stands alone and links back to login, keeping the destination', async () => {
+    mockApi({ get: shopGet })
+    renderRoute('/register?next=%2Fcart')
     expect(await screen.findByRole('heading', { level: 1, name: 'Create your account' })).toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'Search products' })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Login' })).toHaveAttribute('href', '/login?next=%2F')
+    expect(screen.getByRole('link', { name: 'Login' })).toHaveAttribute('href', '/login?next=%2Fcart')
   })
 })
 

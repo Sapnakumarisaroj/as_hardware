@@ -10,7 +10,9 @@ from .assignment import assign_shipment, partners_with_load, reassign_shipment, 
 from .cod import cash_by_partner
 from .fulfillment import FeeRule
 from .models import (
+    CoverageReview,
     DeliveryAssignment,
+    DeliveryCharges,
     DeliveryPartner,
     DeliveryStatusHistory,
     DeliveryZone,
@@ -295,8 +297,15 @@ class DeliveryZoneAdmin(admin.ModelAdmin):
                 "set). How fast is still decided per order (stock, store hours, riders, travel time).",
             },
         ),
-        ("Delivery fee", {"fields": ("delivery_fee_override", "free_delivery_min_order")}),
+        (
+            "Delivery fee",
+            {
+                "fields": ("delivery_fee_override", "free_delivery_min_order"),
+                "description": "Blank fee = the distance bands in Delivery charges (or the flat DELIVERY_FEE).",
+            },
+        ),
         ("Payment", {"fields": ("cod_enabled",)}),
+        ("Services", {"fields": ("unloading_available",)}),
         (
             "Fast delivery",
             {
@@ -342,6 +351,32 @@ class GeocodeCacheAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+@admin.register(CoverageReview)
+class CoverageReviewAdmin(admin.ModelAdmin):
+    list_display = ("postal_code", "city", "address", "status", "created_at")
+    list_filter = ("status",)
+    list_editable = ("status",)
+    search_fields = ("postal_code", "city", "address__user__email")
+    readonly_fields = ("address", "postal_code", "city", "message", "created_at")
+    fields = ("address", "postal_code", "city", "message", "status", "note", "created_at")
+
+
+@admin.register(DeliveryCharges)
+class DeliveryChargesAdmin(admin.ModelAdmin):
+    fields = ("distance_bands", "extra_per_km", "free_first_orders", "unloading_fee", "updated_at", "updated_by")
+    readonly_fields = ("updated_at", "updated_by")
+
+    def has_add_permission(self, request):
+        return not DeliveryCharges.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(FreeDeliveryRule)

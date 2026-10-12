@@ -179,7 +179,7 @@ Backups: enable the host's automatic backups. Also schedule a dump via cron, e.g
 Built **locally**; the server needs no Node.js.
 ```powershell
 cd frontend
-$env:VITE_API_BASE_URL="https://api.yourdomain.com/api"; $env:VITE_APP_NAME="AS Hardware & Plywood"
+$env:VITE_API_BASE_URL="https://api.yourdomain.com/api"; $env:VITE_APP_NAME="AS Hardware and Plywood"
 npm ci
 npm run build          # -> frontend/dist/
 ```

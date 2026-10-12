@@ -1,37 +1,44 @@
 import { business } from '@/lib/business'
 
 interface Props {
-  /** Size of the round mark, e.g. 'size-10'. */
+  /** Height of the AS symbol, e.g. 'h-11 md:h-12'; its width follows the symbol's own proportions. */
   size?: string
-  /** Classes for the shop name next to the mark; null shows the mark alone. */
-  nameClassName?: string | null
-  /** Show the short name ("AS Hardware") where space is tight. */
-  short?: boolean
+  /** Show "Hardware and Plywood" under the symbol (the full brand lock-up). */
+  withName?: boolean
+  /** Classes for an extra label next to the logo (e.g. "Admin"); omitted = none. */
   suffix?: string
+  /** Text colour of the name under the symbol. */
+  nameTone?: string
 }
 
-/** Round "AS" logo mark + shop name (square image, never stretched). Wrap it in a Link where it should lead home. */
-export function BrandLogo({ size = 'size-9', nameClassName = '', short = false, suffix }: Props) {
+/**
+ * The AS symbol (cropped from the official logo, never stretched) with "Hardware and Plywood" below it.
+ * The image has a white background; `mix-blend-multiply` lets light page colours show through it.
+ * Wrap it in a Link where it should lead home.
+ */
+export function BrandLogo({ size = 'h-11', withName = true, suffix, nameTone = 'text-ink-950' }: Props) {
   return (
     <>
-      <img
-        src={business.logo.mark}
-        alt={nameClassName === null ? business.name : ''}
-        width={256}
-        height={256}
-        className={`${size} shrink-0 rounded-full object-contain`}
-      />
-      {nameClassName !== null && (
-        <span className={nameClassName}>
-          {short ? business.shortName : business.name}
-          {suffix && <span className="font-normal text-steel-200"> {suffix}</span>}
-        </span>
-      )}
+      <span className="inline-flex shrink-0 flex-col items-center leading-none">
+        <img
+          src={business.logo.symbol}
+          alt={business.name}
+          width={business.logo.symbolWidth}
+          height={business.logo.symbolHeight}
+          className={`${size} w-auto object-contain mix-blend-multiply`}
+        />
+        {withName && (
+          <span aria-hidden className={`mt-0.5 whitespace-nowrap text-[10px] font-extrabold uppercase tracking-[0.08em] sm:text-[11px] ${nameTone}`}>
+            {business.nameUnderSymbol}
+          </span>
+        )}
+      </span>
+      {suffix && <span className="font-semibold">{suffix}</span>}
     </>
   )
 }
 
-/** The full official logo (keeps its 720 × 453 proportions; the width comes from `className`). */
+/** The full official logo, larger (keeps its proportions; the width comes from `className`). */
 export function FullLogo({ className = 'w-56', loading = 'lazy' }: { className?: string; loading?: 'lazy' | 'eager' }) {
   return (
     <img

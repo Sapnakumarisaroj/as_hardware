@@ -24,6 +24,11 @@ class TotalsSerializer(serializers.Serializer):
     free_delivery_hint = serializers.CharField(allow_blank=True, help_text='Items that count, e.g. "Cement"')
     # Phase 17: shop credit used (already deducted from grand_total)
     credit_discount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    # Delivery charge before free-delivery rules, what was waived, and the optional unloading service.
+    delivery_charge = serializers.DecimalField(max_digits=12, decimal_places=2)
+    delivery_discount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    first_order_free_delivery = serializers.BooleanField()
+    unloading_fee = serializers.DecimalField(max_digits=12, decimal_places=2)
 
 
 class AppliedOfferSerializer(serializers.Serializer):

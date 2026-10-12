@@ -221,7 +221,7 @@ describe('checkout credits', () => {
       post: { '/checkout/preview/': checkoutPreview({ credits: { ...credits(false), available: '0.00', usable: '0.00' } }) },
     })
     renderRoute('/checkout')
-    await screen.findByRole('region', { name: 'Order summary' })
+    await screen.findByRole('region', { name: 'Total bill' })
     expect(screen.queryByTestId('credits-box')).not.toBeInTheDocument()
   })
 })

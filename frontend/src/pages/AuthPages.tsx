@@ -1,8 +1,8 @@
-import { useId, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react'
+import { useEffect, useId, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 
 import { AlertIcon, CheckIcon, EyeIcon, EyeOffIcon, LockIcon, MailIcon, PhoneIcon, UserIcon } from '@/components/icons'
-import { requestPasswordReset, resetPassword } from '@/features/auth/api'
+import { requestOtp, requestPasswordReset, resetPassword } from '@/features/auth/api'
 import { useAuth } from '@/features/auth/context'
 import {
   normalizePhone,
@@ -14,6 +14,7 @@ import {
   validatePhone,
 } from '@/features/auth/validation'
 import { ApiError } from '@/lib/api/errors'
+import { env } from '@/lib/env'
 import { usePageMeta } from '@/lib/usePageMeta'
 
 /** Only same-site relative paths are allowed as the post-login destination. */
@@ -217,7 +218,275 @@ function useValidation<T extends Record<string, string>>(values: T, rules: Recor
   }
 }
 
+// --- Mobile number + one-time code ------------------------------------------------------------------
+
+const OTP_MESSAGES: Record<string, string> = {
+  invalid_phone: 'Enter a valid 10-digit Indian mobile number.',
+  otp_invalid: 'That code isn’t right.',
+  otp_expired: 'This code has expired. Request a new code.',
+  otp_too_many_attempts: 'Too many wrong codes. Request a new code.',
+  too_many_otp_requests: 'Too many codes requested for this number. Please try again later.',
+}
+
+function errorText(error: unknown): string {
+  if (!(error instanceof ApiError)) return 'Something went wrong. Please try again.'
+  // The server's message is specific (e.g. "2 attempts left", "wait 20 seconds"); fall back to ours.
+  return error.message || OTP_MESSAGES[error.code] || 'Something went wrong. Please try again.'
+}
+
+function useCountdown() {
+  const [until, setUntil] = useState(0)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (until <= now) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [until, now])
+  return {
+    left: Math.max(0, Math.ceil((until - now) / 1000)),
+    start: (seconds: number) => {
+      const t = Date.now()
+      setNow(t)
+      setUntil(t + seconds * 1000)
+    },
+  }
+}
+
+/**
+ * Sign in or sign up with the customer's own mobile number: send a code by SMS, then verify it.
+ * New numbers are asked for a name (on the register page up front, on the login page when needed).
+ */
+function PhoneOtpForm({ mode, onSignedIn }: { mode: 'login' | 'register'; onSignedIn: (role: string) => void }) {
+  const { loginWithOtp } = useAuth()
+  const [step, setStep] = useState<'phone' | 'code'>('phone')
+  const [phone, setPhone] = useState('')
+  const [code, setCode] = useState('')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [askName, setAskName] = useState(mode === 'register')
+  const [sentTo, setSentTo] = useState('')
+  const [smsSent, setSmsSent] = useState(true)
+  const [codeLength, setCodeLength] = useState(6)
+  const [error, setError] = useState('')
+  const [fieldError, setFieldError] = useState<Errors>({})
+  const [busy, setBusy] = useState(false)
+  const countdown = useCountdown()
+
+  async function send(event?: FormEvent) {
+    event?.preventDefault()
+    const errors: Errors = {}
+    const phoneError = validatePhone(phone)
+    if (phoneError) errors.phone = phoneError
+    if (askName && mode === 'register' && validateFullName(name)) errors.name = validateFullName(name)
+    setFieldError(errors)
+    if (Object.keys(errors).length) return
+    setBusy(true)
+    setError('')
+    try {
+      const sent = await requestOtp(normalizePhone(phone))
+      setSentTo(sent.phone)
+      setSmsSent(sent.sms_sent)
+      setCodeLength(sent.length)
+      setStep('code')
+      setCode('')
+      countdown.start(sent.resend_in)
+    } catch (err) {
+      const retry = err instanceof ApiError ? Number(err.details.retry_after) : 0
+      if (retry > 0) countdown.start(retry)
+      setError(errorText(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function verify(event: FormEvent) {
+    event.preventDefault()
+    const errors: Errors = {}
+    if (!new RegExp(`^\\d{${codeLength}}$`).test(code)) errors.code = `Enter the ${codeLength}-digit code from the SMS.`
+    if (askName && validateFullName(name)) errors.name = validateFullName(name)
+    if (askName && email.trim() && validateEmail(email)) errors.email = validateEmail(email)
+    setFieldError(errors)
+    if (Object.keys(errors).length) return
+    setBusy(true)
+    setError('')
+    try {
+      const user = await loginWithOtp({
+        phone: normalizePhone(phone),
+        code,
+        fullName: askName ? name.trim() : '',
+        email: askName ? email.trim() : '',
+      })
+      onSignedIn(user.role)
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'name_required') {
+        setAskName(true) // a new number: the same code still works once the name is added
+        setError('')
+        setFieldError({ name: 'Welcome! Enter your name to create your account.' })
+      } else {
+        setError(errorText(err))
+        if (err instanceof ApiError && ['otp_expired', 'otp_too_many_attempts'].includes(err.code)) setCode('')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const nameFields = askName && (
+    <>
+      <Field
+        id="otp-name"
+        label="Full name"
+        autoComplete="name"
+        placeholder="Your name"
+        icon={<UserIcon className="size-4" />}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        error={fieldError.name}
+      />
+      <div>
+        <label htmlFor="otp-email" className="label">
+          Email <span className="font-normal text-ink-600">(optional, for order emails)</span>
+        </label>
+        <div className="relative">
+          <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-steel-400">
+            <MailIcon className="size-4" />
+          </span>
+          <input
+            id="otp-email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            aria-invalid={Boolean(fieldError.email)}
+            aria-describedby={fieldError.email ? 'otp-email-error' : undefined}
+            className="input h-11 pl-10"
+          />
+        </div>
+        <FieldError id="otp-email-error" message={fieldError.email} />
+      </div>
+    </>
+  )
+
+  if (step === 'phone') {
+    return (
+      <form onSubmit={send} className="space-y-4" noValidate aria-label={mode === 'register' ? 'Create account' : 'Login'}>
+        {error && <Alert>{error}</Alert>}
+        {mode === 'register' && nameFields}
+        <div>
+          <label htmlFor="otp-phone" className="label after:ml-0.5 after:text-danger-600 after:content-['*']">
+            Mobile number
+          </label>
+          <div className="flex gap-2">
+            <select aria-label="Country code" className="input h-11 w-auto shrink-0 pr-8" defaultValue="+91">
+              <option value="+91">🇮🇳 +91</option>
+            </select>
+            <div className="relative min-w-0 flex-1">
+              <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-steel-400">
+                <PhoneIcon className="size-4" />
+              </span>
+              <input
+                id="otp-phone"
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel-national"
+                placeholder="98765 43210"
+                maxLength={14}
+                required
+                aria-required="true"
+                aria-invalid={Boolean(fieldError.phone)}
+                aria-describedby={fieldError.phone ? 'otp-phone-error' : 'otp-phone-hint'}
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className={`input h-11 pl-10 ${fieldError.phone ? 'border-danger-600' : ''}`}
+              />
+            </div>
+          </div>
+          <FieldError id="otp-phone-error" message={fieldError.phone} />
+          {!fieldError.phone && (
+            <p id="otp-phone-hint" className="mt-1.5 text-xs text-ink-600">
+              We’ll send a one-time code to your own mobile number by SMS.
+            </p>
+          )}
+        </div>
+        <SubmitButton busy={busy} busyText="Sending code…">
+          Send OTP
+        </SubmitButton>
+        {countdown.left > 0 && (
+          <p className="text-center text-xs text-ink-600" aria-live="polite">
+            You can ask for a code again in {countdown.left}s.
+          </p>
+        )}
+      </form>
+    )
+  }
+
+  return (
+    <form onSubmit={verify} className="space-y-4" noValidate aria-label="Enter code">
+      {error && <Alert>{error}</Alert>}
+      <p className="rounded-lg bg-steel-50 px-3 py-2 text-sm text-ink-800">
+        {smsSent ? (
+          <>
+            Code sent to <span className="font-semibold">{sentTo}</span>.
+          </>
+        ) : (
+          <>
+            Development only: no SMS was sent to <span className="font-semibold">{sentTo}</span>. The code is in
+            the server console.
+          </>
+        )}{' '}
+        <button
+          type="button"
+          className="font-semibold text-amber-700 hover:underline"
+          onClick={() => {
+            setStep('phone')
+            setError('')
+          }}
+        >
+          Change number
+        </button>
+      </p>
+      {mode === 'login' && nameFields}
+      <Field
+        id="otp-code"
+        label="One-time code"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        placeholder={'•'.repeat(codeLength)}
+        maxLength={codeLength}
+        icon={<LockIcon className="size-4" />}
+        value={code}
+        onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, codeLength))}
+        error={fieldError.code}
+        className="input h-11 pl-10 text-lg tracking-[0.4em]"
+      />
+      <SubmitButton busy={busy} busyText="Checking…">
+        {askName && mode === 'login' ? 'Create account' : 'Verify and continue'}
+      </SubmitButton>
+      <div className="text-center text-sm" aria-live="polite">
+        {countdown.left > 0 ? (
+          <span className="text-ink-600">Resend OTP in {countdown.left}s</span>
+        ) : (
+          <button type="button" className="font-semibold text-amber-700 hover:underline disabled:opacity-50" disabled={busy} onClick={() => void send()}>
+            Resend OTP
+          </button>
+        )}
+      </div>
+    </form>
+  )
+}
+
 // --- Pages ------------------------------------------------------------------------------------------
+
+type LoginMethod = 'phone' | 'email' | 'otp'
+
+/** Mobile number + password by default; email for staff; an SMS code only once a real SMS gateway is live. */
+function loginMethod(value: string | null): LoginMethod {
+  if (value === 'email') return 'email'
+  if (value === 'otp' && env.otpLoginEnabled) return 'otp'
+  return 'phone'
+}
 
 export function LoginPage() {
   usePageMeta('Login')
@@ -225,10 +494,13 @@ export function LoginPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const next = safeNext(params.get('next'))
+  const method = loginMethod(params.get('method'))
+  const emailMode = method === 'email'
   const { busy, run, serverField, general } = useSubmit()
-  const [values, setValues] = useState({ email: '', password: '' })
+  const [values, setValues] = useState({ phone: '', email: '', password: '' })
   const validation = useValidation(values, {
-    email: (v) => validateEmail(v.email),
+    phone: (v) => (emailMode ? '' : validatePhone(v.phone)),
+    email: (v) => (emailMode ? validateEmail(v.email) : ''),
     password: (v) => (v.password ? '' : 'Enter your password.'),
   })
   // Delivery partners land in the rider app and staff in the dashboard, unless they were on
@@ -246,17 +518,25 @@ export function LoginPage() {
     if (!validation.check()) return
     let role: string | undefined
     const ok = await run(async () => {
-      role = (await login(values.email.trim(), values.password)).role
+      const credentials = emailMode
+        ? { email: values.email.trim(), password: values.password }
+        : { phone: normalizePhone(values.phone), password: values.password }
+      role = (await login(credentials)).role
     })
     if (ok) navigate(homeFor(role), { replace: true })
   }
 
   const set = (name: keyof typeof values) => (e: React.ChangeEvent<HTMLInputElement>) => setValues({ ...values, [name]: e.target.value })
+  const subtitle = {
+    phone: 'Sign in with your mobile number and password.',
+    email: 'Staff and email accounts: sign in with your email and password.',
+    otp: 'Sign in with your mobile number. We’ll text you a one-time code.',
+  }[method]
   return (
     <AuthCard
       icon={<LockIcon className="size-6" />}
       title="Welcome back"
-      subtitle="Sign in to track orders, save lists and check out faster."
+      subtitle={subtitle}
       footer={
         <>
           New here?{' '}
@@ -266,20 +546,39 @@ export function LoginPage() {
         </>
       }
     >
+      {method === 'otp' ? (
+        <PhoneOtpForm mode="login" onSignedIn={(role) => navigate(homeFor(role), { replace: true })} />
+      ) : (
       <form onSubmit={submit} className="space-y-4" noValidate aria-label="Login">
         {general && <Alert>{general}</Alert>}
-        <Field
-          id="email"
-          label="Email"
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-          placeholder="name@example.com"
-          icon={<MailIcon className="size-4" />}
-          value={values.email}
-          onChange={set('email')}
-          error={validation.shown('email') ?? serverField('email')}
-        />
+        {emailMode ? (
+          <Field
+            id="email"
+            label="Email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="name@example.com"
+            icon={<MailIcon className="size-4" />}
+            value={values.email}
+            onChange={set('email')}
+            error={validation.shown('email') ?? serverField('email')}
+          />
+        ) : (
+          <Field
+            id="phone"
+            label="Mobile number"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel-national"
+            placeholder="98765 43210"
+            maxLength={16}
+            icon={<PhoneIcon className="size-4" />}
+            value={values.phone}
+            onChange={set('phone')}
+            error={validation.shown('phone') ?? serverField('phone')}
+          />
+        )}
         <div>
           <PasswordField
             id="password"
@@ -299,7 +598,48 @@ export function LoginPage() {
           Login
         </SubmitButton>
       </form>
+      )}
+      <MethodSwitch method={method} next={next} />
     </AuthCard>
+  )
+}
+
+/** Switch between mobile number + password (customers), email + password (staff, older accounts) and, once a
+ *  real SMS gateway is live, a one-time SMS code. */
+function MethodSwitch({ method, next }: { method: LoginMethod; next: string }) {
+  const to = (m: LoginMethod) => `/login?${m === 'phone' ? '' : `method=${m}&`}next=${encodeURIComponent(next)}`
+  const link = 'font-semibold text-amber-700 hover:underline'
+  return (
+    <div className="mt-5 space-y-1.5 border-t border-steel-200 pt-4 text-center text-sm text-ink-600">
+      {method === 'email' ? (
+        <p>
+          <Link to={to('phone')} className={link}>
+            Sign in with your mobile number instead
+          </Link>
+        </p>
+      ) : (
+        <p>
+          Staff or email account?{' '}
+          <Link to={to('email')} className={link}>
+            Sign in with email and password
+          </Link>
+        </p>
+      )}
+      {method === 'otp' && (
+        <p>
+          <Link to={to('phone')} className={link}>
+            Sign in with your mobile number and password
+          </Link>
+        </p>
+      )}
+      {env.otpLoginEnabled && method !== 'otp' && (
+        <p>
+          <Link to={to('otp')} className={link}>
+            Sign in with an SMS code instead
+          </Link>
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -343,7 +683,7 @@ export function RegisterPage() {
       wide
       icon={<UserIcon className="size-6" />}
       title="Create your account"
-      subtitle="Order hardware, track deliveries and keep your project lists in one place."
+      subtitle="You’ll sign in with your mobile number and this password."
       footer={
         <>
           Already registered?{' '}
@@ -358,10 +698,11 @@ export function RegisterPage() {
         <Field id="full_name" label="Full name" autoComplete="name" icon={<UserIcon className="size-4" />}
           value={values.full_name} onChange={set('full_name')} error={error('full_name')} />
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field id="email" label="Email" type="email" inputMode="email" autoComplete="email" placeholder="name@example.com"
-            icon={<MailIcon className="size-4" />} value={values.email} onChange={set('email')} error={error('email')} />
           <Field id="phone" label="Mobile number" type="tel" inputMode="tel" autoComplete="tel-national" placeholder="98765 43210"
             icon={<PhoneIcon className="size-4" />} value={values.phone} onChange={set('phone')} error={error('phone')} />
+          <Field id="email" label="Email" type="email" inputMode="email" autoComplete="email" placeholder="name@example.com"
+            icon={<MailIcon className="size-4" />} value={values.email} onChange={set('email')} error={error('email')}
+            hint={<p className="text-xs text-ink-600">For order updates and resetting your password.</p>} />
         </div>
         <PasswordField
           id="password"
@@ -399,7 +740,7 @@ export function ForgotPasswordPage() {
     <AuthCard
       icon={<MailIcon className="size-6" />}
       title="Reset your password"
-      subtitle="We’ll email you a link to choose a new password."
+      subtitle="For email accounts: we’ll email you a link to choose a new password."
       footer={
         <Link to="/login" className="font-semibold text-amber-700 hover:underline">
           Back to login
@@ -413,6 +754,13 @@ export function ForgotPasswordPage() {
         </p>
       ) : (
         <form onSubmit={submit} className="space-y-4" noValidate aria-label="Reset your password">
+          <p className="rounded-lg bg-steel-50 px-3 py-2 text-sm text-ink-800">
+            Shopping with your mobile number? You don’t need a password:{' '}
+            <Link to="/login" className="font-semibold text-amber-700 hover:underline">
+              sign in with a one-time code
+            </Link>
+            .
+          </p>
           {general && <Alert>{general}</Alert>}
           <Field id="email" label="Email" type="email" inputMode="email" autoComplete="email" placeholder="name@example.com"
             icon={<MailIcon className="size-4" />} value={email} onChange={(e) => setEmail(e.target.value)} error={validation.shown('email')} />

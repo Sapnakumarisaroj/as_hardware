@@ -37,12 +37,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const login = useCallback(
-    async (email: string, password: string) => acceptSession(await authApi.login(email, password)),
+    async (credentials: authApi.LoginCredentials) => acceptSession(await authApi.login(credentials)),
     [acceptSession],
   )
 
   const register = useCallback(
     async (input: authApi.RegisterInput) => acceptSession(await authApi.register(input)),
+    [acceptSession],
+  )
+
+  const loginWithOtp = useCallback(
+    async (input: authApi.OtpVerifyInput) => acceptSession(await authApi.verifyOtp(input)),
     [acceptSession],
   )
 
@@ -61,8 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthState>(() => {
     const user = hasSession ? (me.data ?? null) : null
     const status = !hasSession ? 'anonymous' : me.isPending ? 'loading' : user ? 'authenticated' : 'anonymous'
-    return { status, user, login, register, logout }
-  }, [hasSession, me.data, me.isPending, login, register, logout])
+    return { status, user, login, register, loginWithOtp, logout }
+  }, [hasSession, me.data, me.isPending, login, register, loginWithOtp, logout])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

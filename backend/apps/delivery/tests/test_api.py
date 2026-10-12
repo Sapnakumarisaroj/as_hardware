@@ -159,12 +159,17 @@ def test_checkout_preview_without_address_promises_nothing(auth_client, user, sh
     assert delivery["fee"] == "40.00"  # global rule until the zone is known
 
 
+REVIEW_NOTE = " We've passed this address to our team to review; we'll contact you if we can deliver."
+
+
 def test_checkout_preview_blocks_out_of_zone_addresses(auth_client, user, shop):
     add_item(user, shop["drill"].id, 1)
     address = address_at(user, 10, postal_code="411014")
     data = auth_client.post("/api/checkout/preview/", {"address_id": address.id}, format="json").json()
     assert data["can_place_order"] is False
-    assert data["blocking_issues"] == [{"code": "not_deliverable", "message": "We don't deliver to PIN 411014 yet."}]
+    # The address is also flagged for an administrator to review (delivery.CoverageReview).
+    message = "We don't deliver to PIN 411014 yet." + REVIEW_NOTE
+    assert data["blocking_issues"] == [{"code": "not_deliverable", "message": message}]
     assert data["delivery"]["reason_code"] == "out_of_zone"
     res = auth_client.post("/api/orders/", {"address_id": address.id, "payment_method": "cod"}, format="json")
     assert res.status_code == 400 and res.json()["error"]["code"] == "not_deliverable"

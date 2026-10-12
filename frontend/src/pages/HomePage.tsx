@@ -71,12 +71,12 @@ function HeroGroups() {
           <li key={group.slug}>
             <Link
               to={group.href}
-              className="group flex h-full flex-col justify-between rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/15 transition hover:bg-white/10 hover:ring-amber-400 sm:p-5"
+              className="group flex h-full flex-col justify-between rounded-2xl bg-white p-4 shadow-sm ring-1 ring-steel-200 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-amber-400 sm:p-5"
             >
-              <span className="text-base font-bold leading-snug sm:text-lg">{group.name}</span>
-              <span className="mt-3 flex items-center justify-between gap-2 text-xs text-steel-200 sm:text-sm">
+              <span className="text-base font-bold leading-snug text-ink-950 sm:text-lg">{group.name}</span>
+              <span className="mt-3 flex items-center justify-between gap-2 text-xs text-ink-600 sm:text-sm">
                 {group.entries.length} {group.entries.length === 1 ? 'category' : 'categories'}
-                <ChevronRightIcon className="size-4 text-amber-400 transition-transform group-hover:translate-x-0.5" />
+                <ChevronRightIcon className="size-4 text-amber-600 transition-transform group-hover:translate-x-0.5" />
               </span>
             </Link>
           </li>
@@ -95,19 +95,20 @@ function Hero() {
       ? `Fast delivery within ${minutes} mins where eligible`
       : null
   return (
-    <section className="relative overflow-hidden bg-ink-950 text-white">
-      <div aria-hidden className="pointer-events-none absolute -right-40 -top-40 size-[34rem] rounded-full bg-amber-500/20 blur-3xl" />
-      <div aria-hidden className="pointer-events-none absolute -bottom-48 -left-24 size-[26rem] rounded-full bg-amber-500/10 blur-3xl" />
+    <section className="relative overflow-hidden border-b border-steel-200 bg-white text-ink-950">
       <div className="container-page relative grid items-center gap-8 py-10 sm:py-14 lg:grid-cols-[1.05fr_1fr] lg:gap-12 lg:py-16">
         <div className="animate-rise">
-          <p className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-amber-400 ring-1 ring-white/15">
+          <p className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
             <PinIcon className="size-3.5" />
             {business.name} · Delivering across Bengaluru
           </p>
           <h1 className="mt-4 text-4xl font-extrabold leading-[1.08] sm:text-5xl lg:text-6xl">
-            Hardware for <span className="text-amber-400">every project</span>
+            Hardware for <span className="text-amber-600">every project</span>
           </h1>
-          <p className="mt-4 max-w-xl text-base text-steel-200 sm:text-lg">
+          <p className="mt-3 text-xl font-bold text-ink-800 sm:text-2xl" data-testid="hero-tagline">
+            {business.tagline}
+          </p>
+          <p className="mt-3 max-w-xl text-base text-ink-600 sm:text-lg">
             Quality hardware, tools and fittings delivered across Bengaluru. Live prices, real stock and delivery times for your
             address.
           </p>
@@ -116,25 +117,25 @@ function Hero() {
               Shop now
               <ChevronRightIcon className="size-4" />
             </Link>
-            <a href="#categories" className="btn-secondary bg-white/10 px-6 py-3 text-base text-white ring-white/25 hover:bg-white/15">
+            <a href="#categories" className="btn-secondary px-6 py-3 text-base">
               Browse categories
             </a>
           </div>
-          <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-steel-200" aria-label="Delivery" data-testid="hero-delivery">
+          <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-700" aria-label="Delivery" data-testid="hero-delivery">
             {fastLine && (
               <li className="inline-flex items-center gap-2">
-                <BoltIcon className="size-4 shrink-0 text-amber-400" />
+                <BoltIcon className="size-4 shrink-0 text-amber-600" />
                 {fastLine}
               </li>
             )}
             {notServed ? (
               <li className="inline-flex items-center gap-2">
-                <PinIcon className="size-4 shrink-0 text-amber-400" />
+                <PinIcon className="size-4 shrink-0 text-amber-600" />
                 {check?.message || `We don’t deliver to ${pincode} yet.`}
               </li>
             ) : (
               <li className="inline-flex items-center gap-2">
-                <TruckIcon className="size-4 shrink-0 text-amber-400" />
+                <TruckIcon className="size-4 shrink-0 text-amber-600" />
                 {check?.serviceable && !fastHere ? `Delivery to ${pincode}: ${check.label}` : 'Standard delivery across Bengaluru'}
               </li>
             )}
@@ -293,7 +294,7 @@ function FastDeliveryRail() {
       viewAllHref="/products?fast_delivery=true"
       enabled={fastHere}
       hideOnError
-      tone="dark"
+      tone="tinted"
     />
   )
 }
@@ -372,15 +373,14 @@ function DeliveryBanner() {
     [<TruckIcon key="t" />, 'Standard delivery', minutes && !notServed ? 'A delivery window when fast isn’t possible' : 'A delivery window for your address'],
   ]
   return (
-    <section aria-labelledby="delivery-heading" className="my-8 animate-rise overflow-hidden rounded-3xl bg-ink-900 text-white">
+    <section aria-labelledby="delivery-heading" className="card my-8 animate-rise overflow-hidden">
       <div className="relative grid gap-6 p-6 sm:p-8 lg:grid-cols-[1fr_1.4fr] lg:items-center lg:p-10">
-        <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-amber-500/15 blur-3xl" />
         <div className="relative">
-          <p className="eyebrow text-amber-400">Delivery</p>
+          <p className="eyebrow">Delivery</p>
           <h2 id="delivery-heading" className="mt-1 text-2xl font-bold sm:text-3xl">
             {minutes && !notServed ? 'Fast hardware delivery across Bengaluru' : 'Hardware delivery across Bengaluru'}
           </h2>
-          <p className="mt-2 text-sm text-steel-200">
+          <p className="mt-2 text-sm text-ink-600">
             {notServed
               ? `${check?.message || `We don’t deliver to ${pincode} yet.`} Try another PIN code in the header.`
               : 'Choose your PIN code in the header to see the delivery time for your address. The time for your order is confirmed in the cart.'}
@@ -388,10 +388,10 @@ function DeliveryBanner() {
         </div>
         <ul className={`relative grid gap-3 ${points.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
           {points.map(([icon, title, text]) => (
-            <li key={title} className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
+            <li key={title} className="rounded-2xl bg-steel-50 p-4 ring-1 ring-steel-200">
               <span className="grid size-9 place-items-center rounded-lg bg-amber-500 text-ink-950 [&>svg]:size-5">{icon}</span>
               <p className="mt-3 text-sm font-semibold">{title}</p>
-              <p className="mt-0.5 text-xs text-steel-200">{text}</p>
+              <p className="mt-0.5 text-xs text-ink-600">{text}</p>
             </li>
           ))}
         </ul>
@@ -456,7 +456,7 @@ function AiSection() {
         {AI_TOOLS.map(([title, text, to, icon], index) => (
           <li key={title} className="flex animate-rise" style={{ animationDelay: `${index * 50}ms` }}>
             <Link to={to} className="card card-hover group flex w-full flex-col p-4 sm:p-5">
-              <span className="grid size-11 place-items-center rounded-xl bg-ink-900 text-amber-400 transition group-hover:bg-amber-500 group-hover:text-ink-950 [&>svg]:size-5">
+              <span className="grid size-11 place-items-center rounded-xl bg-amber-50 text-amber-700 ring-1 ring-amber-100 transition group-hover:bg-amber-500 group-hover:text-ink-950 [&>svg]:size-5">
                 {icon}
               </span>
               <span className="mt-4 text-sm font-semibold text-ink-950">{title}</span>

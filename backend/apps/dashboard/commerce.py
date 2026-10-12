@@ -6,6 +6,7 @@ the pricing rules. These endpoints only store rules: prices, delivery fees and C
 calculated in one place (`orders.pricing`, `payments.cod_rules`), never here.
 """
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Q
 from django.db.models.deletion import ProtectedError
@@ -21,7 +22,7 @@ from apps.catalog.models import Category, Collection, CollectionItem, OptionType
 from apps.core.audit import record_audit
 from apps.core.exceptions import ConflictError
 from apps.core.permissions import IsAdminOrStaffReadOnly, IsAdminRole, managed_store_ids
-from apps.delivery.models import DeliveryZone, FreeDeliveryRule
+from apps.delivery.models import CoverageReview, DeliveryCharges, DeliveryZone, FreeDeliveryRule, parse_bands
 from apps.payments.cod_rules import format_inr
 from apps.payments.models import PaymentSettings
 from apps.stores.models import Store
@@ -484,3 +485,70 @@ class PaymentSettingsView(APIView):
             {f: {"from": before[f], "to": str(getattr(settings, f))} for f in serializer.validated_data},
         )
         return Response(self._payload(settings, request))
+
+
+# --- Delivery charges (distance bands, first orders free, unloading) ------------------------------------
+
+
+class DeliveryChargesSerializer(serializers.ModelSerializer):
+    updated_by_name = serializers.CharField(source="updated_by.full_name", read_only=True, default=None)
+
+    class Meta:
+        model = DeliveryCharges
+        fields = [
+            "distance_bands", "extra_per_km", "free_first_orders", "unloading_fee", "updated_at", "updated_by_name",
+        ]  # fmt: skip
+        read_only_fields = ["updated_at", "updated_by_name"]
+
+    def validate_distance_bands(self, value):
+        try:
+            return [{"up_to_km": str(km), "fee": str(fee)} for km, fee in parse_bands(value)]
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+
+class DeliveryChargesView(APIView):
+    """Delivery charges by road distance, free delivery on a customer's first orders and the unloading
+    fee (administrators change them; store managers may read them). Zones without coordinates, without
+    a city or with unloading switched on are listed so the admin sees what is still to configure."""
+
+    permission_classes = [IsAdminOrStaffReadOnly]
+
+    def _payload(self, charges: DeliveryCharges) -> dict:
+        data = DeliveryChargesSerializer(charges).data
+        stores = Store.objects.filter(is_deleted=False, kind__in=Store.FULFILLMENT_KINDS).order_by("name")
+        data["stores"] = [
+            {
+                "id": s.pk,
+                "name": s.name,
+                "has_coordinates": s.latitude is not None and s.longitude is not None,
+                "zones": [
+                    {"id": z.pk, "name": z.name, "city_wide": z.service_area_id is not None,
+                     "unloading_available": z.unloading_available, "fee_override": z.delivery_fee_override}
+                    for z in s.delivery_zones.filter(is_active=True)
+                ],
+            }
+            for s in stores
+        ]  # fmt: skip
+        data["routing"] = "road distance (OSRM)" if settings.ROUTING_PROVIDER == "osrm" else "estimated (straight line)"
+        data["open_coverage_reviews"] = CoverageReview.objects.filter(status=CoverageReview.Status.OPEN).count()
+        return data
+
+    @extend_schema(responses={200: DeliveryChargesSerializer})
+    def get(self, request):
+        return Response(self._payload(DeliveryCharges.load()))
+
+    @extend_schema(request=DeliveryChargesSerializer, responses={200: DeliveryChargesSerializer})
+    def patch(self, request):
+        charges = DeliveryCharges.load()
+        serializer = DeliveryChargesSerializer(charges, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        before = {f: str(getattr(charges, f)) for f in serializer.validated_data}
+        charges = serializer.save(updated_by=request.user)
+        _audit(
+            request,
+            "delivery_charges.update",
+            charges,
+            {f: {"from": before[f], "to": str(getattr(charges, f))} for f in serializer.validated_data},
+        )
+        return Response(self._payload(charges))

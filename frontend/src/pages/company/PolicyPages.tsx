@@ -149,7 +149,6 @@ export function ShippingPolicyPage() {
           Large orders may come from more than one store, in up to three separate deliveries. Each one is shown and tracked
           on your order page.
         </li>
-        {business.hours && <li>Store hours: {business.hours}.</li>}
       </ul>
 
       <h2>Delivery charges</h2>

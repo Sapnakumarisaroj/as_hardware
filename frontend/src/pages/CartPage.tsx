@@ -9,6 +9,7 @@ import { useAuth } from '@/features/auth/context'
 import { useCart, useRemoveCartItem, useUpdateCartItem, type CartLine } from '@/features/cart/api'
 import { useSmartCart } from '@/features/shopping/api'
 import { SmartCartPanel } from '@/features/shopping/components'
+import { OrderOnWhatsAppButton } from '@/features/whatsapp/components'
 import { useAddresses } from '@/features/addresses/api'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { useCartEstimate } from '@/features/delivery/api'
@@ -336,6 +337,8 @@ export function CartPage() {
             }
           />
           <div className="mt-4 hidden lg:block">{checkoutButton('btn-primary w-full py-3 text-base')}</div>
+          <OrderOnWhatsAppButton from="cart" className="mt-3 w-full py-3" />
+          <p className="mt-1.5 text-center text-xs text-ink-600">Prefer to order by chat? We confirm price and delivery on WhatsApp.</p>
           {/* B2B: a quotation for these lines and quantities; the cart itself is left alone. */}
           <div className="mt-2">
             <RequestQuoteButton />

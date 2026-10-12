@@ -22,7 +22,7 @@ for _env_file in (env.str("ENV_FILE", default=""), BASE_DIR / ".env", REPO_ROOT 
         environ.Env.read_env(str(_env_file))
         break
 
-APP_NAME = env("APP_NAME", default="BoltRun")
+APP_NAME = env("APP_NAME", default="AS Hardware and Plywood")
 APP_VERSION = env("APP_VERSION", default="0.1.0")
 
 SECRET_KEY = env("DJANGO_SECRET_KEY")
@@ -327,6 +327,16 @@ PAYMENT_RECONCILE_AFTER_MINUTES = env.int("PAYMENT_RECONCILE_AFTER_MINUTES", def
 # SMS: mock | none (a paid gateway is one provider class in integrations/messaging; none ships).
 WHATSAPP_PROVIDER = env("WHATSAPP_PROVIDER", default="mock")
 SMS_PROVIDER = env("SMS_PROVIDER", default="mock")
+# Customer sign-in with a mobile number + one-time code (apps/accounts/otp.py). Off until a real SMS gateway
+# (MSG91, DLT-registered) is set up and tested: customers sign in with mobile number + password meanwhile.
+OTP_LOGIN_ENABLED = env.bool("OTP_LOGIN_ENABLED", default=False)
+OTP_LENGTH = 6
+OTP_TTL_SECONDS = env.int("OTP_TTL_SECONDS", default=300)
+OTP_RESEND_SECONDS = env.int("OTP_RESEND_SECONDS", default=30)
+OTP_MAX_SENDS_PER_HOUR = env.int("OTP_MAX_SENDS_PER_HOUR", default=5)
+OTP_MAX_ATTEMPTS = env.int("OTP_MAX_ATTEMPTS", default=5)
+# The mock SMS provider sends nothing: accept it for sign-in codes only in development (DEBUG) and tests.
+OTP_MOCK_ALLOWED = False
 WHATSAPP_ACCESS_TOKEN = env("WHATSAPP_ACCESS_TOKEN", default="")
 WHATSAPP_PHONE_NUMBER_ID = env("WHATSAPP_PHONE_NUMBER_ID", default="")
 WHATSAPP_API_VERSION = env("WHATSAPP_API_VERSION", default="v21.0")

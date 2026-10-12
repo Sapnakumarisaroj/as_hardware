@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import { FullLogo } from '@/components/BrandLogo'
-import { ChatIcon, ClockIcon, MailIcon, PhoneIcon, PinIcon } from '@/components/icons'
+import { ChatIcon, MailIcon, PhoneIcon, PinIcon } from '@/components/icons'
 import { InfoPage } from '@/features/company/InfoPage'
 import { business } from '@/lib/business'
 
@@ -51,11 +51,13 @@ export function ContactPage() {
               Get directions<span className="sr-only"> (opens Google Maps)</span>
             </a>
           </Card>
-          {business.phone && (
+          {business.phones.length > 0 && (
             <Card icon={<PhoneIcon className="size-5" />} title="Phone">
-              <a href={business.phoneHref} className="text-lg font-bold hover:text-amber-700 hover:underline">
-                {business.phone}
-              </a>
+              {business.phones.map((phone) => (
+                <a key={phone.number} href={phone.href} className="block w-fit text-lg font-bold hover:text-amber-700 hover:underline">
+                  {phone.number}
+                </a>
+              ))}
             </Card>
           )}
           {business.email && (
@@ -70,11 +72,6 @@ export function ContactPage() {
               <a href={business.whatsappHref} target="_blank" rel="noopener noreferrer" className="text-lg font-bold hover:text-amber-700 hover:underline">
                 Chat on WhatsApp ({business.whatsapp})
               </a>
-            </Card>
-          )}
-          {business.hours && (
-            <Card icon={<ClockIcon className="size-5" />} title="Hours">
-              {business.hours}
             </Card>
           )}
           <p className="text-sm text-ink-600">

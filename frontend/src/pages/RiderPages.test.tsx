@@ -166,7 +166,8 @@ describe('rider app: access', () => {
     expect(await screen.findByText('Sign in with your delivery partner account.')).toBeInTheDocument()
     expect(api.get).not.toHaveBeenCalledWith('/delivery/me/')
 
-    await user.click(screen.getByRole('link', { name: 'Login / Register' }))
+    await user.click(screen.getByRole('link', { name: 'Login' }))
+    await user.click(await screen.findByRole('link', { name: 'Sign in with email and password' }))
     await user.type(await screen.findByLabelText('Email'), 'ravi@example.com')
     await user.type(screen.getByLabelText('Password'), 'S3cure-pass!')
     await user.click(screen.getByRole('button', { name: 'Login' }))
@@ -179,7 +180,7 @@ describe('rider app: access', () => {
       get: { ...riderGet(), '/categories/': [], '/wishlist/': [], '/cart/': { items: [] }, '/search/recent/': [] },
       post: { '/auth/login/': { access: 'a', refresh: 'r', user: riderUser } },
     })
-    const { user, router } = renderRoute('/login')
+    const { user, router } = renderRoute('/login?method=email')
     await user.type(await screen.findByLabelText('Email'), 'ravi@example.com')
     await user.type(screen.getByLabelText('Password'), 'S3cure-pass!')
     await user.click(screen.getByRole('button', { name: 'Login' }))

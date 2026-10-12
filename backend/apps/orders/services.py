@@ -102,6 +102,7 @@ def place_order(
     idempotency_key: str | None = None,
     use_credits: bool = False,
     quote=None,
+    unloading: bool = False,
 ) -> tuple[Order, Payment]:
     """Create an order from the cart in one transaction (any failure rolls everything back).
 
@@ -173,13 +174,17 @@ def place_order(
         lines = [line_from_variant(item.variant, item.quantity) for item in items]
     coupon = get_valid_coupon(coupon_code, user, lock=True) if coupon_code.strip() else None
     # Offers, then the coupon, then credits (if chosen): one engine, one result.
+    fee_rule = plan.fee_rule
+    if unloading and not fee_rule.unloading_available:
+        raise OrderError("Unloading isn't offered for this address.", code="unloading_unavailable")
     pricing = price_lines(
         lines,
         coupon=coupon,
-        fee_rule=plan.fee_rule,
+        fee_rule=fee_rule,
         user=user,
         use_credits=use_credits,
         automatic_offers=quote is None,
+        unloading=unloading,
     )
     totals, offers = pricing.totals, pricing.offers
     if expected_total is not None and q(expected_total) != totals.grand_total:
@@ -226,6 +231,10 @@ def place_order(
             for a in offers.all_applied
         ],
         delivery_fee=totals.delivery_fee,
+        delivery_charge=totals.delivery_charge,
+        first_order_free_delivery=totals.first_order_free_delivery,
+        unloading_requested=totals.unloading_fee > 0,
+        unloading_fee=totals.unloading_fee,
         free_delivery_reason=totals.free_delivery_reason[:160],
         tax_total=totals.tax_total,
         grand_total=totals.grand_total,

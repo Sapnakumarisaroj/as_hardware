@@ -39,8 +39,18 @@ class RegisterSerializer(serializers.Serializer):
 
 
 class LoginSerializer(serializers.Serializer):
-    email = serializers.CharField(max_length=254)
+    """Customers sign in with their mobile number, staff (and older accounts) with their email."""
+
+    email = serializers.CharField(max_length=254, required=False, allow_blank=True, default="")
+    phone = PhoneField(required=False, allow_blank=True, default="")
     password = _password_field()
+
+    def validate(self, attrs):
+        if attrs["email"].strip() and attrs["phone"]:
+            raise serializers.ValidationError("Sign in with either your mobile number or your email, not both.")
+        if not attrs["email"].strip() and not attrs["phone"]:
+            raise serializers.ValidationError({"phone": ["Enter your mobile number."]})
+        return attrs
 
 
 class RefreshSerializer(serializers.Serializer):
@@ -172,7 +182,9 @@ class ProfileSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         new_email = attrs.get("email")
-        if new_email and new_email != self.instance.email:
+        # A customer who signed up by phone (no email, no password) may add a first email without one.
+        first_email = not self.instance.email and not self.instance.has_usable_password()
+        if new_email and new_email != self.instance.email and not first_email:
             password = attrs.get("current_password") or ""
             if not self.instance.check_password(password):
                 raise serializers.ValidationError(
@@ -212,3 +224,16 @@ class AdminUserUpdateSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=User.Role.choices, required=False)
     is_active = serializers.BooleanField(required=False)
     managed_store_ids = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False)
+
+
+class OtpRequestSerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=20)
+    country_code = serializers.CharField(max_length=5, required=False, default="+91")
+
+
+class OtpVerifySerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=20)
+    country_code = serializers.CharField(max_length=5, required=False, default="+91")
+    code = serializers.RegexField(r"^\s*\d{4,8}\s*$", error_messages={"invalid": "Enter the code from the SMS."})
+    full_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+    email = serializers.EmailField(required=False, allow_blank=True, default="")

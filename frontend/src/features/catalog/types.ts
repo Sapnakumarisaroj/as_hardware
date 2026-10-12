@@ -199,6 +199,8 @@ export interface PriceQuote {
   payment_options?: {
     online: boolean
     cod: { available: boolean; reason_code: string; message: string; max_order_value: string | null }
+    /** Order value (after discounts) from which delivery is free. */
+    free_delivery_from?: string
   }
   note: string
 }

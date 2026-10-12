@@ -16,7 +16,8 @@ ADMIN_SECTIONS = [
     "dashboard", "reports", "assistant", "orders", "products", "categories", "brands", "inventory", "stores",
     "warehouses",
     "delivery", "offers", "coupons", "customers", "returns", "refunds", "support", "analytics", "search",
-    "options", "collections", "free-delivery", "payment-settings", "loyalty", "bundles", "recommendations",
+    "options", "collections", "free-delivery", "payment-settings", "delivery-charges", "loyalty", "bundles",
+    "recommendations",
     "notifications", "quotes",
 ]  # fmt: skip
 MANAGER_SECTIONS = [

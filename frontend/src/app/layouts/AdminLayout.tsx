@@ -50,6 +50,7 @@ const MENU: { title: string; items: [Section, string, string][] }[] = [
       ['coupons', 'Coupons', '/admin/coupons'],
       ['free-delivery', 'Free delivery', '/admin/free-delivery'],
       ['payment-settings', 'Cash on delivery', '/admin/payment-settings'],
+      ['delivery-charges', 'Delivery charges', '/admin/delivery-charges'],
       ['loyalty', 'Loyalty & cashback', '/admin/loyalty'],
     ],
   },
@@ -196,7 +197,7 @@ function Frame({ session }: { session: AdminSession }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const brand = (
     <Link to="/admin" className="flex items-center gap-2 font-extrabold tracking-tight text-white">
-      <BrandLogo size="size-8" suffix="Admin" short />
+      <span className="rounded-md bg-white px-1.5 py-1"><BrandLogo size="h-8" withName={false} /></span><span>AS Hardware <span className="font-normal opacity-70">Admin</span></span>
     </Link>
   )
 

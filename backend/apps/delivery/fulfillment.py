@@ -35,26 +35,63 @@ from .locations import Location
 from .models import DeliveryZone
 from .service_areas import area_contains, area_for, not_covered_message, restricted_areas
 
+# Distance sources that are a real road route; everything else is an estimate (see eta.travel).
+ROUTED_SOURCES = frozenset({"osrm"})
+
+
+def distance_fee(distance_km: float, charges=None) -> Decimal | None:
+    """Fee for this distance from the admin's bands (DeliveryCharges); None = no bands configured."""
+    import math
+
+    from .models import DeliveryCharges
+
+    charges = charges or DeliveryCharges.load()
+    bands = charges.bands()
+    if not bands:
+        return None
+    distance = Decimal(str(max(distance_km, 0)))
+    for up_to, fee in bands:
+        if distance <= up_to:
+            return q(fee)
+    last_km, last_fee = bands[-1]
+    if charges.extra_per_km is None:
+        return q(last_fee)
+    return q(last_fee + charges.extra_per_km * math.ceil(distance - last_km))
+
 
 @dataclass(frozen=True)
 class FeeRule:
     fee: Decimal
     free_min: Decimal
     zone_id: int | None = field(default=None, compare=False)  # whose FreeDeliveryRules apply (orders.pricing)
+    distance_km: float | None = field(default=None, compare=False)  # what the fee was based on
+    distance_estimated: bool = field(default=True, compare=False)  # False only for a routed road distance
+    unloading_available: bool = field(default=False, compare=False)
 
     @classmethod
     def default(cls) -> "FeeRule":
         return cls(q(settings.DELIVERY_FEE), q(settings.FREE_DELIVERY_MIN_ORDER))
 
     @classmethod
-    def for_zone(cls, zone) -> "FeeRule":
+    def for_zone(cls, zone, estimate=None) -> "FeeRule":
+        """The zone's fee override wins; otherwise the distance bands for the estimate's distance;
+        otherwise the flat DELIVERY_FEE setting."""
         default = cls.default()
         if zone is None:
             return default
+        distance = getattr(estimate, "distance_km", None)
+        fee = default.fee
+        if zone.delivery_fee_override is not None:
+            fee = q(zone.delivery_fee_override)
+        elif distance is not None and (banded := distance_fee(distance)) is not None:
+            fee = banded
         return cls(
-            q(zone.delivery_fee_override) if zone.delivery_fee_override is not None else default.fee,
+            fee,
             q(zone.free_delivery_min_order) if zone.free_delivery_min_order is not None else default.free_min,
             zone.pk,
+            distance_km=round(distance, 1) if distance is not None else None,
+            distance_estimated=getattr(estimate, "eta_source", "") not in ROUTED_SOURCES,
+            unloading_available=zone.unloading_available,
         )
 
 
@@ -85,7 +122,17 @@ class Plan:
 
     @property
     def fee_rule(self) -> FeeRule:
-        return FeeRule.for_zone(self.primary.zone if self.primary else None)
+        primary = self.primary
+        if primary is None:
+            return FeeRule.default()
+        rule = FeeRule.for_zone(primary.zone, primary.estimate)
+        # Unloading is offered only when every shipment's zone offers it.
+        every_zone = all(s.zone is not None and s.zone.unloading_available for s in self.shipments)
+        if rule.unloading_available and not every_zone:
+            from dataclasses import replace
+
+            rule = replace(rule, unloading_available=False)
+        return rule
 
     @property
     def estimates(self) -> list[Estimate]:

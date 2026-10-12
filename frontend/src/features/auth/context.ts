@@ -1,12 +1,14 @@
 import { createContext, useContext } from 'react'
 
-import type { RegisterInput, User } from './api'
+import type { LoginCredentials, OtpVerifyInput, RegisterInput, User } from './api'
 
 export interface AuthState {
   status: 'loading' | 'authenticated' | 'anonymous'
   user: User | null
-  login: (email: string, password: string) => Promise<User>
+  login: (credentials: LoginCredentials) => Promise<User>
   register: (input: RegisterInput) => Promise<User>
+  /** Sign in (or sign up) with a mobile number and the SMS code (only when env.otpLoginEnabled). */
+  loginWithOtp: (input: OtpVerifyInput) => Promise<User>
   logout: () => Promise<void>
 }
 

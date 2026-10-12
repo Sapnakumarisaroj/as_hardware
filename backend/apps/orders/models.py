@@ -4,6 +4,7 @@ address edits never change a historical order. Status changes go through
 and writes an OrderStatusHistory row."""
 
 import uuid
+from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
@@ -94,6 +95,12 @@ class Order(TimeStampedModel):
     # Snapshot of the automatic offers applied: [{"id", "name", "badge", "discount", "skus"}].
     applied_offers = models.JSONField(default=list, blank=True)
     delivery_fee = models.DecimalField(**MONEY_FIELD_KWARGS)
+    # The delivery charge before any free-delivery rule (delivery_fee is what was charged).
+    delivery_charge = models.DecimalField(**MONEY_FIELD_KWARGS, default=Decimal("0.00"))
+    # This order used one of the customer's "first N orders" free deliveries (DeliveryCharges).
+    first_order_free_delivery = models.BooleanField(default=False)
+    unloading_requested = models.BooleanField(default=False)
+    unloading_fee = models.DecimalField(**MONEY_FIELD_KWARGS, default=Decimal("0.00"))
     free_delivery_reason = models.CharField(
         max_length=160, blank=True, help_text="Why delivery was free (rule or offer name), when it was."
     )

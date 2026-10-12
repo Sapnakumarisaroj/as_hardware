@@ -62,6 +62,64 @@ def test_login_rejects_bad_password_then_locks_the_account(api_client, user, set
     assert res.json()["error"]["code"] == "too_many_attempts"
 
 
+def _login_phone(api_client, phone, password=PASSWORD):
+    return api_client.post("/api/auth/login/", {"phone": phone, "password": password}, format="json")
+
+
+def test_customer_logs_in_with_mobile_number_and_password(api_client, user):
+    user.phone = "9876543210"
+    user.save()
+    for typed in ("9876543210", "+91 98765 43210", "098765-43210"):
+        res = _login_phone(api_client, typed)
+        assert res.status_code == 200, res.json()
+        assert res.json()["access"] and res.json()["user"]["id"] == user.id
+
+
+def test_mobile_login_errors_are_generic(api_client, user):
+    user.phone = "9876543210"
+    user.save()
+    wrong_password = _login_phone(api_client, "9876543210", "wrong-password")
+    unknown_number = _login_phone(api_client, "9876543299")
+    assert wrong_password.status_code == unknown_number.status_code == 401
+    assert wrong_password.json()["error"] == unknown_number.json()["error"]
+
+
+def test_mobile_and_email_share_one_lockout(api_client, user, settings):
+    user.phone = "9876543210"
+    user.save()
+    for i in range(settings.LOGIN_MAX_FAILURES):
+        if i % 2:
+            _login(api_client, user.email, "wrong-password")
+        else:
+            _login_phone(api_client, "9876543210", "wrong-password")
+    assert _login_phone(api_client, "9876543210").status_code == 429
+    assert _login(api_client, user.email).status_code == 429
+
+
+def test_phone_only_account_has_no_password_to_log_in_with(api_client):
+    from apps.accounts.models import User
+
+    User.objects.create_user(email=None, full_name="Ravi", phone="9876543210")  # unusable password
+    assert _login_phone(api_client, "9876543210", "").status_code == 400
+    assert _login_phone(api_client, "9876543210", "anything-at-all").status_code == 401
+
+
+def test_login_needs_a_mobile_number_or_email(api_client, user):
+    res = api_client.post("/api/auth/login/", {"password": PASSWORD}, format="json")
+    assert res.status_code == 400
+    both = api_client.post(
+        "/api/auth/login/", {"email": user.email, "phone": "9876543210", "password": PASSWORD}, format="json"
+    )
+    assert both.status_code == 400
+
+
+def test_staff_role_is_unchanged_by_mobile_login(api_client, admin_user):
+    admin_user.phone = "9876543211"
+    admin_user.save()
+    res = _login_phone(api_client, "9876543211")
+    assert res.status_code == 200 and res.json()["user"]["role"] == "admin"
+
+
 def test_inactive_account_cannot_log_in(api_client, user):
     user.is_active = False
     user.save()

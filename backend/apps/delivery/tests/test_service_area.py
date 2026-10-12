@@ -170,7 +170,8 @@ def test_checkout_blocks_addresses_outside_bengaluru(auth_client, user, bengalur
     address = create_address(user, postal_code="411038", city="Pune", state="Maharashtra")
     data = auth_client.post("/api/checkout/preview/", {"address_id": address.id}, format="json").json()
     assert data["can_place_order"] is False
-    assert data["blocking_issues"] == [{"code": "not_deliverable", "message": OUTSIDE}]
+    review = " We've passed this address to our team to review; we'll contact you if we can deliver."
+    assert data["blocking_issues"] == [{"code": "not_deliverable", "message": OUTSIDE + review}]
     res = auth_client.post("/api/orders/", {"address_id": address.id, "payment_method": "cod"}, format="json")
     assert res.status_code == 400 and res.json()["error"]["code"] == "not_deliverable"
 

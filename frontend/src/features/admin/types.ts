@@ -28,6 +28,7 @@ export type Section =
   | 'collections'
   | 'free-delivery'
   | 'payment-settings'
+  | 'delivery-charges'
   | 'loyalty'
   | 'notifications'
   | 'reports'
@@ -912,6 +913,31 @@ export interface PaymentSettings {
   updated_by_name: string | null
   stores_without_cod: { id: number; name: string }[]
   zones_without_cod: { id: number; name: string; store_name: string }[]
+}
+
+export interface DistanceBand {
+  up_to_km: string
+  fee: string
+}
+
+/** Delivery charges by distance, free delivery on a customer's first orders, unloading fee (one row). */
+export interface DeliveryCharges {
+  distance_bands: DistanceBand[]
+  /** Added per started km beyond the last band; null = the last band's fee applies. */
+  extra_per_km: string | null
+  free_first_orders: number
+  unloading_fee: string
+  updated_at: string
+  updated_by_name: string | null
+  /** "road distance (OSRM)" or "estimated (straight line)". */
+  routing: string
+  open_coverage_reviews: number
+  stores: {
+    id: number
+    name: string
+    has_coordinates: boolean
+    zones: { id: number; name: string; city_wide: boolean; unloading_available: boolean; fee_override: string | null }[]
+  }[]
 }
 
 // --- Loyalty (Phase 17) ---------------------------------------------------------------------------------

@@ -7,8 +7,8 @@ import { useToast } from '@/components/toast'
 import { AddressFormModal, AddressList } from '@/features/addresses/components'
 import { useAddresses } from '@/features/addresses/api'
 import { useAuth } from '@/features/auth/context'
-import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { checkoutKeys, useCheckoutPreview, type CheckoutCredits, type CheckoutPreview } from '@/features/checkout/api'
+import { CheckoutItem, GstinBox, UnloadingCard } from '@/features/checkout/components'
 import { DeliveryEstimate, FreeDeliveryNote } from '@/features/delivery/components'
 import { useAvailableCoupons } from '@/features/offers/api'
 import { AvailableCouponList, CartOfferNotes } from '@/features/offers/components'
@@ -46,6 +46,13 @@ function DeliveryInfo({ delivery }: { delivery: CheckoutPreview['delivery'] }) {
       {delivery.available && delivery.delivery_type && (
         <p className="text-xs text-ink-600">
           The estimate is calculated when you place the order, from the store’s workload and distance at that moment.
+        </p>
+      )}
+      {delivery.available && delivery.distance_km != null && (
+        <p className="text-xs text-ink-600" data-testid="delivery-distance">
+          {delivery.distance_estimated
+            ? `About ${delivery.distance_km} km from the store (estimated; the charge is based on this estimate).`
+            : `${delivery.distance_km} km by road from the store.`}
         </p>
       )}
     </DeliveryEstimate>
@@ -195,6 +202,7 @@ export function CheckoutPage() {
   const [chosenAddressId, setChosenAddressId] = useState<number | null>(null)
   const [coupon, setCoupon] = useState('')
   const [useCredits, setUseCredits] = useState(false)
+  const [unloading, setUnloading] = useState(false)
   const [method, setMethod] = useState<PaymentMethod | null>(null)
   const [note, setNote] = useState('')
   const [addingAddress, setAddingAddress] = useState(false)
@@ -208,11 +216,12 @@ export function CheckoutPage() {
     list.find((a) => a.is_default)?.id ??
     list[0]?.id ??
     null
+  const selectedAddress = list.find((a) => a.id === addressId) ?? null
 
   // ?quote=<id>: check out an accepted B2B quotation (quoted prices, no offers or coupon) instead of the cart.
   const [searchParams] = useSearchParams()
   const quoteId = Number(searchParams.get('quote')) || null
-  const preview = useCheckoutPreview(addressId, quoteId ? '' : coupon, useCredits, quoteId)
+  const preview = useCheckoutPreview(addressId, quoteId ? '' : coupon, useCredits, quoteId, unloading)
   const placeOrder = usePlaceOrder()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -304,6 +313,7 @@ export function CheckoutPage() {
         idempotencyKey,
         useCredits,
         quoteId,
+        unloading: data.unloading?.selected ?? false,
       },
       {
         onSuccess: (order) => {
@@ -370,25 +380,27 @@ export function CheckoutPage() {
             ) : (
               <AddressList addresses={list} selectedId={addressId} onSelect={setChosenAddressId} />
             )}
+            {selectedAddress && <GstinBox key={selectedAddress.id} address={selectedAddress} />}
           </Step>
 
           <Step n={2} title="Delivery information">
             <DeliveryInfo delivery={data.delivery} />
+            {data.unloading && (
+              <div className="mt-3">
+                <UnloadingCard unloading={data.unloading} onChange={setUnloading} busy={preview.isFetching} />
+              </div>
+            )}
           </Step>
 
           <Step n={3} title={`Order items (${data.cart.items.length})`}>
             <ul className="divide-y divide-steel-100">
               {data.cart.items.map((line) => (
-                <li key={line.id} className="flex items-center gap-3 py-2">
-                  <ProductImage src={line.image} alt={line.product_name} className="size-12 shrink-0 rounded" />
-                  <div className="min-w-0 flex-1 text-sm">
-                    <p className="truncate font-medium">{line.product_name}</p>
-                    <p className="text-xs text-ink-600">
-                      {line.variant_name && `${line.variant_name} · `}Qty {line.quantity}
-                    </p>
-                  </div>
-                  <p className="text-sm font-semibold">{line.line_total ? formatPrice(line.line_total) : '—'}</p>
-                </li>
+                <CheckoutItem
+                  key={line.id}
+                  line={line}
+                  editable={!quoteId}
+                  onChanged={() => void queryClient.invalidateQueries({ queryKey: checkoutKeys.all })}
+                />
               ))}
             </ul>
             {data.cart.items.some((l) => l.price_changed) && (
@@ -477,7 +489,8 @@ export function CheckoutPage() {
               totals={data.totals}
               couponCode={data.coupon?.code}
               offers={data.offers.applied}
-              heading="Order summary"
+              heading="Total bill"
+              collapsible
             />
             <div className="mt-3">
               <FreeDeliveryNote

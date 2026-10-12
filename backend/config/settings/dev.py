@@ -12,5 +12,14 @@ if env("DJANGO_ENV", default="development").lower() == "production":
     )
 
 DEBUG = env.bool("DJANGO_DEBUG", default=True)
+# Development: sign-in codes go to the mock SMS provider and are printed in the server console.
+OTP_MOCK_ALLOWED = DEBUG
+
+# Development and local testing use Razorpay *Test Mode* only: live keys move real money.
+if env("PAYMENT_PROVIDER", default="mock") == "razorpay" and env("RAZORPAY_KEY_ID", default="").startswith("rzp_live_"):
+    raise ImproperlyConfigured(
+        "Live Razorpay keys (rzp_live_…) are refused by the development settings. Use your Test Mode keys "
+        "(rzp_test_…) locally; live keys belong only in the production server's .env."
+    )
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=["http://localhost:5173", "http://127.0.0.1:5173"])
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")

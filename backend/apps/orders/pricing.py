@@ -79,6 +79,14 @@ class Totals:
     bulk_savings: Decimal = ZERO
     # Phase 17: shop credit used on this order (already deducted from grand_total; not in discount_total).
     credit_discount: Decimal = ZERO
+    # The delivery charge before any free-delivery rule (delivery_fee is what is charged).
+    delivery_charge: Decimal = ZERO
+    first_order_free_delivery: bool = False  # the waiver used one of the customer's first free orders
+    unloading_fee: Decimal = ZERO  # optional unloading service (included in grand_total)
+
+    @property
+    def delivery_discount(self) -> Decimal:
+        return q(max(self.delivery_charge - self.delivery_fee, ZERO))
 
     @property
     def goods_after_discounts(self) -> Decimal:
@@ -195,6 +203,27 @@ class DeliveryDecision:
     amount_to_free: Decimal = ZERO
     threshold: Decimal | None = None
     hint: str = ""
+    charge: Decimal = ZERO  # the fee before free-delivery rules
+    first_order: bool = False
+
+
+def first_order_waiver(user) -> str:
+    """Why delivery is free under the "first N orders" rule for this customer, or "" if it doesn't apply.
+    Counted from orders that used the waiver and weren't cancelled (a cancelled or unpaid-and-expired
+    order gives the free delivery back; a retried payment stays on the same order)."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return ""
+    from apps.delivery.models import DeliveryCharges
+
+    from .models import Order, OrderStatus
+
+    limit = DeliveryCharges.load().free_first_orders
+    if not limit:
+        return ""
+    used = Order.objects.filter(user=user, first_order_free_delivery=True).exclude(status=OrderStatus.CANCELLED).count()
+    if used >= limit:
+        return ""
+    return f"Free delivery on your first {limit} orders ({used + 1} of {limit})"
 
 
 def load_free_delivery_rules(zone_id: int | None, now=None) -> list[FreeDeliveryTarget]:
@@ -248,6 +277,22 @@ def resolve_delivery(
     *,
     rules: Sequence[FreeDeliveryTarget] = (),
     free_delivery_offer=None,
+    first_order_reason: str = "",
+) -> DeliveryDecision:
+    decision = _resolve_delivery(lines, nets, net_total, fee_rule, rules=rules, free_delivery_offer=free_delivery_offer)
+    if decision.fee > 0 and first_order_reason:
+        return DeliveryDecision(ZERO, free_reason=first_order_reason, charge=decision.fee, first_order=True)
+    return decision
+
+
+def _resolve_delivery(
+    lines: Sequence[PricedLine],
+    nets: Mapping[int, Decimal],
+    net_total: Decimal,
+    fee_rule=None,
+    *,
+    rules: Sequence[FreeDeliveryTarget] = (),
+    free_delivery_offer=None,
 ) -> DeliveryDecision:
     """The delivery fee, and why it is free or how much more would make it free.
 
@@ -260,9 +305,9 @@ def resolve_delivery(
     if net_total <= 0 or q(fee) <= 0:
         return DeliveryDecision(ZERO)
     if free_delivery_offer is not None:
-        return DeliveryDecision(ZERO, free_reason=free_delivery_offer.offer.name)
+        return DeliveryDecision(ZERO, free_reason=free_delivery_offer.offer.name, charge=q(fee))
     if net_total >= base_min:
-        return DeliveryDecision(ZERO, free_reason=f"Orders from ₹{base_min.normalize():f}")
+        return DeliveryDecision(ZERO, free_reason=f"Orders from ₹{base_min.normalize():f}", charge=q(fee))
 
     parents = None
     if any(r.category_ids for r in rules):
@@ -278,12 +323,12 @@ def resolve_delivery(
             matching = [li for li in lines if _line_matches(li, rule.product_ids, rule.category_ids, parents)]
             eligible, relevant = q(sum((nets.get(li.variant_id, ZERO) for li in matching), ZERO)), bool(matching)
         if eligible > 0 and eligible >= rule.threshold:
-            return DeliveryDecision(ZERO, free_reason=rule.name)
+            return DeliveryDecision(ZERO, free_reason=rule.name, charge=q(fee))
         if relevant:
             hint = "" if rule.targets_everything else rule.scope_label
             reachable.append((q(rule.threshold - eligible), rule.threshold, hint))
     shortfall, threshold, hint = min(reachable, key=lambda r: r[0])
-    return DeliveryDecision(q(fee), amount_to_free=shortfall, threshold=threshold, hint=hint)
+    return DeliveryDecision(q(fee), amount_to_free=shortfall, threshold=threshold, hint=hint, charge=q(fee))
 
 
 # --- 3./4. Totals --------------------------------------------------------------------------------
@@ -298,6 +343,8 @@ def calculate_totals(
     free_delivery_rules: Sequence[FreeDeliveryTarget] = (),
     free_delivery_offer=None,
     credits: Decimal = ZERO,
+    first_order_reason: str = "",
+    unloading_fee: Decimal = ZERO,
 ) -> Totals:
     """Totals for priced lines.
 
@@ -321,8 +368,15 @@ def calculate_totals(
     factor = (net / after_offers) if after_offers else ZERO
     final_nets = {variant_id: amount * factor for variant_id, amount in nets.items()}
     delivery = resolve_delivery(
-        lines, final_nets, net, fee_rule, rules=free_delivery_rules, free_delivery_offer=free_delivery_offer
+        lines,
+        final_nets,
+        net,
+        fee_rule,
+        rules=free_delivery_rules,
+        free_delivery_offer=free_delivery_offer,
+        first_order_reason=first_order_reason,
     )
+    unloading = q(unloading_fee) if net > 0 else ZERO
     credit = q(min(max(credits, ZERO), net))
     paid_factor = ((net - credit) / after_offers) if after_offers else ZERO
     tax_total = q(sum((included_tax(nets[line.variant_id] * paid_factor, line.gst_rate) for line in lines), ZERO))
@@ -333,7 +387,7 @@ def calculate_totals(
         discount_total=q(offer_discount + coupon),
         delivery_fee=delivery.fee,
         tax_total=tax_total,
-        grand_total=q(net + delivery.fee),
+        grand_total=q(net + delivery.fee + unloading),
         offer_discount=offer_discount,
         coupon_discount=coupon,
         free_delivery_reason=delivery.free_reason,
@@ -342,6 +396,9 @@ def calculate_totals(
         free_delivery_hint=delivery.hint,
         bulk_savings=q(sum((line.bulk_saving for line in lines), ZERO)),
         credit_discount=credit,
+        delivery_charge=delivery.charge,
+        first_order_free_delivery=delivery.first_order,
+        unloading_fee=unloading,
     )
 
 
@@ -386,6 +443,7 @@ def price_lines(
     user=None,
     use_credits: bool = False,
     automatic_offers: bool = True,
+    unloading: bool = False,
 ) -> Pricing:
     """The one pricing path for cart, checkout, coupon preview and order placement:
     automatic offers first, then the coupon on what remains, then (when `use_credits`) the
@@ -412,6 +470,12 @@ def price_lines(
         ]
         discount = coupon_discount(coupon, net_lines, q(sum((n.line_total for n in net_lines), ZERO)))
     rules = load_free_delivery_rules(getattr(fee_rule, "zone_id", None)) if lines else []
+    first_order_reason = first_order_waiver(user) if lines else ""
+    unloading_fee = ZERO
+    if unloading and getattr(fee_rule, "unloading_available", False):
+        from apps.delivery.models import DeliveryCharges
+
+        unloading_fee = q(DeliveryCharges.load().unloading_fee)
 
     def totals_with(credits: Decimal) -> Totals:
         return calculate_totals(
@@ -422,6 +486,8 @@ def price_lines(
             free_delivery_rules=rules,
             free_delivery_offer=offers.free_delivery,
             credits=credits,
+            first_order_reason=first_order_reason,
+            unloading_fee=unloading_fee,
         )
 
     totals = totals_with(ZERO)

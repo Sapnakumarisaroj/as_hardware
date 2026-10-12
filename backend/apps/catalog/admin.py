@@ -69,7 +69,10 @@ class BrandAdmin(admin.ModelAdmin):
 
 class VariantInline(admin.TabularInline):
     model = ProductVariant
-    fields = ("sku", "name", "attributes", "mrp", "price", "weight_grams", "is_default", "is_active", "price_approved", "sort_order")
+    fields = (
+        "sku", "name", "attributes", "mrp", "price", "weight_grams", "is_default", "is_active", "price_approved",
+        "sort_order",
+    )  # fmt: skip
     extra = 0
     min_num = 1
 

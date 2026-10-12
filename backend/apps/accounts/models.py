@@ -18,10 +18,11 @@ from apps.core.validators import MaxFileSizeValidator, gstin_validator, phone_va
 class UserManager(BaseUserManager):
     use_in_migrations = True
 
-    def _create_user(self, email: str, password: str | None, **extra):
-        if not email:
-            raise ValueError("Email is required.")
-        email = self.normalize_email(email).lower()
+    def _create_user(self, email: str | None, password: str | None, **extra):
+        # Customers who sign up with their mobile number (OTP) may have no email; staff always have one.
+        if not email and not extra.get("phone"):
+            raise ValueError("Email or phone is required.")
+        email = self.normalize_email(email).lower() if email else None
         user = self.model(email=email, **extra)
         user.set_password(password)
         user.save(using=self._db)
@@ -48,7 +49,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         DELIVERY_PARTNER = "delivery_partner", "Delivery partner"
         ADMIN = "admin", "Admin"
 
-    email = models.EmailField(unique=True)
+    # Blank for customers who signed up with their mobile number only (stored as NULL: unique index).
+    email = models.EmailField(unique=True, null=True, blank=True)
     # Stored as 10 digits (see core.validators.normalize_phone).
     phone = models.CharField(max_length=15, unique=True, null=True, blank=True, validators=[phone_validator])
     full_name = models.CharField(max_length=150, blank=True)
@@ -70,13 +72,15 @@ class User(AbstractBaseUser, PermissionsMixin):
     REQUIRED_FIELDS: list[str] = []
 
     def __str__(self) -> str:
-        return self.email
+        return self.email or (f"+91 {self.phone}" if self.phone else f"user {self.pk}")
 
     def save(self, *args, **kwargs):
         # Case-insensitive uniqueness that works on every DB vendor (MariaDB has no functional
         # indexes): always store lowercase, and let the plain unique index do the rest.
         if self.email:
             self.email = self.email.strip().lower()
+        if not self.email:
+            self.email = None  # phone-only customer
         if self.phone == "":
             self.phone = None  # keep the unique index happy for users without a phone
         super().save(*args, **kwargs)
@@ -90,10 +94,31 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.is_superuser or self.role == self.Role.ADMIN
 
     def get_full_name(self) -> str:
-        return self.full_name or self.email
+        return self.full_name or self.email or str(self)
 
     def get_short_name(self) -> str:
-        return (self.full_name or self.email).split(" ")[0]
+        return (self.full_name or self.email or str(self)).split(" ")[0]
+
+
+class PhoneOTP(models.Model):
+    """A one-time sign-in code sent by SMS (accounts.otp). Only a keyed hash of the code is stored; a code
+    expires, allows a few attempts, and works once. Requesting a new code supersedes the old one."""
+
+    phone = models.CharField(max_length=10, db_index=True)
+    code_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    consumed_at = models.DateTimeField(null=True, blank=True)  # used, or superseded by a newer code
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["phone", "created_at"])]
+        verbose_name = "phone sign-in code"
+
+    def __str__(self) -> str:
+        return f"Code for ******{self.phone[-4:]} ({self.created_at:%Y-%m-%d %H:%M})"
 
 
 class BuyerType(models.TextChoices):

@@ -115,26 +115,37 @@ def register_customer(*, email: str, password: str, full_name: str, phone: str, 
     return user
 
 
-def login(*, email: str, password: str, request=None):
+def login(*, password: str, email: str = "", phone: str = "", request=None):
+    """Email + password, or mobile number (10 digits, as stored) + password. A number signs in the account it
+    belongs to with that account's password; lockout counts per account, whichever identifier was typed."""
     email = (email or "").strip().lower()
-    if security.is_locked_out(email):
-        record_audit(action="auth.login_locked", request=request, changes={"email_sha256": _email_fingerprint(email)})
+    lock_key = email
+    if phone:
+        email = User.objects.filter(phone=phone).values_list("email", flat=True).first() or ""
+        lock_key = email or f"phone:{phone}"
+    invalid = InvalidCredentials("Invalid mobile number or password.") if phone else InvalidCredentials()
+    if security.is_locked_out(lock_key):
+        record_audit(
+            action="auth.login_locked", request=request, changes={"email_sha256": _email_fingerprint(lock_key)}
+        )
         raise TooManyAttempts()
 
-    user = authenticate(request, email=email, password=password)
+    user = authenticate(request, email=email, password=password) if email else None
     if user is None:
-        candidate = User.objects.filter(email=email).first()
+        candidate = User.objects.filter(email=email).first() if email else None
         if candidate is not None and not candidate.is_active:
             if candidate.check_password(password):
                 record_audit(action="auth.login_inactive", target=candidate, request=request)
                 raise AccountInactive()
         else:
             make_password(password)  # same cost as the check above, so timing doesn't tell accounts apart
-        security.register_failure(email)
-        record_audit(action="auth.login_failed", request=request, changes={"email_sha256": _email_fingerprint(email)})
-        raise InvalidCredentials()
+        security.register_failure(lock_key)
+        record_audit(
+            action="auth.login_failed", request=request, changes={"email_sha256": _email_fingerprint(lock_key)}
+        )
+        raise invalid
 
-    security.clear_failures(email)
+    security.clear_failures(lock_key)
     update_last_login(None, user)
     record_audit(action="auth.login", actor=user, target=user, request=request)
     return user

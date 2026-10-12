@@ -48,9 +48,9 @@ describe('footer', () => {
     const contact = within(footer).getByRole('region', { name: 'Contact Information' })
     expect(within(contact).getByRole('link', { name: 'ashardwareplywood@gmail.com' })).toHaveAttribute('href', 'mailto:ashardwareplywood@gmail.com')
     expect(within(contact).getByRole('link', { name: '7338192616' })).toHaveAttribute('href', 'tel:7338192616')
-    expect(contact).toHaveTextContent('AS Hardware & Plywood 264, 2nd Cross Road Pete Krishnappa Layout, Kalkere Bengaluru, Karnataka 560013 India')
+    expect(contact).toHaveTextContent('AS Hardware and Plywood 264, 2nd Cross Road Pete Krishnappa Layout, Kalkere Bengaluru, Karnataka 560013 India')
     expect(within(contact).getByRole('link', { name: /Get Directions/ })).toHaveAttribute('href', DIRECTIONS)
-    expect(footer).toHaveTextContent(`© ${new Date().getFullYear()} AS Hardware & Plywood. All rights reserved.`)
+    expect(footer).toHaveTextContent(`© ${new Date().getFullYear()} AS Hardware and Plywood. All rights reserved.`)
     // No large logo in the footer, and the unconfirmed second number is never shown.
     expect(within(footer).queryByRole('img')).not.toBeInTheDocument()
     expect(document.body).not.toHaveTextContent('63631462556')
@@ -66,18 +66,18 @@ describe('company and policy pages', () => {
     expect(within(article).getAllByRole('heading', { level: 2 }).length).toBeGreaterThan(0)
     // The page's own entry is marked as current in the side menu.
     expect(screen.getByRole('navigation', { name: /pages$/ }).querySelector('[aria-current="page"]')).toHaveTextContent(title)
-    await waitFor(() => expect(document.title).toBe(`${title} | AS Hardware & Plywood`))
+    await waitFor(() => expect(document.title).toBe(`${title} | AS Hardware and Plywood`))
   })
 
   it('contact page shows the address and working phone, email and directions links', async () => {
     api()
     renderRoute('/contact')
     const article = (await screen.findByRole('heading', { level: 1, name: 'Contact' })).closest('article') as HTMLElement
-    expect(article).toHaveTextContent(`AS Hardware & Plywood ${ADDRESS}.`)
+    expect(article).toHaveTextContent(`AS Hardware and Plywood ${ADDRESS}.`)
     expect(within(article).getByRole('link', { name: '7338192616' })).toHaveAttribute('href', 'tel:7338192616')
     expect(within(article).getByRole('link', { name: 'ashardwareplywood@gmail.com' })).toHaveAttribute('href', 'mailto:ashardwareplywood@gmail.com')
     expect(within(article).getByRole('link', { name: /Get directions/ })).toHaveAttribute('href', DIRECTIONS)
-    expect(within(article).queryByRole('link', { name: /WhatsApp/ })).not.toBeInTheDocument()
+    expect(within(article).getByRole('link', { name: /WhatsApp/ }).getAttribute('href')).toContain('https://wa.me/917338192616')
   })
 
   it('price lists show live catalogue prices for the chosen department', async () => {
@@ -125,21 +125,23 @@ describe('company and policy pages', () => {
 })
 
 describe('branding', () => {
-  it('keeps the round logo in the header and on the login page', async () => {
+  it('shows the official logo on the login page', async () => {
     api()
     renderRoute('/login')
-    const home = await screen.findByRole('link', { name: 'AS Hardware & Plywood home' })
-    expect(home.querySelector('img')).toHaveAttribute('src', '/images/as-hardware-logo-mark.png')
-    expect(home).toHaveTextContent('AS Hardware & Plywood')
+    const home = await screen.findByRole('link', { name: 'AS Hardware and Plywood home' })
+    expect(within(home).getByRole('img', { name: 'AS Hardware and Plywood' })).toHaveAttribute('src', '/images/as-hardware-logo-symbol.png')
+    expect(home).toHaveTextContent('Hardware and Plywood')
   })
 
-  it('shows the logo mark in the storefront header without stretching it', async () => {
+  it('shows the AS symbol with the name below it in the storefront header, at its own proportions', async () => {
     api()
     renderRoute('/about')
     await screen.findByRole('heading', { level: 1, name: 'About Us' })
-    const mark = within(screen.getByRole('banner')).getByRole('link', { name: 'AS Hardware & Plywood home' }).querySelector('img')
-    expect(mark).toHaveAttribute('src', '/images/as-hardware-logo-mark.png')
-    expect(mark).toHaveAttribute('width', '256')
-    expect(mark).toHaveAttribute('height', '256')
+    const logo = within(screen.getByRole('banner')).getByRole('link', { name: 'AS Hardware and Plywood home' }).querySelector('img')
+    expect(logo).toHaveAttribute('src', '/images/as-hardware-logo-symbol.png')
+    expect(logo).toHaveAttribute('width', '421')
+    expect(logo).toHaveAttribute('height', '360')
+    expect(logo?.className).toContain('w-auto')
+    expect(logo?.className).not.toContain('rounded-full')
   })
 })

@@ -437,6 +437,10 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "credit_discount",
+            "delivery_charge",
+            "first_order_free_delivery",
+            "unloading_requested",
+            "unloading_fee",
             "loyalty",
             "order_number",
             "public_id",
@@ -573,6 +577,9 @@ class PlaceOrderSerializer(serializers.Serializer):
         default=False,
         help_text="Pay part with shop credit; the server decides how much (≤ the shop's share).",
     )
+    unloading = serializers.BooleanField(
+        required=False, default=False, help_text="Add the paid unloading service (only where it is offered)."
+    )
 
 
 class CheckoutPreviewRequestSerializer(serializers.Serializer):
@@ -580,6 +587,7 @@ class CheckoutPreviewRequestSerializer(serializers.Serializer):
     coupon_code = serializers.CharField(max_length=30, required=False, allow_blank=True, default="")
     use_credits = serializers.BooleanField(required=False, default=False)
     quote_id = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+    unloading = serializers.BooleanField(required=False, default=False)
 
 
 class _IssueSerializer(serializers.Serializer):
@@ -639,6 +647,18 @@ class DeliveryQuoteSerializer(serializers.Serializer):
     free_delivery_hint = serializers.CharField(
         allow_blank=True, help_text='Which items count towards free delivery, e.g. "Cement" (empty = everything)'
     )
+    charge = serializers.DecimalField(max_digits=12, decimal_places=2, help_text="Delivery charge before free rules")
+    first_order_free = serializers.BooleanField()
+    distance_estimated = serializers.BooleanField(
+        help_text="True unless the fee used a routed road distance (then distance_km is approximate)"
+    )
+
+
+class _UnloadingSerializer(serializers.Serializer):
+    available = serializers.BooleanField()
+    selected = serializers.BooleanField()
+    fee = serializers.DecimalField(max_digits=12, decimal_places=2)
+    message = serializers.CharField()
 
 
 class CheckoutPreviewSerializer(serializers.Serializer):
@@ -656,6 +676,7 @@ class CheckoutPreviewSerializer(serializers.Serializer):
     payment_methods = serializers.SerializerMethodField()
     credits = serializers.SerializerMethodField()
     cashback = serializers.SerializerMethodField()
+    unloading = _UnloadingSerializer()
 
     def get_credits(self, obj) -> dict:
         """Phase 17: available credit, the most this order may use (shop's share of the goods after offers

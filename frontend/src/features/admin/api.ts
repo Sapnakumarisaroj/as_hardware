@@ -46,6 +46,7 @@ import type {
   OptionTypeInput,
   OptionTypeRow,
   PaymentSettings,
+  DeliveryCharges,
   ProductInput,
   RecommendationRuleInput,
   RecommendationRuleRow,
@@ -560,6 +561,23 @@ export function useSavePaymentSettings() {
     async (data: Partial<Pick<PaymentSettings, 'cod_enabled' | 'cod_max_order_value'>>) =>
       (await api.patch<PaymentSettings>('/admin/payment-settings/', data)).data,
     ['payment-settings'],
+  )
+}
+
+export function useDeliveryCharges() {
+  const staff = useIsStaff()
+  return useQuery({
+    queryKey: ['admin', 'delivery-charges'],
+    queryFn: async () => (await api.get<DeliveryCharges>('/admin/delivery-charges/')).data,
+    enabled: staff,
+  })
+}
+
+export function useSaveDeliveryCharges() {
+  return useChange(
+    async (data: Partial<Pick<DeliveryCharges, 'distance_bands' | 'extra_per_km' | 'free_first_orders' | 'unloading_fee'>>) =>
+      (await api.patch<DeliveryCharges>('/admin/delivery-charges/', data)).data,
+    ['delivery-charges'],
   )
 }
 

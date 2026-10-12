@@ -129,6 +129,9 @@ class DeliveryZone(TimeStampedModel):
         help_text="Order value (after discounts) for free delivery in this zone. Blank = global setting.",
     )
     cod_enabled = models.BooleanField(default=True, help_text="Allow cash on delivery for addresses in this zone.")
+    unloading_available = models.BooleanField(
+        default=False, help_text="Offer the paid unloading service (ground level) for addresses in this zone."
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -141,6 +144,124 @@ class DeliveryZone(TimeStampedModel):
     @property
     def postal_code_set(self) -> set[str]:
         return _codes(self.postal_codes)
+
+
+def default_distance_bands() -> list[dict]:
+    return [
+        {"up_to_km": "3", "fee": "30"},
+        {"up_to_km": "5", "fee": "50"},
+        {"up_to_km": "8", "fee": "80"},
+        {"up_to_km": "12", "fee": "120"},
+    ]
+
+
+class DeliveryCharges(models.Model):
+    """Shop-wide delivery charge rules, editable by administrators (one row, pk=1).
+
+    Fee by road distance from the store: the first band whose `up_to_km` is not exceeded. Beyond the
+    last band, `extra_per_km` is added for every started km above it (blank = the last band's fee).
+    A zone's `delivery_fee_override` still wins. Distance comes from the routing provider (OSRM =
+    road distance) or is an estimate (straight line × ROAD_DISTANCE_FACTOR, or the city's assumed
+    distance when coordinates are missing); estimates are labelled as such to customers.
+    """
+
+    distance_bands = models.JSONField(
+        default=default_distance_bands,
+        blank=True,
+        help_text='[{"up_to_km": "3", "fee": "30"}, …] in increasing km. Empty = the flat DELIVERY_FEE setting.',
+    )
+    extra_per_km = models.DecimalField(
+        **MONEY_FIELD_KWARGS,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="Added per started km beyond the last band. Blank = the last band's fee applies.",
+    )
+    free_first_orders = models.PositiveSmallIntegerField(
+        default=3, help_text="Free delivery on each customer's first N orders that would carry a delivery charge."
+    )
+    unloading_fee = models.DecimalField(
+        **MONEY_FIELD_KWARGS,
+        default=Decimal("199.00"),
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="Optional unloading service (ground level only), offered in zones that allow it.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        verbose_name = verbose_name_plural = "delivery charges"
+
+    def __str__(self) -> str:
+        return "Delivery charges"
+
+    @classmethod
+    def load(cls) -> "DeliveryCharges":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        try:
+            bands = parse_bands(self.distance_bands)
+        except ValueError as exc:
+            raise ValidationError({"distance_bands": str(exc)}) from exc
+        self.distance_bands = [{"up_to_km": str(km), "fee": str(fee)} for km, fee in bands]
+
+    def bands(self) -> list[tuple[Decimal, Decimal]]:
+        return parse_bands(self.distance_bands)
+
+
+def parse_bands(raw) -> list[tuple[Decimal, Decimal]]:
+    """[(up_to_km, fee)] sorted, validated: km strictly increasing and > 0, fees ≥ 0."""
+    from decimal import InvalidOperation
+
+    if not isinstance(raw, list):
+        raise ValueError("Distance bands must be a list.")
+    bands = []
+    for row in raw:
+        try:
+            km, fee = Decimal(str(row["up_to_km"])), Decimal(str(row["fee"]))
+        except (KeyError, TypeError, InvalidOperation):
+            raise ValueError('Each band needs "up_to_km" and "fee" numbers.') from None
+        if km <= 0 or fee < 0:
+            raise ValueError("Band distances must be above 0 and fees 0 or more.")
+        bands.append((km, fee.quantize(Decimal("0.01"))))
+    bands.sort()
+    if len({km for km, _ in bands}) != len(bands):
+        raise ValueError("Two bands have the same distance.")
+    return bands
+
+
+class CoverageReview(TimeStampedModel):
+    """A customer address the delivery area doesn't cover, flagged for an administrator to look at
+    (e.g. add its PIN code to a zone or the city). One open review per address."""
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        COVERED = "covered", "Now covered"
+        DECLINED = "declined", "Not served"
+
+    address = models.ForeignKey("accounts.Address", on_delete=models.CASCADE, related_name="coverage_reviews")
+    postal_code = models.CharField(max_length=6, blank=True)
+    city = models.CharField(max_length=80, blank=True)
+    message = models.CharField(max_length=255, blank=True, help_text="What the customer was told.")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN, db_index=True)
+    note = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["address"], condition=Q(status="open"), name="one_open_coverage_review_per_address"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.postal_code or self.city or 'address'} ({self.get_status_display()})"
 
 
 class FreeDeliveryRule(TimeStampedModel):

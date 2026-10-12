@@ -3,16 +3,17 @@
 /* Industrial identity: charcoal + steel neutrals, one brand colour (safety amber).
    amber-500 fills buttons and accents; amber-700 is the readable text/link shade (5:1 on white). */
 @theme {
-  --color-ink-950: #121417;
-  --color-ink-900: #1c1f24;
-  --color-ink-800: #2a2e35;
-  --color-ink-700: #3a3f47;
-  --color-ink-600: #4b525c;
+  /* Text and dark accents: the dark navy of the AS logo (one theme: off-white, navy, AS orange/gold). */
+  --color-ink-950: #0f1b38;
+  --color-ink-900: #16264a;
+  --color-ink-800: #26355a;
+  --color-ink-700: #3a4768;
+  --color-ink-600: #4f5a77;
   --color-steel-400: #8a929d;
   --color-steel-300: #b9bfc7;
   --color-steel-200: #d5d9de;
   --color-steel-100: #eceef1;
-  --color-steel-50: #f6f7f8;
+  --color-steel-50: #f7f8fa; /* page background: off-white */
   --color-amber-50: #fff8e6;
   --color-amber-100: #fff1cc;
   --color-amber-400: #ffb81f;

@@ -91,11 +91,12 @@ def payment_options(total, postal_code=None) -> dict:
     Checkout decides again for the whole order and address."""
     from types import SimpleNamespace
 
+    from apps.delivery.fulfillment import FeeRule
     from apps.delivery.models import DeliveryZone
     from apps.delivery.pin import pin_context
     from apps.payments.cod_rules import cod_eligibility
 
-    plan = None
+    plan = zone = None
     pin = pin_context(postal_code)
     if pin is not None and pin.zone_id is not None:
         zone = DeliveryZone.objects.select_related("store").filter(pk=pin.zone_id).first()
@@ -104,6 +105,8 @@ def payment_options(total, postal_code=None) -> dict:
     cod = cod_eligibility(grand_total=total, plan=plan)
     return {
         "online": True,
+        # Order value (after discounts) from which delivery is free: the zone's own rule, else the shop default.
+        "free_delivery_from": _money(FeeRule.for_zone(zone).free_min),
         "cod": {
             "available": cod.available,
             "reason_code": cod.reason_code,

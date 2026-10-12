@@ -240,7 +240,7 @@ class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
 
 class CheckoutPreviewView(APIView):
     """Validate the cart for checkout and return server-calculated totals, coupon and delivery info.
-    Nothing is reserved or written."""
+    Nothing is reserved; an address outside the delivery area is flagged for review (CoverageReview)."""
 
     @extend_schema(request=CheckoutPreviewRequestSerializer, responses=CheckoutPreviewSerializer)
     def post(self, request):
@@ -252,6 +252,7 @@ class CheckoutPreviewView(APIView):
             coupon_code=serializer.validated_data["coupon_code"],
             use_credits=serializer.validated_data["use_credits"],
             quote_id=serializer.validated_data.get("quote_id"),
+            unloading=serializer.validated_data["unloading"],
         )
         return Response(CheckoutPreviewSerializer(summary, context={"request": request}).data)
 

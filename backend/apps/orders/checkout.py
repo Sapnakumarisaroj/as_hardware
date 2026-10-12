@@ -53,6 +53,9 @@ class DeliveryQuote:
     # Phase 15: why delivery is free ("Orders from ₹499", a rule or an offer), or which items count.
     free_delivery_reason: str = ""
     free_delivery_hint: str = ""
+    charge: Decimal = ZERO  # the delivery charge before free-delivery rules
+    first_order_free: bool = False
+    distance_estimated: bool = True  # False only when the fee used a routed road distance
 
 
 @dataclass
@@ -71,6 +74,7 @@ class CheckoutSummary:
     credits: object | None = None  # Phase 17: loyalty.ledger.CreditQuote (available, cap, usable)
     use_credits: bool = False
     cashback: object | None = None  # loyalty.ledger.CashbackQuote: earned if this order is placed
+    unloading: dict = field(default_factory=dict)  # {available, selected, fee, message}
 
     @property
     def can_place_order(self) -> bool:
@@ -109,6 +113,9 @@ def quote_from_plan(plan: Plan | None, totals: Totals, fee_rule: FeeRule | None)
         "amount_to_free_delivery": to_free,
         "free_delivery_reason": totals.free_delivery_reason,
         "free_delivery_hint": totals.free_delivery_hint if fee > 0 else "",
+        "charge": totals.delivery_charge,
+        "first_order_free": totals.first_order_free_delivery,
+        "distance_estimated": rule.distance_estimated,
     }
     if plan is None:
         return DeliveryQuote(available=False, **base, message=CHOOSE_ADDRESS_MESSAGE)
@@ -156,6 +163,7 @@ def build_checkout(
     coupon_code: str = "",
     use_credits: bool = False,
     quote_id: int | None = None,
+    unloading: bool = False,
 ) -> CheckoutSummary:
     """`quote_id`: preview an accepted quotation instead of the cart (quoted prices; no offers or coupon)."""
     quote = None
@@ -191,13 +199,15 @@ def build_checkout(
     lines = cart.priced_lines
     offers_on = quote is None
     pricing = price_lines(
-        lines, fee_rule=fee_rule, user=user, use_credits=use_credits, automatic_offers=offers_on
+        lines, fee_rule=fee_rule, user=user, use_credits=use_credits, automatic_offers=offers_on, unloading=unloading
     )  # automatic offers (not on quotations)
     coupon, coupon_error = None, None
     if coupon_code.strip() and lines:
         try:
             coupon = get_valid_coupon(coupon_code, user)
-            pricing = price_lines(lines, coupon=coupon, fee_rule=fee_rule, user=user, use_credits=use_credits)
+            pricing = price_lines(
+                lines, coupon=coupon, fee_rule=fee_rule, user=user, use_credits=use_credits, unloading=unloading
+            )
         except ServiceError as exc:
             coupon = None
             coupon_error = {"code": exc.error_code, "message": str(exc.detail), "details": exc.details}
@@ -206,9 +216,14 @@ def build_checkout(
 
     delivery = quote_from_plan(plan, totals, fee_rule)
     if cart.lines and not cart.issues and plan is not None and not plan.deliverable:
-        issues.append({"code": "not_deliverable", "message": plan.message})
+        message = plan.message
+        if plan.reason_code == "out_of_zone" and address is not None and flag_for_review(address, message):
+            message += " We've passed this address to our team to review; we'll contact you if we can deliver."
+            delivery.message = message
+        issues.append({"code": "not_deliverable", "message": message})
     cod = cod_eligibility(grand_total=totals.grand_total, plan=plan if plan and plan.deliverable else None)
     cashback = cashback_for(user, lines, paid_by_line(lines, totals, pricing.offers.line_discounts)) if lines else None
+    unloading_quote = unloading_offer(fee_rule, selected=unloading)
 
     return CheckoutSummary(
         cart=cart,
@@ -225,4 +240,48 @@ def build_checkout(
         credits=pricing.credits,
         use_credits=use_credits,
         cashback=cashback,
+        unloading=unloading_quote,
     )
+
+
+def flag_for_review(address, message: str) -> bool:
+    """Record an uncovered address for the admin (once while open). True when it is (now) flagged."""
+    from django.db import IntegrityError, transaction
+
+    from apps.delivery.models import CoverageReview
+
+    if CoverageReview.objects.filter(address=address, status=CoverageReview.Status.OPEN).exists():
+        return True
+    try:
+        with transaction.atomic():
+            CoverageReview.objects.create(
+                address=address, postal_code=address.postal_code or "", city=address.city or "", message=message[:255]
+            )
+    except IntegrityError:  # a concurrent preview flagged it first
+        pass
+    return True
+
+
+UNLOADING_DESCRIPTION = (
+    "Our team unloads your order at ground level at the delivery address. "
+    "Not included: carrying items upstairs or inside, shifting, installation or fitting."
+)
+
+
+def unloading_offer(fee_rule, *, selected: bool) -> dict:
+    """Is the paid unloading service offered for this address, and at what fee (DeliveryCharges)."""
+    from apps.delivery.models import DeliveryCharges
+
+    available = bool(getattr(fee_rule, "unloading_available", False))
+    if fee_rule is None:
+        message = "Choose a delivery address to see if unloading is available."
+    elif not available:
+        message = "Unloading isn't offered for this address."
+    else:
+        message = UNLOADING_DESCRIPTION
+    return {
+        "available": available,
+        "selected": selected and available,
+        "fee": q(DeliveryCharges.load().unloading_fee),
+        "message": message,
+    }

@@ -14,7 +14,7 @@ describe('dashboard: who gets in', () => {
     const api = mockApi({ get: {} })
     renderRoute('/admin/orders')
     expect(await screen.findByText('Sign in with your staff account to open the dashboard.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Login / Register' })).toHaveAttribute('href', '/login?next=%2Fadmin%2Forders')
+    expect(screen.getByRole('link', { name: 'Login' })).toHaveAttribute('href', '/login?next=%2Fadmin%2Forders')
     expect(staffCalls(api)).toEqual([])
   })
 
@@ -55,8 +55,8 @@ describe('dashboard: who gets in', () => {
       },
       post: { '/auth/login/': { access: 'a', refresh: 'r', user } },
     })
-    const { user: actor, router } = renderRoute('/login')
-    await actor.type(await screen.findByLabelText('Email'), user.email)
+    const { user: actor, router } = renderRoute('/login?method=email')
+    await actor.type(await screen.findByLabelText('Email'), user.email ?? '')
     await actor.type(screen.getByLabelText('Password'), 'S3cure-pass!')
     await actor.click(screen.getByRole('button', { name: 'Login' }))
     await waitFor(() => expect(currentUrl(router)).toBe(home))
@@ -88,6 +88,7 @@ describe('dashboard: navigation', () => {
       ['Coupons', '/admin/coupons'],
       ['Free delivery', '/admin/free-delivery'],
       ['Cash on delivery', '/admin/payment-settings'],
+      ['Delivery charges', '/admin/delivery-charges'],
       ['Loyalty & cashback', '/admin/loyalty'],
       ['Inventory', '/admin/inventory'],
       ['Delivery', '/admin/delivery'],

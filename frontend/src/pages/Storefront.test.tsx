@@ -35,7 +35,7 @@ function quote(overrides: Partial<PriceQuote> = {}): PriceQuote {
     stock_status: 'in_stock',
     within_stock: true,
     max_order_quantity: 50,
-    payment_options: { online: true, cod: { available: true, reason_code: '', message: '', max_order_value: '10000.00' } },
+    payment_options: { online: true, cod: { available: true, reason_code: '', message: '', max_order_value: '10000.00' }, free_delivery_from: '2500.00' },
     note: 'Preview.',
     ...overrides,
   }
@@ -79,6 +79,7 @@ describe('product page (Phase 16)', () => {
     expect(screen.getByText(/Price includes 18% GST/)).toBeInTheDocument()
     // Payment options come from the quote (same COD rules as checkout).
     expect(await screen.findByTestId('payment-options')).toHaveTextContent('Cash on delivery · for orders up to ₹10,000')
+    expect(screen.getByTestId('payment-options')).toHaveTextContent('Free delivery on orders of ₹2,500 or more')
     // SEO: product structured data and a canonical URL without query parameters.
     const ld = document.head.querySelector('script[type="application/ld+json"]')
     expect(JSON.parse(ld?.textContent ?? '{}')).toMatchObject({ '@type': 'Product', name: 'FR PVC Insulated Copper Wire' })

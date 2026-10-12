@@ -13,6 +13,7 @@ from .base import (
 )
 
 DEBUG = False  # never read from the environment in production
+OTP_MOCK_ALLOWED = False  # a mock SMS never "sends" a sign-in code in production
 
 # A short, example or Django-generated "insecure" key signs sessions, JWTs, reset links and delivery codes.
 if len(SECRET_KEY) < 50 or SECRET_KEY.startswith("django-insecure") or "change-me" in SECRET_KEY.lower():

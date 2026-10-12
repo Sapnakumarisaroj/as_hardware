@@ -61,6 +61,13 @@ export interface CartTotals {
   free_delivery_hint?: string
   /** Phase 17: shop credit used (already taken off grand_total). */
   credit_discount?: string
+  /** Delivery charge before free-delivery rules; delivery_discount = what was waived. */
+  delivery_charge?: string
+  delivery_discount?: string
+  /** The waiver used one of the customer's "first N orders" free deliveries. */
+  first_order_free_delivery?: boolean
+  /** Optional unloading service (included in grand_total). */
+  unloading_fee?: string
 }
 
 export interface AppliedOffer {

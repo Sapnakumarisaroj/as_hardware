@@ -95,7 +95,7 @@ function Section({ title, tone, children }: { title: string; tone: SectionTone; 
     tone === 'dark'
       ? 'my-6 rounded-3xl bg-ink-900 p-4 sm:p-6 lg:p-8'
       : tone === 'tinted'
-        ? 'my-6 rounded-3xl bg-gradient-to-br from-amber-50 via-white to-amber-50/60 p-4 ring-1 ring-amber-100 sm:p-6 lg:p-8'
+        ? 'my-6 rounded-3xl bg-amber-50/70 p-4 ring-1 ring-amber-100 sm:p-6 lg:p-8'
         : 'py-6 sm:py-8'
   return (
     <section aria-labelledby={railId(title)} className={`animate-rise ${shell}`}>
