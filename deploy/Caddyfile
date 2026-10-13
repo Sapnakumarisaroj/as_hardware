@@ -1,0 +1,14 @@
+# HTTPS for the shop (Let's Encrypt certificates, renewed automatically; kept in the caddy_data volume).
+# Only SITE_DOMAIN and www.SITE_DOMAIN are served: any other domain on this server is untouched.
+{
+	email {$ACME_EMAIL}
+}
+
+www.{$SITE_DOMAIN} {
+	redir https://{$SITE_DOMAIN}{uri} permanent
+}
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:8080
+}

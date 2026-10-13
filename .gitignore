@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # Python
 __pycache__/
@@ -44,3 +45,12 @@ Thumbs.db
 
 # Local backups (database copies, media archives)
 backups/
+
+# Private catalogue data (owner review sheets and prices): kept locally, copied to the server privately
+catalogue/release/
+catalogue/audit/128_OPTIONS_FOR_MY_REVIEW.xlsx
+catalogue/audit/128_OPTIONS_MRP_FILLED (1).xlsx
+catalogue/audit/AS_Hardware_Product_List.xlsx
+catalogue/audit/owner_review_result.xlsx
+catalogue/staging/owner_review_prices.csv
+catalogue/staging/owner_review_publish.csv

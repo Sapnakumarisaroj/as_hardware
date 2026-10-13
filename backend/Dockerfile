@@ -19,7 +19,15 @@ COPY requirements/ requirements/
 RUN pip install -r requirements/prod.txt
 COPY . .
 ENV DJANGO_SETTINGS_MODULE=config.settings.prod
-RUN DJANGO_SECRET_KEY=build-only DATABASE_URL=sqlite:////tmp/build.db ALLOW_MOCK_PAYMENTS_IN_PROD=true python manage.py collectstatic --noinput
+# collectstatic only reads code: a throwaway key (generated here, never stored) and a scratch SQLite path satisfy the
+# production checks without any real secret or the shop's database. Real values come from .env at runtime.
+RUN DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(64))')" \
+    DJANGO_ALLOWED_HOSTS=localhost PAYMENT_PROVIDER=none \
+    DATABASE_URL=sqlite:////tmp/build.db ALLOW_SQLITE_IN_PROD=true \
+    python manage.py collectstatic --noinput \
+ && rm -f /tmp/build.db \
+ && mkdir -p /app/media /app/private_media && chown app:app /app/media /app/private_media
 USER app
 EXPOSE 8000
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--access-logfile", "-"]
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "60", \
+     "--access-logfile", "-"]

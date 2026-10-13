@@ -3,6 +3,7 @@ from django.core.exceptions import ImproperlyConfigured
 from .base import *  # noqa: F401,F403
 from .base import (
     ALLOWED_HOSTS,
+    DB_VENDOR,
     PAYMENT_PROVIDER,
     RAZORPAY_KEY_ID,
     RAZORPAY_KEY_SECRET,
@@ -23,6 +24,13 @@ if len(SECRET_KEY) < 50 or SECRET_KEY.startswith("django-insecure") or "change-m
     )
 if not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS:
     raise ImproperlyConfigured("Set DJANGO_ALLOWED_HOSTS to the site's own host names (no '*') in production.")
+# A missing DATABASE_URL would otherwise fall back to a SQLite file inside the app (lost with the container).
+# ALLOW_SQLITE_IN_PROD is only for steps that never touch the shop's data, e.g. collectstatic in the image build.
+if DB_VENDOR not in ("postgresql", "mysql") and not env.bool("ALLOW_SQLITE_IN_PROD", default=False):
+    raise ImproperlyConfigured(
+        "Production needs DATABASE_URL=postgres://… (or mysql://…); SQLite is refused. On the VPS it is set by "
+        "docker-compose.prod.yml from POSTGRES_* in .env."
+    )
 
 # Mock payments must never silently run in production.
 if PAYMENT_PROVIDER == "mock" and not env.bool("ALLOW_MOCK_PAYMENTS_IN_PROD", default=False):

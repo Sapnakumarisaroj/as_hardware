@@ -1,5 +1,19 @@
 # Catalogue staging
 
+## Release package for a new database (production) — `build_release.py`
+
+```
+python -I catalogue/build_release.py                       # validate + write catalogue/release/ (git-ignored, private)
+python -I catalogue/build_release.py --verify EXPORT.csv    # compare `manage.py export_catalog` output with the package
+```
+
+Applies the reviewed sheets below in order (products → reference prices → approved prices → owner review → GST/HSN →
+publish → stock BLR-01 → pictures, with the owner's picture approval of 11-Oct-2026) and stops without writing anything
+if a price is missing, unapproved, above MRP or approved twice with different values, or if any row points at an unknown
+SKU or file. `release/REPORT.md` lists what still needs the owner. The package needs the private
+`staging/owner_review_*.csv` files, so it is built on the owner's PC and copied to the server over SSH
+(docs/DEPLOYMENT.md › A5); `--verify` needs only the package.
+
 ## Full catalogue (all 10 HomeRun workbooks) — imported locally 11-Oct-2026, all unpublished
 
 ```

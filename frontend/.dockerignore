@@ -1,3 +1,8 @@
 node_modules
 dist
 coverage
+*.tsbuildinfo
+# Build settings come in as VITE_* build arguments (public values only); never copy env files into an image
+.env
+.env.*
+*.log

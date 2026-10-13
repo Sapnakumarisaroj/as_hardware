@@ -1,0 +1,127 @@
+# Production stack for the VPS (docs/DEPLOYMENT.md › "Hostinger VPS with Docker").
+#   cp .env.production.example .env   (fill in; never commit .env)
+#   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# caddy (HTTPS, ports 80/443) → web (nginx: React site + /api proxy) → backend (Django/gunicorn) → db (PostgreSQL)
+# jobs runs the background queue (refunds, order expiry, notifications) every minute.
+# PostgreSQL and Django have no published ports: they are reachable only on the internal networks.
+name: ashardware
+
+x-backend: &backend
+  build:
+    context: ./backend
+    target: prod
+  image: ashardware-backend:${RELEASE_TAG:-current}
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DJANGO_SETTINGS_MODULE: config.settings.prod
+    DJANGO_ENV: production
+    DATABASE_URL: postgres://${POSTGRES_USER:?set in .env}:${POSTGRES_PASSWORD:?set in .env}@db:5432/${POSTGRES_DB:?set in .env}
+    BACKGROUND_JOBS_MODE: cron
+  volumes:
+    - media:/app/media
+    - private_media:/app/private_media
+  networks: [data, app]
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    <<: *backend
+    healthcheck:
+      # Production redirects plain HTTP and checks the host name, so ask the way Caddy/nginx would.
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import os, urllib.request as u;
+          host = os.environ["DJANGO_ALLOWED_HOSTS"].split(",")[0].strip();
+          u.urlopen(u.Request("http://127.0.0.1:8000/api/health/",
+          headers={"Host": host, "X-Forwarded-Proto": "https"}), timeout=5)
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  jobs:
+    <<: *backend
+    command: ["sh", "-c", "while true; do python manage.py run_jobs --max-seconds 240; sleep 60; done"]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./frontend
+      target: prod
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_APP_NAME: ${VITE_APP_NAME:-AS Hardware and Plywood}
+        VITE_SUPPORT_PHONE: ${VITE_SUPPORT_PHONE:-}
+        VITE_SUPPORT_WHATSAPP: ${VITE_SUPPORT_WHATSAPP:-}
+        VITE_SUPPORT_EMAIL: ${VITE_SUPPORT_EMAIL:-}
+        VITE_STORE_HOURS: ${VITE_STORE_HOURS:-}
+        VITE_MAP_TILE_URL: ${VITE_MAP_TILE_URL:-}
+        VITE_MAP_CENTER: ${VITE_MAP_CENTER:-}
+        VITE_OTP_LOGIN_ENABLED: "false"
+    image: ashardware-web:${RELEASE_TAG:-current}
+    restart: unless-stopped
+    volumes:
+      - media:/srv/media:ro
+    networks: [app]
+    # Localhost only: for checks on the server before DNS points here (see docs). The public entry is Caddy.
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?set in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [app]
+    depends_on:
+      - web
+
+networks:
+  data:
+    internal: true  # PostgreSQL: no route in or out
+  app: {}
+
+volumes:
+  pgdata:
+  media:
+  private_media:
+  caddy_data:
+  caddy_config:

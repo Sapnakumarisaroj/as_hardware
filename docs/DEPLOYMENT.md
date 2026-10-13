@@ -1,6 +1,191 @@
 # Deployment Guide
 
-Target: **the owner's existing paid web hosting + domain.** No other hosting provider or paid service is required.
+Target: **the Hostinger VPS (Ubuntu, Docker) for `ashardwareandplywood.com`** — section A. Sections 0–12 below describe
+the shared-hosting (cPanel/Passenger) alternative and are kept for reference.
+
+The Ajoriya Interiors website runs on separate Hostinger shared hosting: nothing here touches its hosting or DNS.
+
+---
+
+## A. Hostinger VPS with Docker (production)
+
+### A1. What runs
+
+```
+Internet ─► caddy :80/:443 (HTTPS, Let's Encrypt) ─► web :8080 (nginx: React site, /api proxy, /media)
+                                                       └─► backend :8000 (Django + gunicorn) ─► db :5432 (PostgreSQL 16)
+                                                           jobs (run_jobs every minute: refunds, order expiry, notifications)
+```
+
+| File | Purpose |
+|---|---|
+| `docker-compose.prod.yml` | The five services, private networks, volumes, restart policies, health checks |
+| `backend/Dockerfile` (`prod`) | Python 3.11 + gunicorn; static files collected at build time (WhiteNoise) |
+| `frontend/Dockerfile` (`prod`) | Builds the site (`VITE_API_BASE_URL=/api`) and serves it with nginx |
+| `frontend/nginx/*.conf` | SPA routing, `/api/` `/django-admin/` `/static/` `/sitemap.xml` → Django, `/media/`, cache + security headers, 12 MB uploads |
+| `deploy/Caddyfile` | HTTPS for `SITE_DOMAIN` (and `www.` → redirect). No other domain is served |
+| `.env.production.example` | Template for the server's `.env` (placeholders only) |
+| `deploy/backup.sh` | PostgreSQL dump + public and private media archives |
+| `catalogue/build_release.py` | Builds and verifies the catalogue import package (`catalogue/release/`, private) |
+
+Same domain for site and API: no CORS, one certificate, cookies and CSRF on one origin.
+
+Safety built in:
+- PostgreSQL has **no published port** and sits on an `internal` network (no route in or out). Django is not published
+  either; the only public ports are Caddy's 80/443. (Docker-published ports bypass UFW, so nothing else is published;
+  `web` listens on `127.0.0.1:8080` only, for checks on the server.)
+- Production settings refuse: `DEBUG` (never read), a weak `DJANGO_SECRET_KEY`, an empty or `*` `DJANGO_ALLOWED_HOSTS`,
+  **SQLite or a missing `DATABASE_URL`**, `PAYMENT_PROVIDER=mock`, and `razorpay` without all three keys.
+- COD only at launch: `PAYMENT_PROVIDER=none` (online payment shown as unavailable). SMS/OTP sign-in stays off
+  (`OTP_LOGIN_ENABLED=False`; the site is built with `VITE_OTP_LOGIN_ENABLED=false`); customers use mobile number + password.
+- Secrets live only in the server's `.env` (git-ignored, `chmod 600`) and are never baked into images (`.dockerignore`).
+- Private media (delivery proof photos) is in its own volume that nginx cannot read.
+
+### A2. One-time server preparation
+
+1. SSH in as a sudo user (not root). Update: `sudo apt update && sudo apt upgrade -y`.
+2. Firewall: `sudo ufw allow OpenSSH && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp && sudo ufw allow 443/udp && sudo ufw enable`.
+3. Swap (helps builds on 8 GB): `sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`
+   and add `/swapfile none swap sw 0 0` to `/etc/fstab`.
+4. Docker is installed (29.x, Compose v5). Add your user to the `docker` group or use `sudo`.
+5. Code: `git clone https://github.com/Sapnakumarisaroj/as_hardware.git /opt/ashardware && cd /opt/ashardware`
+   (then `git checkout <release commit>`).
+
+### A3. Configuration (`.env`, never committed)
+
+```bash
+cd /opt/ashardware
+cp .env.production.example .env && chmod 600 .env
+python3 -c "import secrets; print(secrets.token_urlsafe(64))"   # → DJANGO_SECRET_KEY
+python3 -c "import secrets; print(secrets.token_hex(32))"       # → POSTGRES_PASSWORD (letters/digits: it goes in a URL)
+nano .env                                                        # replace every CHANGE_ME
+grep -n CHANGE_ME .env                                           # must print nothing
+```
+Required: `SITE_DOMAIN`, `ACME_EMAIL`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` (the domain first),
+`CSRF_TRUSTED_ORIGINS`, `FRONTEND_URL`, `POSTGRES_*`, SMTP (`EMAIL_*`, `DEFAULT_FROM_EMAIL`: password reset and order
+emails), `INVOICE_SELLER_*`. Keep `PAYMENT_PROVIDER=none`, `OTP_LOGIN_ENABLED=False`, `TRUSTED_PROXY_COUNT=2`.
+Never paste `.env` into chats, tickets or Git.
+
+### A4. Build and start (before DNS points here)
+
+```bash
+sed -i "s/^RELEASE_TAG=.*/RELEASE_TAG=$(git rev-parse --short HEAD)/" .env   # images tagged per release, kept in .env (rollback, A8)
+C="docker compose -f docker-compose.prod.yml"
+$C build
+$C run --rm backend python manage.py check --deploy  # must report no security issues
+$C up -d db
+```
+
+### A5. First deployment: database, catalogue, admin
+
+The catalogue package is **private** (it holds the reviewed prices): build it on the owner's PC and copy it over SSH,
+never through Git.
+
+On the PC (`C:\dev\as_hardware`):
+```powershell
+.\.venv\Scripts\python -I catalogue\build_release.py          # validates everything; writes catalogue\release\
+scp -r catalogue\release user@VPS:/opt/ashardware/catalogue/   # 01_products.csv, 02_images.csv, 03_publish.csv,
+                                                               # shop_setup.json, REPORT.md, SHA256SUMS
+```
+
+On the VPS:
+```bash
+cd /opt/ashardware && C="docker compose -f docker-compose.prod.yml"
+(cd catalogue/release && sha256sum -c SHA256SUMS)              # the copy is complete and unchanged
+M="-v $PWD/catalogue:/srv/catalogue:ro -v $PWD/assets:/srv/assets:ro"
+$C run --rm backend python manage.py migrate --noinput
+$C run --rm backend python manage.py createcachetable          # rate-limit cache (database cache)
+$C run --rm backend python manage.py apply_taxonomy --dry-run
+$C run --rm backend python manage.py apply_taxonomy
+$C run --rm $M backend python manage.py loaddata /srv/catalogue/release/shop_setup.json   # store BLR-01, delivery zone, charges
+$C run --rm $M backend python manage.py import_catalog /srv/catalogue/release/01_products.csv            # dry run
+$C run --rm $M backend python manage.py import_catalog /srv/catalogue/release/01_products.csv --commit   # products, prices, GST, stock
+$C run --rm $M backend python manage.py import_product_images /srv/catalogue/release/02_images.csv --root /srv/assets/as-hardware-images --commit
+$C run --rm $M backend python manage.py import_catalog /srv/catalogue/release/03_publish.csv --commit    # publish (after pictures)
+$C run --rm backend python manage.py rebuild_search_index
+$C run --rm backend python manage.py createsuperuser           # the owner's admin account (prompts for the password)
+```
+Run `loaddata shop_setup.json` only on a **new, empty** database (it writes fixed ids: store 1, zone 1, charges 1; the
+zone links to the Bengaluru service area that `migrate` creates as id 1).
+
+Check that the database matches the package (prices, approval, stock, GST/HSN, published state):
+```bash
+install -d -m 777 /tmp/ashw     # the container runs as an unprivileged user
+$C run --rm -v /tmp/ashw:/out backend python manage.py export_catalog --output /out/export.csv
+python3 -I catalogue/build_release.py --verify /tmp/ashw/export.csv     # must print "0 difference(s)"
+rm -rf /tmp/ashw
+```
+Never run `seed_demo_data` on this server.
+
+### A6. Start everything and check (still before DNS)
+
+```bash
+$C up -d
+$C ps                                        # db, backend, web: healthy; jobs, caddy: running
+$C logs --tail=50 backend jobs
+curl -s -H "Host: ashardwareandplywood.com" -H "X-Forwarded-Proto: https" http://127.0.0.1:8080/api/health/
+#   → {"status":"ok", … "database":"ok"}
+curl -sI -H "Host: ashardwareandplywood.com" http://127.0.0.1:8080/products/x | head -1   # 200 (SPA route)
+```
+From your PC (SSH tunnel), browse the site before DNS: `ssh -L 8080:127.0.0.1:8080 user@VPS`, then open
+`http://localhost:8080` to look at pages. The API refuses that address (production host and HTTPS checks), so test
+sign-in and checkout after DNS + HTTPS (A7).
+
+### A7. DNS and HTTPS (owner's step, when ready)
+
+Only for `ashardwareandplywood.com` (never the Ajoriya Interiors domain): an `A` record for `@` and for `www` to the
+VPS IP. Caddy then obtains the certificates by itself (watch `$C logs -f caddy`). Check:
+- `https://ashardwareandplywood.com/api/health/` → `"database":"ok"`; `http://` redirects to `https://`; `www.` redirects.
+- Sign up with a mobile number + password, add to cart, checkout with **cash on delivery**, see the order in `/admin`.
+- Set the store's map location (Dashboard › Stores › BLR-01) once verified: distance-based delivery charges need it.
+
+### A8. Updates and rollback
+
+```bash
+cd /opt/ashardware && C="docker compose -f docker-compose.prod.yml"
+bash deploy/backup.sh                          # ALWAYS before an update
+git fetch && git checkout <new commit>
+sed -i "s/^RELEASE_TAG=.*/RELEASE_TAG=$(git rev-parse --short HEAD)/" .env
+$C build
+$C run --rm backend python manage.py migrate --plan     # read what will change
+$C run --rm backend python manage.py migrate --noinput
+$C up -d
+```
+Rollback (code only, no migration since the previous release): `git checkout <previous commit>`,
+set `RELEASE_TAG=<previous short hash>` in `.env` (its images are still on the server), `$C up -d`.
+The tag lives in `.env` (not a shell `export`) so every later `$C up -d`, in any session, uses the same images.
+Rollback after a migration: restore the database from the backup taken just before (A9), then roll back the code.
+Never edit an applied migration. `docker image prune` only after a release has proved itself.
+
+### A9. Backups and restore
+
+Nightly (as root, `crontab -e`):
+```
+30 2 * * * cd /opt/ashardware && bash deploy/backup.sh >> /var/log/ashardware-backup.log 2>&1
+```
+Writes `/var/backups/ashardware/db-<time>.dump`, `media-<time>.tar.gz`, `private_media-<time>.tar.gz` (mode 600), keeps
+14 days. Also copy them off the server regularly (e.g. `scp` to the owner's PC or Hostinger's backup storage).
+
+Restore (stop writers first: `$C stop web jobs backend`):
+```bash
+# Database (replaces the current data):
+$C exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner' \
+  < /var/backups/ashardware/db-<time>.dump
+# Public media / private media:
+docker run --rm -v ashardware_media:/data -v /var/backups/ashardware:/backup alpine:3 \
+  sh -c 'rm -rf /data/* && tar -xzf /backup/media-<time>.tar.gz -C /data'
+docker run --rm -v ashardware_private_media:/data -v /var/backups/ashardware:/backup alpine:3 \
+  sh -c 'rm -rf /data/* && tar -xzf /backup/private_media-<time>.tar.gz -C /data'
+$C up -d
+```
+Test a restore once on a scratch copy before launch (e.g. restore into a second project with `-p ashw-restore-test`).
+
+### A10. Later, each with the owner's approval
+
+- Live payments: Razorpay live keys + webhook (§5 "Razorpay go-live"), `PAYMENT_PROVIDER=razorpay`.
+- SMS/OTP sign-in: a real SMS gateway (MSG91 + DLT), then `OTP_LOGIN_ENABLED=True` and a rebuild of `web` with
+  `VITE_OTP_LOGIN_ENABLED=true`.
+- WhatsApp Cloud API (§5 "WhatsApp go-live").
 
 ---
 
@@ -256,8 +441,7 @@ Razorpay dashboard for `https://api.yourdomain.com/api/payments/webhooks/razorpa
 **Alternative, single domain** (if subdomains aren't possible): mount the Python app at `yourdomain.com/api`. That needs a
 small URL-prefix change; ask before choosing this.
 
-**VPS alternative:** `gunicorn config.wsgi:application` behind nginx, with systemd units. `backend/Dockerfile` (`prod`
-target) is available if Docker is present.
+**VPS:** see section A (Docker: Caddy + nginx + gunicorn + PostgreSQL), the chosen production setup.
 
 ## 6. Static files
 

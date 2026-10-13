@@ -4,6 +4,7 @@ import io
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -225,16 +226,23 @@ def test_search_index_errors_do_not_echo_internal_details(admin_client, monkeypa
 # --- Production settings ---------------------------------------------------------------------------------------
 
 
-def _settings_import(module: str, **env) -> subprocess.CompletedProcess:
-    environment = {k: v for k, v in os.environ.items() if not k.startswith(("DJANGO_", "PAYMENT_", "RAZORPAY_"))}
-    environment.update(DJANGO_SETTINGS_MODULE=module, ENV_FILE=str(BACKEND / "no-such.env"), **env)
-    code = "import django; django.setup(); from django.conf import settings; print(settings.DEBUG)"
+def _settings_import(module: str, show: str = "settings.DEBUG", **env) -> subprocess.CompletedProcess:
+    prefixes = ("DJANGO_", "PAYMENT_", "RAZORPAY_", "DATABASE_URL", "ALLOW_SQLITE", "OTP_", "SMS_")
+    environment = {k: v for k, v in os.environ.items() if not k.startswith(prefixes)}
+    # An existing empty ENV_FILE stops the settings from reading the developer's own .env (a missing one doesn't).
+    empty_env = Path(tempfile.gettempdir()) / "as-hardware-tests-empty.env"
+    empty_env.write_text("", encoding="utf-8")
+    # Importing settings never connects, so a PostgreSQL URL needs no server.
+    environment.update(DJANGO_SETTINGS_MODULE=module, ENV_FILE=str(empty_env), DATABASE_URL=PG_URL)
+    environment.update(env)
+    code = f"import django; django.setup(); from django.conf import settings; print({show})"
     return subprocess.run(  # noqa: S603 — our own interpreter and fixed code
         [sys.executable, "-c", code], cwd=BACKEND, env=environment, capture_output=True, text=True, timeout=120
     )
 
 
 STRONG = "k" * 30 + "Zq8-" + "x" * 30
+PG_URL = "postgres://shop:not-a-real-password@db:5432/shop"
 PROD = {
     "PAYMENT_PROVIDER": "razorpay",
     "RAZORPAY_KEY_ID": "a",
@@ -283,3 +291,22 @@ def test_production_accepts_a_cod_only_shop_but_still_refuses_mock_payments():
     assert _settings_import("config.settings.prod", PAYMENT_PROVIDER="none", **base).returncode == 0
     mock = _settings_import("config.settings.prod", PAYMENT_PROVIDER="mock", **base)
     assert mock.returncode != 0 and "PAYMENT_PROVIDER=none" in mock.stderr
+    no_keys = _settings_import("config.settings.prod", PAYMENT_PROVIDER="razorpay", **base)
+    assert no_keys.returncode != 0 and "RAZORPAY_KEY_ID" in no_keys.stderr
+
+
+@pytest.mark.parametrize("url", ["", "sqlite:////tmp/shop.db"])
+def test_production_refuses_sqlite(url):
+    base = {"DJANGO_SECRET_KEY": STRONG, "DJANGO_ALLOWED_HOSTS": "shop.example.com", "PAYMENT_PROVIDER": "none"}
+    result = _settings_import("config.settings.prod", DATABASE_URL=url, **base)
+    assert result.returncode != 0 and "SQLite is refused" in result.stderr
+    # Only the image build (collectstatic, no shop data) opts in.
+    build = _settings_import("config.settings.prod", DATABASE_URL=url, ALLOW_SQLITE_IN_PROD="true", **base)
+    assert build.returncode == 0
+
+
+def test_production_keeps_sms_sign_in_off_and_never_trusts_the_mock():
+    base = {"DJANGO_SECRET_KEY": STRONG, "DJANGO_ALLOWED_HOSTS": "shop.example.com", "PAYMENT_PROVIDER": "none"}
+    show = "settings.OTP_LOGIN_ENABLED, settings.OTP_MOCK_ALLOWED, settings.DB_VENDOR"
+    result = _settings_import("config.settings.prod", show=show, **base)
+    assert result.returncode == 0 and result.stdout.split() == ["False", "False", "postgresql"]

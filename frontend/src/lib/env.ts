@@ -11,7 +11,8 @@ function mapCenter() {
 
 export const env = {
   appName: import.meta.env.VITE_APP_NAME || 'AS Hardware and Plywood',
-  apiBaseUrl: (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/+$/, ''),
+  /** Production builds default to the same-site API (nginx proxies /api/ to Django); never to localhost. */
+  apiBaseUrl: (import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:8000/api')).replace(/\/+$/, ''),
   supportPhone: import.meta.env.VITE_SUPPORT_PHONE || '7338192616',
   supportWhatsApp: import.meta.env.VITE_SUPPORT_WHATSAPP || '917338192616',
   supportEmail: import.meta.env.VITE_SUPPORT_EMAIL || 'ashardwareplywood@gmail.com',
