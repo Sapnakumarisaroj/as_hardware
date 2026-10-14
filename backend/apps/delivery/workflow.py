@@ -67,17 +67,24 @@ def earning_for(assignment: DeliveryAssignment) -> Decimal:
 # --- Locking and checks --------------------------------------------------------------------------
 
 
+def _assignment_for_update(assignment_id: int):
+    """The job row, locked. Only the assignment row is locked (`of=("self",)`): `shipment` (empty on a return
+    pickup) and `return_request` (empty on a delivery) are optional, so they are LEFT OUTER JOINs, and PostgreSQL
+    refuses FOR UPDATE on the nullable side of an outer join. The order row is locked first by `_lock`."""
+    return (
+        DeliveryAssignment.objects.select_for_update(of=("self",))
+        .select_related("partner__user", "shipment__store", "return_request")
+        .filter(pk=assignment_id)
+    )
+
+
 def _lock(assignment_id: int, *, rider=None) -> tuple[Order, DeliveryAssignment]:
     """Lock order → assignment. With `rider` (a user), the job must be theirs."""
     found = DeliveryAssignment.objects.filter(pk=assignment_id).values("order_id", "partner__user_id").first()
     if found is None or (rider is not None and found["partner__user_id"] != rider.pk):
         raise NotFoundError("Delivery job not found.")
     order = Order.objects.select_for_update().get(pk=found["order_id"])
-    assignment = (
-        DeliveryAssignment.objects.select_for_update()
-        .select_related("partner__user", "shipment__store", "return_request")
-        .get(pk=assignment_id)
-    )
+    assignment = _assignment_for_update(assignment_id).get()
     assignment.order = order
     return order, assignment
 

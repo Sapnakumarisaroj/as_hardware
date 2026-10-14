@@ -290,16 +290,21 @@ def _mark(note: Notification, status: str, *, error: str = "", **fields) -> None
     note.save()
 
 
+def _notification_for_update(notification_id: int):
+    """The notification row, locked. Only that row is locked (`of=("self",)`): the user's profile is a reverse
+    one-to-one (a LEFT OUTER JOIN), and PostgreSQL refuses FOR UPDATE on the nullable side of an outer join."""
+    return (
+        Notification.objects.select_for_update(of=("self",))
+        .select_related("user", "user__profile")
+        .filter(pk=notification_id)
+    )
+
+
 def deliver(notification_id: int) -> str:
     """Send one pending email/WhatsApp/SMS notification. Raises on a temporary failure so the job queue
     retries it with backoff; every other outcome is written on the row."""
     with transaction.atomic():
-        note = (
-            Notification.objects.select_for_update()
-            .select_related("user", "user__profile")
-            .filter(pk=notification_id)
-            .first()
-        )
+        note = _notification_for_update(notification_id).first()
         if note is None or note.status != S.PENDING:
             return "skipped"
         note.attempts += 1
