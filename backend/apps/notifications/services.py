@@ -565,9 +565,20 @@ def sample_context(spec: Event) -> dict:
 # --- Delays (periodic) -----------------------------------------------------------------------------
 
 
+def _delay_notices():
+    """The "running late" notices already sent for the outer Order (same customer, same order number). KT reads the
+    JSON key as text (->>): PostgreSQL can't compare jsonb (->) with the order_number varchar."""
+    from django.db.models import OuterRef
+    from django.db.models.fields.json import KT
+
+    return Notification.objects.annotate(notified_order=KT("data__order_number")).filter(
+        event="delivery.delayed", user_id=OuterRef("user_id"), notified_order=OuterRef("order_number")
+    )
+
+
 def tell_about_delays(now=None) -> int:
     """Active orders past their delivery estimate get one "running late" message (and their staff)."""
-    from django.db.models import Exists, OuterRef
+    from django.db.models import Exists
 
     from apps.orders.models import Order, OrderStatus
 
@@ -581,9 +592,7 @@ def tell_about_delays(now=None) -> int:
         OrderStatus.PICKED_UP,
         OrderStatus.OUT_FOR_DELIVERY,
     ]
-    told = Notification.objects.filter(
-        event="delivery.delayed", user_id=OuterRef("user_id"), data__order_number=OuterRef("order_number")
-    )
+    told = _delay_notices()
     late = (
         Order.objects.filter(status__in=active, estimated_delivery_at__lt=cutoff)
         .exclude(Exists(told))
