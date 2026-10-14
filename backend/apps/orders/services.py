@@ -92,6 +92,19 @@ def _record_status(order: Order, from_status: str, to_status: str, actor=None, n
     )
 
 
+def _cart_items_for_update(user):
+    """The customer's cart lines, locked for checkout. Only the cart_item rows are locked (`of=("self",)`):
+    the product's brand is optional, so it is joined with LEFT OUTER JOIN, and PostgreSQL refuses FOR UPDATE on
+    the nullable side of an outer join ("FOR UPDATE cannot be applied to the nullable side of an outer join")."""
+    return (
+        CartItem.objects.select_for_update(of=("self",))
+        .filter(cart__user=user)
+        .select_related("variant__product__brand")
+        .prefetch_related("variant__price_tiers")
+        .order_by("id")
+    )
+
+
 @transaction.atomic
 def place_order(
     *,
@@ -149,13 +162,7 @@ def place_order(
             raise OrderError("Coupons can't be used on a quotation order.", code="coupon_not_allowed")
         quote, items = lock_for_checkout(quote, user)
     else:
-        items = list(
-            CartItem.objects.select_for_update()
-            .filter(cart__user=user)
-            .select_related("variant__product__brand")
-            .prefetch_related("variant__price_tiers")
-            .order_by("id")
-        )
+        items = list(_cart_items_for_update(user))
     if not items:
         raise OrderError("Your cart is empty.", code="cart_empty")
     for item in items:
