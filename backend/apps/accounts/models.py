@@ -215,6 +215,11 @@ class Address(SoftDeleteModel):
     def __str__(self) -> str:
         return f"{self.name}, {self.address_line1}, {self.city} {self.postal_code}"
 
+    @property
+    def has_map_pin(self) -> bool:
+        """The customer chose the delivery point on the map (needed to measure the delivery distance)."""
+        return self.latitude is not None and self.longitude is not None
+
     def snapshot(self) -> dict:
         """Immutable copy stored on orders."""
         return {

@@ -29,6 +29,9 @@ class TotalsSerializer(serializers.Serializer):
     delivery_discount = serializers.DecimalField(max_digits=12, decimal_places=2)
     first_order_free_delivery = serializers.BooleanField()
     unloading_fee = serializers.DecimalField(max_digits=12, decimal_places=2)
+    # Cancellation fees owed from earlier cancelled cash-on-delivery orders (included in grand_total).
+    previous_cancellation_fees = serializers.DecimalField(max_digits=12, decimal_places=2)
+    cancellation_fee_orders = serializers.ListField(child=serializers.CharField())
 
 
 class AppliedOfferSerializer(serializers.Serializer):

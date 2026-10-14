@@ -55,6 +55,7 @@ export interface SummaryTotals {
   delivery_charge?: string
   delivery_discount?: string
   unloading_fee?: string
+  previous_cancellation_fees?: string
   free_delivery_reason?: string
 }
 
@@ -83,6 +84,8 @@ export function PriceSummary({
   const credits = totals.credit_discount && totals.credit_discount !== '0.00' ? totals.credit_discount : null
   const waived = Number(totals.delivery_discount ?? 0) > 0
   const unloading = totals.unloading_fee && totals.unloading_fee !== '0.00' ? totals.unloading_fee : null
+  const cancellationFees =
+    totals.previous_cancellation_fees && totals.previous_cancellation_fees !== '0.00' ? totals.previous_cancellation_fees : null
   const breakdown = (
       <dl>
         {mrpSavings && (
@@ -136,6 +139,12 @@ export function PriceSummary({
           <div className={row} data-testid="unloading-row">
             <dt>Unloading service</dt>
             <dd>{formatPrice(unloading)}</dd>
+          </div>
+        )}
+        {cancellationFees && (
+          <div className={row} data-testid="cancellation-fee-row">
+            <dt>Cancellation fee (earlier cancelled order)</dt>
+            <dd>{formatPrice(cancellationFees)}</dd>
           </div>
         )}
         {credits && (
@@ -304,7 +313,9 @@ export function CancelOrderDialog({ order, open, onClose }: { order: OrderDetail
         <p className="text-sm text-ink-800">
           {paid
             ? `A refund of ${formatPrice(order.grand_total)} will be requested to your original payment method.`
-            : order.payment_method === 'cod'
+            : Number(order.cancellation_fee_if_cancelled ?? 0) > 0
+              ? `The shop has started preparing this cash-on-delivery order, so a cancellation fee of ${formatPrice(order.cancellation_fee_if_cancelled ?? '0')} will be added to your next order.`
+              : order.payment_method === 'cod'
               ? 'Nothing has been charged for this cash-on-delivery order.'
               : 'No payment has been taken for this order.'}
         </p>

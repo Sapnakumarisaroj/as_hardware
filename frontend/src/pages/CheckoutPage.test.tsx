@@ -14,8 +14,15 @@ import {
 import { httpError, mockApi, type RequestInfo } from '@/test/mockApi'
 import { currentUrl, renderRoute, signIn } from '@/test/utils'
 
-// The Leaflet map itself needs a real browser; the form around it is what is tested here.
-vi.mock('@/features/addresses/MapPinPicker', () => ({ default: () => <div data-testid="map" /> }))
+// The Leaflet map itself needs a real browser; the form around it is what is tested here. Tapping the stand-in
+// drops a pin the way a tap on the real map does.
+vi.mock('@/features/addresses/MapPinPicker', () => ({
+  default: ({ onChange }: { onChange: (p: { latitude: number; longitude: number }) => void }) => (
+    <button type="button" data-testid="map" onClick={() => onChange({ latitude: 12.9716, longitude: 77.5946 })}>
+      Drop test pin
+    </button>
+  ),
+}))
 
 const home = address()
 const site = address({ id: 32, name: 'Site office', address_line1: 'Plot 7, MIDC', address_type: 'site', is_default: false })
@@ -135,7 +142,7 @@ describe('checkout page', () => {
     const { user } = renderRoute('/checkout')
     await user.click(await screen.findByRole('button', { name: 'Add delivery address' }))
     const dialog = await screen.findByRole('dialog', { name: 'Add a delivery address' })
-    expect(within(dialog).getByText(/No pin set — we’ll use your PIN code area/)).toBeInTheDocument()
+    expect(within(dialog).getByText('No pin set yet')).toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: 'Use my current location' }))
     expect(await within(dialog).findByText('Pin set at 18.507400, 73.807700')).toBeInTheDocument()
     await user.type(within(dialog).getByLabelText(/Full name/), 'New Home')
@@ -186,10 +193,14 @@ describe('checkout page', () => {
     await user.type(within(dialog).getByLabelText(/PIN code/), '411001')
     await user.type(within(dialog).getByLabelText(/City/), 'Pune')
     await user.type(within(dialog).getByLabelText(/State/), 'Maharashtra')
+    await user.click(within(dialog).getByRole('button', { name: 'Drop test pin' }))
     await user.click(within(dialog).getByRole('button', { name: 'Save address' }))
 
     await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith('/addresses/', expect.objectContaining({ name: 'New Home', postal_code: '411001' })),
+      expect(api.post).toHaveBeenCalledWith(
+        '/addresses/',
+        expect.objectContaining({ name: 'New Home', postal_code: '411001', latitude: '12.971600', longitude: '77.594600' }),
+      ),
     )
     expect(await screen.findByRole('radio', { name: /Deliver to New Home/ })).toBeChecked()
     await waitFor(() => expect(lastPreviewBody(api.post)).toEqual({ address_id: 40, coupon_code: '', use_credits: false, unloading: false }))
@@ -207,8 +218,68 @@ describe('checkout page', () => {
     const { user } = renderRoute('/checkout')
     await user.click(await screen.findByRole('button', { name: 'Add delivery address' }))
     const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Drop test pin' }))
     await user.click(within(dialog).getByRole('button', { name: 'Save address' }))
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Invalid input.')
+  })
+
+  it('an address can’t be saved without its map pin', async () => {
+    signIn()
+    const api = mockApi({
+      get: baseGet({ '/addresses/': [] }),
+      post: { '/checkout/preview/': checkoutPreview({ address_id: null, can_place_order: false }) },
+    })
+    const { user } = renderRoute('/checkout')
+    await user.click(await screen.findByRole('button', { name: 'Add delivery address' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add a delivery address' })
+    // The map opens straight away for a new address, and the location is marked as required.
+    expect(within(dialog).getByRole('button', { name: 'Drop test pin' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Remove pin' })).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Save address' }))
+    expect(await within(dialog).findByText('Select your delivery location on the map before saving.')).toBeInTheDocument()
+    expect(api.post).not.toHaveBeenCalledWith('/addresses/', expect.anything())
+  })
+
+  it('an old address without a pin is flagged, and checkout offers to add the pin', async () => {
+    signIn()
+    const old = address({ id: 31, latitude: null, longitude: null })
+    const pinned = { ...old, latitude: '12.971600', longitude: '77.594600' }
+    let fixed = false
+    const api = mockApi({
+      get: baseGet({ '/addresses/': () => [fixed ? pinned : old] }),
+      post: {
+        '/checkout/preview/': () =>
+          fixed
+            ? checkoutPreview({ address_id: 31 })
+            : checkoutPreview({
+                address_id: 31,
+                can_place_order: false,
+                blocking_issues: [
+                  {
+                    code: 'address_location_required',
+                    message: 'Select this address’s location on the map (edit the address and drop the pin).',
+                  },
+                ],
+              }),
+      },
+      patch: { '/addresses/31/': () => ((fixed = true), pinned) },
+    })
+    const { user } = renderRoute('/checkout')
+    expect(await screen.findByTestId('address-pin-missing')).toHaveTextContent('Map pin missing')
+    expect(screen.getByRole('button', { name: /^Add map pin\s*address for/ })).toBeInTheDocument()
+    expect(await screen.findByText(/Select this address’s location on the map/)).toBeInTheDocument()
+    for (const button of screen.getAllByRole('button', { name: /Place order|Continue to payment/ })) expect(button).toBeDisabled()
+
+    // The prompt next to the message opens the address editor, which needs the pin before it saves.
+    await user.click(screen.getByRole('button', { name: 'Add map pin' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit address' })
+    await user.click(within(dialog).getByRole('button', { name: 'Drop test pin' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Save address' }))
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith('/addresses/31/', expect.objectContaining({ latitude: '12.971600', longitude: '77.594600' })),
+    )
+    await waitFor(() => expect(screen.queryByTestId('address-pin-missing')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText(/Select this address’s location on the map/)).not.toBeInTheDocument())
   })
 
   it('applies a valid coupon (server discount) and explains an invalid one', async () => {
@@ -297,6 +368,51 @@ describe('checkout page', () => {
     expect(await screen.findByRole('radio', { name: /Mock online payment/ })).toBeChecked()
     await user.click(screen.getAllByRole('button', { name: 'Continue to payment · ₹800' })[0]!)
     await waitFor(() => expect(currentUrl(router)).toBe('/orders/OD260924ABCDEF/pay'))
+  })
+
+  it('offers cash on delivery next to Razorpay, and shows (never hides) COD when a shop rule turns it off', async () => {
+    signIn()
+    const online = { value: 'online' as const, label: 'Pay online — Razorpay test mode (no real money)', test_mode: true, provider: 'razorpay', available: true }
+    const cod = { value: 'cod' as const, label: 'Cash on delivery', test_mode: false, available: true, max_order_value: null }
+    let codOff = false
+    mockApi({
+      get: baseGet(),
+      post: {
+        '/checkout/preview/': () =>
+          checkoutPreview({
+            payment_methods: [
+              online,
+              codOff
+                ? { ...cod, available: false, reason_code: 'cod_limit', message: 'Cash on Delivery isn’t available for orders above ₹2,500.' }
+                : cod,
+            ],
+          }),
+      },
+    })
+    const { user } = renderRoute('/checkout')
+    const codRadio = await screen.findByRole('radio', { name: /Cash on delivery/ })
+    expect(codRadio).toBeEnabled()
+    expect(screen.getByRole('radio', { name: /Razorpay test mode/ })).toBeEnabled()
+    await user.click(codRadio)
+    expect(codRadio).toBeChecked()
+
+    codOff = true
+    renderRoute('/checkout')
+    await waitFor(() => expect(screen.getAllByRole('radio', { name: /Cash on delivery/ }).some((r) => (r as HTMLInputElement).disabled)).toBe(true))
+    expect(screen.getByText('Cash on Delivery isn’t available for orders above ₹2,500.')).toBeInTheDocument()
+  })
+
+  it('Razorpay test mode is described as Razorpay, not as the development mock', async () => {
+    signIn()
+    const preview = checkoutPreview()
+    preview.payment_methods = preview.payment_methods.map((m) =>
+      m.value === 'online' ? { ...m, label: 'Pay online — Razorpay test mode (no real money)', provider: 'razorpay' } : m,
+    )
+    mockApi({ get: baseGet(), post: { '/checkout/preview/': preview } })
+    renderRoute('/checkout')
+    expect(await screen.findByRole('radio', { name: /Razorpay test mode/ })).toBeInTheDocument()
+    expect(screen.getByText(/pay with Razorpay’s test cards or UPI/)).toBeInTheDocument()
+    expect(screen.queryByText(/you choose success, failure or cancellation/)).not.toBeInTheDocument()
   })
 
   it('a price change is reported and the new total is fetched instead of ordering', async () => {

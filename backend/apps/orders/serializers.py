@@ -1,6 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -423,6 +424,8 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     refunds = serializers.SerializerMethodField()
     store_name = serializers.CharField(source="store.name", read_only=True, default=None)
     can_cancel = serializers.SerializerMethodField()
+    cancel_deadline = serializers.SerializerMethodField()
+    cancellation_fee_if_cancelled = serializers.SerializerMethodField()
     can_retry_payment = serializers.SerializerMethodField()
     delivery_message = serializers.SerializerMethodField()
     delivery = serializers.SerializerMethodField()
@@ -441,6 +444,8 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "first_order_free_delivery",
             "unloading_requested",
             "unloading_fee",
+            "cancellation_fee",
+            "previous_cancellation_fees",
             "loyalty",
             "order_number",
             "public_id",
@@ -470,6 +475,8 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             "delivered_at",
             "created_at",
             "can_cancel",
+            "cancel_deadline",
+            "cancellation_fee_if_cancelled",
             "can_retry_payment",
             "can_return",
             "return_window_ends_at",
@@ -505,7 +512,26 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         return order_loyalty(obj)
 
     def get_can_cancel(self, obj) -> bool:
-        return obj.status in CUSTOMER_CANCELLABLE and not any(s.status in LEFT_THE_STORE for s in obj.shipments.all())
+        from .services import customer_cancel_deadline
+
+        return (
+            obj.status in CUSTOMER_CANCELLABLE
+            and timezone.now() <= customer_cancel_deadline(obj)
+            and not any(s.status in LEFT_THE_STORE for s in obj.shipments.all())
+        )
+
+    def get_cancel_deadline(self, obj) -> datetime | None:
+        """Until when the customer can cancel online (null once it no longer can)."""
+        from .services import customer_cancel_deadline
+
+        return customer_cancel_deadline(obj) if self.get_can_cancel(obj) else None
+
+    @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
+    def get_cancellation_fee_if_cancelled(self, obj) -> str:
+        """What cancelling now would cost (₹200 for a COD order the shop is preparing), so the page can warn."""
+        from .services import customer_cancellation_fee
+
+        return f"{customer_cancellation_fee(obj) if self.get_can_cancel(obj) else Decimal('0'):.2f}"
 
     def get_can_retry_payment(self, obj) -> bool:
         return (
@@ -729,8 +755,14 @@ class CheckoutPreviewSerializer(serializers.Serializer):
         from integrations.payments.registry import online_payments_enabled
 
         online = online_payments_enabled()
+        provider = get_payment_provider().name if online else ""
         test_mode = online and get_payment_provider().is_test_mode
-        online_label = "Mock online payment (development — no real money)" if test_mode else "Pay online"
+        if test_mode and provider == "mock":
+            online_label = "Mock online payment (development — no real money)"
+        elif test_mode:  # e.g. Razorpay with rzp_test_ keys: the real checkout, but no money moves
+            online_label = "Pay online — Razorpay test mode (no real money)"
+        else:
+            online_label = "Pay online"
         cod = obj.cod
         cod_limit = cod.max_order_value if cod else None
         return [
@@ -738,6 +770,7 @@ class CheckoutPreviewSerializer(serializers.Serializer):
                 "value": PaymentMethod.ONLINE,
                 "label": online_label,
                 "test_mode": test_mode,
+                "provider": provider,
                 "available": online,
                 "reason_code": "" if online else "online_unavailable",
                 "message": "" if online else "Online payment isn't available yet. Please choose cash on delivery.",

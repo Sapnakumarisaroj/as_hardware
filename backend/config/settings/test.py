@@ -32,7 +32,8 @@ GEOCODING_PROVIDER = "none"
 # Engine tests use their own stores and zones; city service-area tests switch the restriction on.
 DELIVERY_RESTRICT_TO_SERVICE_AREAS = False
 ROUTING_PROVIDER = "haversine"
-# Tests assume the documented fee defaults, whatever the developer's .env sets for the shop.
+# Tests pin one fixed fee rule (₹40 below ₹499), whatever the developer's .env sets: their amounts were written
+# for it. The shop's own policy (free from ₹2,000, base.py) is tested in orders/tests/test_free_delivery_policy.py.
 from decimal import Decimal as _Decimal  # noqa: E402
 
 DELIVERY_FEE = _Decimal("40.00")

@@ -6,8 +6,10 @@ nothing is written.
 
 import secrets
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
@@ -135,6 +137,10 @@ def place_order(
     address = Address.objects.filter(pk=address_id, user=user).first()
     if address is None:
         raise NotFoundError("Delivery address not found.")
+    if not address.has_map_pin:
+        raise OrderError(
+            "Select this address's location on the map before placing the order.", code="address_location_required"
+        )
 
     if quote is not None:
         from apps.quotes.services import lock_for_checkout
@@ -235,6 +241,7 @@ def place_order(
         first_order_free_delivery=totals.first_order_free_delivery,
         unloading_requested=totals.unloading_fee > 0,
         unloading_fee=totals.unloading_fee,
+        previous_cancellation_fees=totals.previous_cancellation_fees,
         free_delivery_reason=totals.free_delivery_reason[:160],
         tax_total=totals.tax_total,
         grand_total=totals.grand_total,
@@ -255,6 +262,7 @@ def place_order(
         customer_note=customer_note[:500],
         idempotency_key=idempotency_key or None,
     )
+    _collect_cancellation_fees(order, totals.cancellation_fee_orders)
     shipment_of = {}
     for sequence, planned in enumerate(plan.shipments, start=1):
         shipment = _create_shipment(order, sequence, planned)
@@ -477,6 +485,8 @@ def _apply_transition(order: Order, to_status: str, *, actor, note: str = "", mi
             if not payment.refunds.exists():
                 create_refund(payment, payment.amount, reason=f"Order cancelled: {note}", requested_by=actor)
         _release_coupon(order)
+        # Earlier cancellation fees this order carried are owed again (added to the next order instead).
+        Order.objects.filter(cancellation_fee_collected_on=order).update(cancellation_fee_collected_on=None)
         on_order_cancelled(order)  # pending cashback reversed, used credits given back (Phase 17)
     elif to_status == OrderStatus.DELIVERED and not order.delivered_at:
         order.delivered_at = now
@@ -567,6 +577,30 @@ def transition_order(order: Order, to_status: str, *, actor, note: str = "") -> 
     return locked
 
 
+def _collect_cancellation_fees(order: Order, order_numbers) -> None:
+    """The earlier cancelled orders whose fee this order includes now point at it. If another order collected one
+    meanwhile, the total shown at checkout is no longer right: everything rolls back (409 totals_changed)."""
+    if not order_numbers:
+        return
+    owed = Order.objects.select_for_update().filter(
+        user=order.user, order_number__in=order_numbers, cancellation_fee_collected_on__isnull=True
+    )
+    if owed.update(cancellation_fee_collected_on=order) != len(order_numbers):
+        raise TotalsChanged("Your order total changed. Please review it and place the order again.")
+
+
+def customer_cancel_deadline(order: Order):
+    """Until when the customer may cancel online (CUSTOMER_CANCEL_WINDOW_MINUTES after placing)."""
+    return order.created_at + timedelta(minutes=settings.CUSTOMER_CANCEL_WINDOW_MINUTES)
+
+
+def customer_cancellation_fee(order: Order) -> Decimal:
+    """What cancelling now would cost: a COD order the shop has started preparing pays COD_CANCELLATION_FEE."""
+    if order.payment_method == PaymentMethod.COD and order.status == OrderStatus.PROCESSING:
+        return settings.COD_CANCELLATION_FEE
+    return ZERO
+
+
 @transaction.atomic
 def cancel_order_by_customer(order: Order, *, user, reason: str) -> Order:
     locked = Order.objects.select_for_update().get(pk=order.pk)
@@ -577,9 +611,20 @@ def cancel_order_by_customer(order: Order, *, user, reason: str) -> Order:
             "This order can no longer be cancelled online. Please contact support.",
             details={"status": locked.status},
         )
+    if timezone.now() > customer_cancel_deadline(locked):
+        minutes = settings.CUSTOMER_CANCEL_WINDOW_MINUTES
+        raise InvalidTransition(
+            f"Orders can be cancelled online only within {minutes} minutes of placing them. Please contact the shop.",
+            code="cancel_window_passed",
+            details={"status": locked.status, "window_minutes": minutes},
+        )
     if not reason.strip():
         raise OrderError("Please tell us why you are cancelling.", code="reason_required")
+    fee = customer_cancellation_fee(locked)
     order = _apply_transition(locked, OrderStatus.CANCELLED, actor=user, note=reason)
+    if fee:
+        order.cancellation_fee = fee
+        order.save(update_fields=["cancellation_fee", "updated_at"])
     _tell_cancelled(order)
     return order
 
@@ -592,6 +637,8 @@ def _tell_cancelled(order: Order) -> None:
         refund_sentence=f"A refund of ₹{refund.amount} has been requested and will be processed to your original "
         "payment method."
         if refund
+        else f"No payment was taken. A cancellation fee of ₹{order.cancellation_fee} will be added to your next order."
+        if order.cancellation_fee
         else "No payment was taken.",
     )
 

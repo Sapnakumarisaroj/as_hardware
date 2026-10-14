@@ -5,7 +5,7 @@ import { env } from './env'
  * read them from here. Name, phone, email and WhatsApp can be overridden with VITE_* variables
  * (see lib/env.ts); a blank WhatsApp number hides every WhatsApp link.
  */
-const ADDRESS_LINES = ['264, 2nd Cross Road', 'Pete Krishnappa Layout, Kalkere', 'Bengaluru, Karnataka 560013'] as const
+const ADDRESS_LINES = ['264, 2nd Cross Road', 'Pete Krishnappa Layout, Kalkere', 'Bengaluru, Karnataka 560113'] as const
 const COUNTRY = 'India'
 const addressText = `${ADDRESS_LINES.join(', ')}, ${COUNTRY}`
 const whatsappNumber = env.supportWhatsApp.replace(/\D/g, '')

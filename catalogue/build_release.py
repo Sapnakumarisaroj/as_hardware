@@ -24,8 +24,11 @@ Writes catalogue/release/ (contains the private prices: keep it out of Git, copy
   01_products.csv   products + variants: final MRP/price (approved), GST/HSN, stock; imported unpublished
   02_images.csv     pictures with the owner's rights decision
   03_publish.csv    the products to publish (after their pictures are attached)
-  shop_setup.json   store BLR-01, its delivery zone and the delivery charges (from the local database, optional)
+  shop_setup.json   store BLR-01, its delivery zone, the delivery charges and the payment (COD) settings
+                    (from the local database, optional)
   REPORT.md         counts and the items that still need the owner (never imported as uncertain data)
+  GST_HSN_OWNER_REVIEW.csv  undecided GST rates and blank HSN codes, with the earlier review's candidates, for the
+                    owner to fill in (nothing is chosen automatically)
   SHA256SUMS        checksums of the files above
 """
 
@@ -233,12 +236,14 @@ def product_rows(data: dict) -> list[dict]:
 
 
 def shop_setup(problems: Problems) -> list | None:
-    """Store BLR-01, its delivery zone and the delivery charges, read from the local database (dumpdata only
-    reads). Managers and 'updated by' are dropped: they point at local user accounts."""
+    """Store BLR-01, its delivery zone, the delivery charges and the payment settings (COD on/off and limit), read
+    from the local database (dumpdata only reads). Managers and 'updated by' are dropped: they point at local
+    user accounts."""
     backend = REPO / "backend"
     env = {**os.environ, "DJANGO_SETTINGS_MODULE": "config.settings.dev"}
     result = subprocess.run(
-        [sys.executable, "manage.py", "dumpdata", "stores.store", "delivery.deliveryzone", "delivery.deliverycharges"],
+        [sys.executable, "manage.py", "dumpdata", "stores.store", "delivery.deliveryzone", "delivery.deliverycharges",
+         "payments.paymentsettings"],
         cwd=backend, env=env, capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL,
     )  # fmt: skip
     if result.returncode:
@@ -254,7 +259,18 @@ def shop_setup(problems: Problems) -> list | None:
         problems.add("shop_setup.json", f"expected exactly one store, {STORE}")
     if any(s["fields"].get("is_demo") for s in stores):
         problems.add("shop_setup.json", "the store is demo data")
+    if len([o for o in objects if o["model"] == "payments.paymentsettings"]) != 1:
+        problems.add("shop_setup.json", "expected the one payment settings row (COD rules)")
     return objects
+
+
+def cod_summary(setup: list | None) -> str:
+    row = next((o["fields"] for o in setup or [] if o["model"] == "payments.paymentsettings"), None)
+    if row is None:
+        return "not included"
+    if not row["cod_enabled"]:
+        return "off"
+    return f"on, up to ₹{row['cod_max_order_value']}" if row["cod_max_order_value"] else "on, no order-value limit"
 
 
 def report(data: dict, setup: list | None) -> str:
@@ -272,10 +288,12 @@ def report(data: dict, setup: list | None) -> str:
         f"({Counter(v['stock'] for v in variants.values()).most_common(3)})",
         f"- Pictures: {len(data['images'])} for {len(pictured)} products, rights: {PICTURE_RIGHTS['source_type']}",
         f"- Shop setup: {', '.join(sorted({o['model'] for o in setup})) if setup else 'not included'}",
+        f"- Cash on delivery: {cod_summary(setup)}",
         "", "## Needs the owner (imported exactly as reviewed; nothing here was guessed)", "",
         f"### Unpublished: no picture ({len(unpublished)})",
         *[f"- {p} {products[p].get('product_name', '')}" + ("" if p not in pictured else " (has a picture)")
           for p in unpublished],
+        "", "Decide these in GST_HSN_OWNER_REVIEW.csv (candidates from audit/gst_hsn_review.xlsx; none chosen).",
         "", f"### GST/HSN not decided: 18% placeholder, HSN blank ({len(gst_open)})",
         *[f"- {p} {products[p].get('product_name', '')} ({'published' if p in published else 'unpublished'})"
           for p in gst_open],
@@ -364,6 +382,36 @@ def verify(data: dict, export: Path) -> int:
     return 1 if diffs else 0
 
 
+GST_REVIEW_COLUMNS = ["product_sku", "product_name", "published", "gst_rate_now", "hsn_now", "review_status",
+                      "candidates_from_review", "owner_decision_gst_rate", "owner_decision_hsn"]  # fmt: skip
+
+
+def gst_review_rows(data: dict) -> list[dict]:
+    """Products whose GST rate is undecided or whose HSN is blank, for the owner to decide. The candidate headings
+    and rates are copied from audit/gst_hsn_review.xlsx (the earlier review); nothing is chosen here."""
+    from openpyxl import load_workbook
+
+    sheet = load_workbook(HERE / "audit" / "gst_hsn_review.xlsx", read_only=True)["GST & HSN"]
+    rows = list(sheet.iter_rows(values_only=True))
+    head = [str(h) for h in rows[0]]
+    review = {r[head.index("product_sku")]: dict(zip(head, r, strict=False)) for r in rows[1:] if r and r[0]}
+    out = []
+    for psku, product in sorted(data["products"].items()):
+        undecided = not product.get("gst_reviewed")
+        blank_hsn = psku in data["published"] and not product.get("hsn_code")
+        if not (undecided or blank_hsn):
+            continue
+        r = review.get(psku, {})
+        out.append({
+            "product_sku": psku, "product_name": product.get("product_name", ""),
+            "published": "yes" if psku in data["published"] else "no",
+            "gst_rate_now": product.get("gst_rate", "") + ("  (placeholder)" if undecided else ""),
+            "hsn_now": product.get("hsn_code", ""), "review_status": r.get("status") or "not reviewed",
+            "candidates_from_review": r.get("note") or "", "owner_decision_gst_rate": "", "owner_decision_hsn": "",
+        })  # fmt: skip
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--verify", type=Path, help="Compare an export_catalog CSV with the package and exit.")
@@ -392,7 +440,8 @@ def main() -> int:
     write_csv(RELEASE / "03_publish.csv", ["product_sku", "variant_sku", "is_published"],
               [{"product_sku": p, "variant_sku": data["products"][p]["variants"][0], "is_published": "yes"}
                for p in sorted(data["published"])])  # fmt: skip
-    files = ["01_products.csv", "02_images.csv", "03_publish.csv", "REPORT.md"]
+    write_csv(RELEASE / "GST_HSN_OWNER_REVIEW.csv", GST_REVIEW_COLUMNS, gst_review_rows(data))
+    files = ["01_products.csv", "02_images.csv", "03_publish.csv", "REPORT.md", "GST_HSN_OWNER_REVIEW.csv"]
     if setup:
         (RELEASE / "shop_setup.json").write_text(json.dumps(setup, indent=2, ensure_ascii=False), **TEXT)
         files.insert(3, "shop_setup.json")

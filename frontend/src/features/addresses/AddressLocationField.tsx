@@ -13,13 +13,13 @@ function fixed(value: number): string {
 }
 
 /**
- * Optional exact delivery location for an address. With a pin the delivery time is calculated
- * from the real distance; without one the PIN code's area is used. Submits `latitude` and
- * `longitude` (empty = none) with the surrounding form.
+ * Required delivery location for an address: the delivery distance, and so the delivery charge, is
+ * measured to this pin. Submits `latitude` and `longitude` with the surrounding form; the form refuses
+ * to save without them (`error` shows why). The map opens straight away while there is no pin.
  */
-export function AddressLocationField({ initial }: { initial: LatLng | null }) {
+export function AddressLocationField({ initial, error: requiredError }: { initial: LatLng | null; error?: string }) {
   const [value, setValue] = useState<LatLng | null>(initial)
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(initial === null)
   const [locating, setLocating] = useState(false)
   const [error, setError] = useState('')
 
@@ -48,17 +48,16 @@ export function AddressLocationField({ initial }: { initial: LatLng | null }) {
 
   return (
     <fieldset className="sm:col-span-2">
-      <legend className="label">
-        Location on map <span className="font-normal text-ink-600">(optional)</span>
-      </legend>
+      <legend className="label after:ml-0.5 after:text-danger-600 after:content-['*']">Location on map</legend>
       <input type="hidden" name="latitude" value={value ? fixed(value.latitude) : ''} />
       <input type="hidden" name="longitude" value={value ? fixed(value.longitude) : ''} />
       <p className="text-xs text-ink-600">
-        A pin gives a more accurate delivery time and helps the delivery partner find you.
+        Required: drop the pin on your gate or building. The delivery charge is worked out from this point, and it
+        helps the delivery partner find you.
       </p>
       <p role="status" className="mt-1 flex items-center gap-1.5 text-sm font-medium text-ink-900">
         <PinIcon className="size-4 shrink-0 text-amber-700" />
-        {value ? `Pin set at ${fixed(value.latitude)}, ${fixed(value.longitude)}` : 'No pin set — we’ll use your PIN code area'}
+        {value ? `Pin set at ${fixed(value.latitude)}, ${fixed(value.longitude)}` : 'No pin set yet'}
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
         <button type="button" onClick={() => setOpen((v) => !v)} className="btn-secondary px-3 py-1.5 text-sm" aria-expanded={open}>
@@ -67,15 +66,10 @@ export function AddressLocationField({ initial }: { initial: LatLng | null }) {
         <button type="button" onClick={useMyLocation} disabled={locating} className="btn-secondary px-3 py-1.5 text-sm">
           {locating ? 'Locating…' : 'Use my current location'}
         </button>
-        {value && (
-          <button type="button" onClick={() => setValue(null)} className="px-2 text-sm font-semibold text-ink-800 hover:underline">
-            Remove pin
-          </button>
-        )}
       </div>
-      {error && (
-        <p role="alert" className="mt-1 text-xs text-danger-600">
-          {error}
+      {(error || (!value && requiredError)) && (
+        <p role="alert" className="mt-1 text-xs text-danger-600" id="location-error">
+          {error || requiredError}
         </p>
       )}
       {open && (

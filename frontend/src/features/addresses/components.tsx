@@ -12,6 +12,7 @@ import {
   useCreateAddress,
   useDeleteAddress,
   useSetDefaultAddress,
+  hasMapPin,
   useUpdateAddress,
   type Address,
   type AddressInput,
@@ -48,6 +49,7 @@ export function AddressFormModal({
   const create = useCreateAddress()
   const update = useUpdateAddress()
   const [error, setError] = useState<ApiError | null>(null)
+  const [pinMissing, setPinMissing] = useState(false)
   const busy = create.isPending || update.isPending
   const initial: AddressInput = address ? { ...EMPTY, ...address } : EMPTY
   const fieldError = (name: string) => error?.fieldErrors()[name]?.[0]
@@ -62,12 +64,14 @@ export function AddressFormModal({
     if (form.get('is_default')) input.is_default = true
     const latitude = String(form.get('latitude') ?? '')
     const longitude = String(form.get('longitude') ?? '')
-    const pinned = latitude !== '' && longitude !== ''
-    // Only send the pin when there is one to save or an existing one to remove.
-    if (pinned || address?.latitude) {
-      input.latitude = pinned ? latitude : null
-      input.longitude = pinned ? longitude : null
+    // Every delivery address needs its map pin (the server refuses one without it, too).
+    if (latitude === '' || longitude === '') {
+      setPinMissing(true)
+      return
     }
+    setPinMissing(false)
+    input.latitude = latitude
+    input.longitude = longitude
     setError(null)
     try {
       const saved = address ? await update.mutateAsync({ id: address.id, input }) : await create.mutateAsync(input)
@@ -106,6 +110,7 @@ export function AddressFormModal({
         <FormField {...f('state')} label="State" autoComplete="address-level1" required className="sm:col-span-2" />
         <AddressLocationField
           key={address?.id ?? 'new'}
+          error={pinMissing ? 'Select your delivery location on the map before saving.' : fieldError('location')}
           initial={
             address?.latitude && address.longitude
               ? { latitude: Number(address.latitude), longitude: Number(address.longitude) }
@@ -221,11 +226,17 @@ export function AddressList({
                     )}
                   </span>
                   <AddressText address={address} />
+                  {!hasMapPin(address) && (
+                    <span className="mt-1 block text-xs font-semibold text-danger-600" data-testid="address-pin-missing">
+                      Map pin missing: add your location before checking out.
+                    </span>
+                  )}
                 </label>
               </div>
               <div className={`mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm ${selectable ? 'pl-8' : ''}`}>
                 <button type="button" onClick={() => setEditing(address)} className="font-semibold text-amber-700 hover:underline">
-                  Edit<span className="sr-only"> address for {address.name}</span>
+                  {hasMapPin(address) ? 'Edit' : 'Add map pin'}
+                  <span className="sr-only"> address for {address.name}</span>
                 </button>
                 {!address.is_default && (
                   <button

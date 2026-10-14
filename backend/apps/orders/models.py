@@ -101,6 +101,14 @@ class Order(TimeStampedModel):
     first_order_free_delivery = models.BooleanField(default=False)
     unloading_requested = models.BooleanField(default=False)
     unloading_fee = models.DecimalField(**MONEY_FIELD_KWARGS, default=Decimal("0.00"))
+    # Customer cancellation fee for THIS order (a COD order cancelled once the shop was preparing it). Nothing was
+    # paid, so it is owed and added to the customer's next order, which is recorded in `cancellation_fee_collected_on`.
+    cancellation_fee = models.DecimalField(**MONEY_FIELD_KWARGS, default=Decimal("0.00"))
+    cancellation_fee_collected_on = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="collected_cancellation_fees"
+    )
+    # Earlier orders' cancellation fees included in this order's grand_total.
+    previous_cancellation_fees = models.DecimalField(**MONEY_FIELD_KWARGS, default=Decimal("0.00"))
     free_delivery_reason = models.CharField(
         max_length=160, blank=True, help_text="Why delivery was free (rule or offer name), when it was."
     )

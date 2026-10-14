@@ -53,6 +53,8 @@ export interface PaymentOption {
   value: PaymentMethod
   label: string
   test_mode: boolean
+  /** Online payment only: the gateway behind it ("mock" in development, "razorpay"). */
+  provider?: string
   available?: boolean
   reason_code?: string
   /** Why it can't be used, e.g. "Cash on Delivery isn't available for orders above ₹10,000." */

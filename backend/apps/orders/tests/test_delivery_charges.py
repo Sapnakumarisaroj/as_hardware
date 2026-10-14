@@ -116,11 +116,13 @@ def test_delivery_across_the_city_is_charged_by_distance_beyond_the_zone_radius(
     # The far address is ~20 km away, well beyond the zone's 3 km radius, and still served (city-wide).
     assert near["available"] and far["available"]
     assert far["distance_km"] > 12 > near["distance_km"]
-    assert Decimal(near["fee"]) in {Decimal("30"), Decimal("50")} and Decimal(far["fee"]) == Decimal("120")
+    # Shop policy bands: ₹40 up to 5 km, ₹80 beyond.
+    assert Decimal(near["fee"]) in {Decimal("40"), Decimal("80")} and Decimal(far["fee"]) == Decimal("80")
     # Straight line × road factor is an estimate, never presented as a routed distance.
     assert near["distance_estimated"] is True and far["distance_estimated"] is True
     DeliveryCharges.objects.filter(pk=1).update(extra_per_km=Decimal("10"))
-    assert Decimal(_preview(auth_client, city["far"])["delivery"]["fee"]) > Decimal("120")
+    # extra_per_km applies only beyond the last band (60 km): ~20 km stays ₹80 (beyond 60 km: tested with `bands`).
+    assert Decimal(_preview(auth_client, city["far"])["delivery"]["fee"]) == Decimal("80")
 
 
 @pytest.mark.delivery_charges
@@ -156,6 +158,8 @@ def test_an_address_outside_bengaluru_is_not_offered_delivery(auth_client, user,
 
 @pytest.mark.delivery_charges
 def test_first_three_orders_have_free_delivery_shown_against_the_normal_charge(auth_client, city):
+    # The promotion is off by shop policy (default 0); an administrator can still switch it on deliberately.
+    DeliveryCharges.objects.update_or_create(pk=1, defaults={"free_first_orders": 3})
     for n in range(1, 4):
         _add(auth_client, city["drill"])
         preview = _preview(auth_client, city["near"])

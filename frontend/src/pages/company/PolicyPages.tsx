@@ -44,12 +44,16 @@ export function RefundPolicyPage() {
       <h2>Cancelling an order</h2>
       <ul>
         <li>
-          You can cancel an order yourself from <Link to="/account/orders">your orders</Link> until it is packed, that is
-          while it is placed, confirmed or being prepared. We ask for a short reason.
+          You can cancel an order yourself from <Link to="/account/orders">your orders</Link> within 5 minutes of placing
+          it, as long as it hasn’t been packed. We ask for a short reason.
         </li>
         <li>
-          Once an order is packed it can’t be cancelled online. Contact us quickly: we can still cancel it as long as it hasn’t
-          left the store.
+          After 5 minutes, or once an order is packed, it can’t be cancelled online. Contact us quickly: we can still cancel
+          it as long as it hasn’t left the store.
+        </li>
+        <li>
+          Cash on delivery: if you cancel after we have started preparing your order, a cancellation fee of ₹200 applies. As
+          nothing has been paid, it is added to your next order and shown in its price details and invoice.
         </li>
         <li>
           When an order is cancelled, any coupon and credits you used are given back. If you paid online, the full amount is
@@ -57,7 +61,6 @@ export function RefundPolicyPage() {
         </li>
         <li>Online orders that are not paid within 30 minutes are cancelled automatically.</li>
       </ul>
-      <PendingDecision>Any cancellation charges, and a deadline for cancelling packed orders, are not set yet.</PendingDecision>
 
       <h2>Returns</h2>
       <ul>

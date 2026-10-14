@@ -276,12 +276,20 @@ def test_concurrent_split_orders_never_oversell():
     assert Order.objects.count() == 1 and OrderShipment.objects.count() == 2
 
 
-def test_address_without_coordinates_is_served_by_pin(user):
+def test_address_without_coordinates_is_served_by_pin_but_cannot_be_ordered_to(user):
+    """The engine still plans a pinless location by its PIN (the PIN-only delivery check uses this), but an
+    order needs the address's map pin: the delivery charge is measured to it."""
+    from apps.delivery.fulfillment import plan_fulfillment
+    from apps.delivery.locations import resolve_location
+
     store = store_at(0, postal_code="411038")
     zone_for(store, postal_codes="411052")
     _, variant = create_product(stock=5, store=store)
-    order, _ = _order(user, create_address(user, postal_code="411052"), (variant, 1))
-    assert order.shipments.get().eta_source == "zone"
+    near = create_address(user, postal_code="411052", latitude=None, longitude=None)
+    plan = plan_fulfillment({variant.id: 1}, resolve_location(address=near))
+    assert plan.deliverable and plan.shipments[0].estimate.eta_source == "zone"
+    far = create_address(user, name="Far", postal_code="411014", latitude=None, longitude=None)
+    assert not plan_fulfillment({variant.id: 1}, resolve_location(address=far)).deliverable
     with pytest.raises(ServiceError) as exc:
-        _order(user, create_address(user, name="Far", postal_code="411014"), (variant, 1))
-    assert exc.value.error_code == "not_deliverable"
+        _order(user, near, (variant, 1))
+    assert exc.value.error_code == "address_location_required"

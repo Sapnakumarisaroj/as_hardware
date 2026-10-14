@@ -83,6 +83,9 @@ class Totals:
     delivery_charge: Decimal = ZERO
     first_order_free_delivery: bool = False  # the waiver used one of the customer's first free orders
     unloading_fee: Decimal = ZERO  # optional unloading service (included in grand_total)
+    # Cancellation fees the customer owes from earlier cancelled COD orders (included in grand_total).
+    previous_cancellation_fees: Decimal = ZERO
+    cancellation_fee_orders: tuple[str, ...] = ()  # their order numbers
 
     @property
     def delivery_discount(self) -> Decimal:
@@ -226,6 +229,22 @@ def first_order_waiver(user) -> str:
     return f"Free delivery on your first {limit} orders ({used + 1} of {limit})"
 
 
+def outstanding_cancellation_fees(user) -> tuple[Decimal, tuple[str, ...]]:
+    """(amount, order numbers) of the customer's cancellation fees not yet added to another order."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return ZERO, ()
+    from .models import Order, OrderStatus
+
+    owed = list(
+        Order.objects.filter(
+            user=user, status=OrderStatus.CANCELLED, cancellation_fee__gt=0, cancellation_fee_collected_on__isnull=True
+        )
+        .order_by("created_at")
+        .values_list("order_number", "cancellation_fee")
+    )
+    return q(sum((fee for _, fee in owed), ZERO)), tuple(number for number, _ in owed)
+
+
 def load_free_delivery_rules(zone_id: int | None, now=None) -> list[FreeDeliveryTarget]:
     from django.db.models import Q
     from django.utils import timezone
@@ -345,6 +364,7 @@ def calculate_totals(
     credits: Decimal = ZERO,
     first_order_reason: str = "",
     unloading_fee: Decimal = ZERO,
+    cancellation_fees: tuple[Decimal, tuple[str, ...]] = (ZERO, ()),
 ) -> Totals:
     """Totals for priced lines.
 
@@ -377,6 +397,7 @@ def calculate_totals(
         first_order_reason=first_order_reason,
     )
     unloading = q(unloading_fee) if net > 0 else ZERO
+    owed, owed_orders = cancellation_fees if net > 0 else (ZERO, ())
     credit = q(min(max(credits, ZERO), net))
     paid_factor = ((net - credit) / after_offers) if after_offers else ZERO
     tax_total = q(sum((included_tax(nets[line.variant_id] * paid_factor, line.gst_rate) for line in lines), ZERO))
@@ -387,7 +408,7 @@ def calculate_totals(
         discount_total=q(offer_discount + coupon),
         delivery_fee=delivery.fee,
         tax_total=tax_total,
-        grand_total=q(net + delivery.fee + unloading),
+        grand_total=q(net + delivery.fee + unloading + owed),
         offer_discount=offer_discount,
         coupon_discount=coupon,
         free_delivery_reason=delivery.free_reason,
@@ -399,6 +420,8 @@ def calculate_totals(
         delivery_charge=delivery.charge,
         first_order_free_delivery=delivery.first_order,
         unloading_fee=unloading,
+        previous_cancellation_fees=q(owed),
+        cancellation_fee_orders=tuple(owed_orders),
     )
 
 
@@ -471,6 +494,7 @@ def price_lines(
         discount = coupon_discount(coupon, net_lines, q(sum((n.line_total for n in net_lines), ZERO)))
     rules = load_free_delivery_rules(getattr(fee_rule, "zone_id", None)) if lines else []
     first_order_reason = first_order_waiver(user) if lines else ""
+    owed = outstanding_cancellation_fees(user) if lines else (ZERO, ())
     unloading_fee = ZERO
     if unloading and getattr(fee_rule, "unloading_available", False):
         from apps.delivery.models import DeliveryCharges
@@ -488,6 +512,7 @@ def price_lines(
             credits=credits,
             first_order_reason=first_order_reason,
             unloading_fee=unloading_fee,
+            cancellation_fees=owed,
         )
 
     totals = totals_with(ZERO)

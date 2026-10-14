@@ -26,8 +26,10 @@ const SECTIONS: [title: string, faqs: Faq[]][] = [
       [
         'Can I cancel my order?',
         <>
-          Yes, from <Link to="/account/orders">your orders</Link>, until the order is packed. After that, contact us; we can
-          still cancel it if it hasn’t left the store. See the <Link to="/policies/refund-policy">Refund Policy</Link>.
+          Yes, from <Link to="/account/orders">your orders</Link>, within 5 minutes of placing it and before it is packed.
+          After that, contact us; we can still cancel it if it hasn’t left the store. Cancelling a cash-on-delivery order we
+          have started preparing costs ₹200, added to your next order. See the{' '}
+          <Link to="/policies/refund-policy">Refund Policy</Link>.
         </>,
       ],
       [

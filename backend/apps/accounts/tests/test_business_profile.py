@@ -69,6 +69,8 @@ def test_business_address_with_gstin(auth_client):
         "city": "Bengaluru",
         "state": "Karnataka",
         "postal_code": "560001",
+        "latitude": "12.975000",  # every address has its map pin
+        "longitude": "77.606000",
         "address_type": "work",
         "business_name": "Asha Interiors",
         "gstin": gstin,

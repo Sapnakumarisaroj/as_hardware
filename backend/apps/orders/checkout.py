@@ -186,6 +186,14 @@ def build_checkout(
         address = Address.objects.filter(pk=address_id, user=user).first()
         if address is None:
             issues.append({"code": "address_not_found", "message": "Choose one of your saved addresses."})
+        elif not address.has_map_pin:
+            issues.append(
+                {
+                    "code": "address_location_required",
+                    "message": "Select this address's location on the map (edit the address and drop the pin) so we "
+                    "can work out the delivery distance and charge.",
+                }
+            )
     else:
         issues.append({"code": "address_required", "message": "Add or choose a delivery address."})
 

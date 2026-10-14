@@ -147,11 +147,10 @@ class DeliveryZone(TimeStampedModel):
 
 
 def default_distance_bands() -> list[dict]:
+    """Shop policy (approved): ₹40 up to 5 km, ₹80 beyond (Bengaluru only; free from FREE_DELIVERY_MIN_ORDER)."""
     return [
-        {"up_to_km": "3", "fee": "30"},
-        {"up_to_km": "5", "fee": "50"},
-        {"up_to_km": "8", "fee": "80"},
-        {"up_to_km": "12", "fee": "120"},
+        {"up_to_km": "5", "fee": "40"},
+        {"up_to_km": "60", "fee": "80"},
     ]
 
 
@@ -178,7 +177,8 @@ class DeliveryCharges(models.Model):
         help_text="Added per started km beyond the last band. Blank = the last band's fee applies.",
     )
     free_first_orders = models.PositiveSmallIntegerField(
-        default=3, help_text="Free delivery on each customer's first N orders that would carry a delivery charge."
+        default=0,  # promotion off by shop policy; an administrator may switch it on deliberately
+        help_text="Free delivery on each customer's first N orders that would carry a delivery charge (0 = off).",
     )
     unloading_fee = models.DecimalField(
         **MONEY_FIELD_KWARGS,

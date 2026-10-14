@@ -524,7 +524,9 @@ class DeliveryChargesView(APIView):
                 "has_coordinates": s.latitude is not None and s.longitude is not None,
                 "zones": [
                     {"id": z.pk, "name": z.name, "city_wide": z.service_area_id is not None,
-                     "unloading_available": z.unloading_available, "fee_override": z.delivery_fee_override}
+                     "unloading_available": z.unloading_available,
+                     # Money is a decimal string everywhere in the API (a raw Decimal would be sent as a number).
+                     "fee_override": None if z.delivery_fee_override is None else f"{z.delivery_fee_override:.2f}"}
                     for z in s.delivery_zones.filter(is_active=True)
                 ],
             }

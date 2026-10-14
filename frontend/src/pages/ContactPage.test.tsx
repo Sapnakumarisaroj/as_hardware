@@ -7,7 +7,7 @@ import { renderRoute } from '@/test/utils'
 
 /* Official business details (lib/business.ts), the three-column footer, and the company and policy pages. */
 
-const ADDRESS = '264, 2nd Cross Road, Pete Krishnappa Layout, Kalkere, Bengaluru, Karnataka 560013, India'
+const ADDRESS = '264, 2nd Cross Road, Pete Krishnappa Layout, Kalkere, Bengaluru, Karnataka 560113, India'
 const DIRECTIONS = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(ADDRESS)}`
 
 const COMPANY = [
@@ -48,7 +48,7 @@ describe('footer', () => {
     const contact = within(footer).getByRole('region', { name: 'Contact Information' })
     expect(within(contact).getByRole('link', { name: 'ashardwareplywood@gmail.com' })).toHaveAttribute('href', 'mailto:ashardwareplywood@gmail.com')
     expect(within(contact).getByRole('link', { name: '7338192616' })).toHaveAttribute('href', 'tel:7338192616')
-    expect(contact).toHaveTextContent('AS Hardware and Plywood 264, 2nd Cross Road Pete Krishnappa Layout, Kalkere Bengaluru, Karnataka 560013 India')
+    expect(contact).toHaveTextContent('AS Hardware and Plywood 264, 2nd Cross Road Pete Krishnappa Layout, Kalkere Bengaluru, Karnataka 560113 India')
     expect(within(contact).getByRole('link', { name: /Get Directions/ })).toHaveAttribute('href', DIRECTIONS)
     expect(footer).toHaveTextContent(`© ${new Date().getFullYear()} AS Hardware and Plywood. All rights reserved.`)
     // No large logo in the footer, and the unconfirmed second number is never shown.
@@ -119,8 +119,12 @@ describe('company and policy pages', () => {
     renderRoute('/policies/refund-policy')
     await screen.findByRole('heading', { level: 1, name: 'Refund Policy' })
     const notes = screen.getAllByRole('note')
-    expect(notes.length).toBeGreaterThanOrEqual(3)
+    expect(notes.length).toBeGreaterThanOrEqual(2)
     expect(notes.map((n) => n.textContent).join(' ')).toMatch(/Refund timelines/)
+    // Cancellation rules are decided (5-minute window, ₹200 COD fee): stated as policy, no longer a pending note.
+    expect(notes.map((n) => n.textContent).join(' ')).not.toMatch(/cancellation charges/i)
+    expect(screen.getByText(/within 5 minutes of placing/)).toBeInTheDocument()
+    expect(screen.getByText(/cancellation fee of ₹200 applies/)).toBeInTheDocument()
   })
 })
 

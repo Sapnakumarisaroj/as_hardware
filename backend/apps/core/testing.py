@@ -109,6 +109,12 @@ def create_address(user, **kwargs):
         "city": "Pune",
         "state": "Maharashtra",
         "postal_code": "411001",
+        # Every delivery address has a map pin (checkout requires one). Pass latitude=None, longitude=None
+        # for an old address saved before pins were required.
+        # The delivery tests' reference point (apps/delivery/tests/helpers.py); stores without coordinates
+        # still fall back to "same PIN as the store".
+        "latitude": Decimal("18.507400"),
+        "longitude": Decimal("73.807700"),
     }
     data.update(kwargs)
     return _create(user=user, **data)

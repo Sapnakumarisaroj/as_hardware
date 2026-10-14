@@ -36,8 +36,9 @@ Stage 1 source audit: `audit/STAGE1_AUDIT.md`.
 - Folder pictures marked `owner_approved` (licence note records the HomeRun origin; rights not independently checked).
 - 167 products with an approved price and a picture published (`staging/full_catalogue_publish.csv`); the rest are
   listed in `audit/not_published.csv`.
-- Store BLR-01 (AS Hardware & Plywood, Kalkere, Bengaluru 560013) created without map coordinates or delivery zone
-  (to be set once verified). Initial configured stock: 500 per approved option at BLR-01 (`staging/initial_stock_blr01.csv`,
+- Store BLR-01 (AS Hardware & Plywood, Kalkere, Bengaluru 560113). Verified map location 13.037555, 77.674350 and the
+  delivery policy (₹40 up to 5 km, ₹80 beyond, free from ₹2,000; no first-orders promotion) set 14-Oct-2026; both
+  travel in `release/shop_setup.json`. Initial configured stock: 500 per approved option at BLR-01 (`staging/initial_stock_blr01.csv`,
   booked as inventory adjustments; not a physical count).
 - GST/HSN per product from Notification 9/2025-Integrated Tax (Rate): `build_gst_hsn.py` → `audit/gst_hsn_review.xlsx`
   (status verified / rate verified / needs decision). The 9 "needs decision" products keep the 18% placeholder.

@@ -206,6 +206,7 @@ export function CheckoutPage() {
   const [method, setMethod] = useState<PaymentMethod | null>(null)
   const [note, setNote] = useState('')
   const [addingAddress, setAddingAddress] = useState(false)
+  const [pinningAddress, setPinningAddress] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
   // One key per checkout attempt: a double click or a retried request can't create two orders.
   const [idempotencyKey] = useState(newIdempotencyKey)
@@ -457,9 +458,11 @@ export function CheckoutPage() {
                             ? option.message || 'Not available for this order.'
                             : option.value === 'cod'
                               ? 'Pay in cash or UPI when your order arrives.'
-                              : option.test_mode
+                              : option.test_mode && option.provider !== 'razorpay'
                                 ? 'Development mode: you choose success, failure or cancellation on the next screen. No money moves.'
-                                : 'UPI, card or net banking.'}
+                                : option.test_mode
+                                  ? 'Razorpay test mode: pay with Razorpay’s test cards or UPI. No real money moves.'
+                                  : 'UPI, card or net banking.'}
                         </span>
                       </span>
                     </label>
@@ -515,7 +518,18 @@ export function CheckoutPage() {
             {issues.length > 0 && (
               <ul role="alert" className="mt-3 space-y-1 rounded-md bg-amber-100 p-3 text-sm text-ink-900">
                 {issues.map((issue) => (
-                  <li key={issue.code}>{issue.message}</li>
+                  <li key={issue.code}>
+                    {issue.message}
+                    {issue.code === 'address_location_required' && selectedAddress && (
+                      <button
+                        type="button"
+                        onClick={() => setPinningAddress(true)}
+                        className="ml-2 font-semibold text-amber-700 underline"
+                      >
+                        Add map pin
+                      </button>
+                    )}
+                  </li>
                 ))}
               </ul>
             )}
@@ -538,6 +552,9 @@ export function CheckoutPage() {
       </div>
 
       <AddressFormModal open={addingAddress} onClose={() => setAddingAddress(false)} onSaved={(a) => setChosenAddressId(a.id)} />
+      {selectedAddress && (
+        <AddressFormModal open={pinningAddress} onClose={() => setPinningAddress(false)} address={selectedAddress} />
+      )}
     </div>
   )
 }

@@ -146,6 +146,50 @@ describe('order history and detail', () => {
     expect(screen.getByText(/can’t be cancelled online/)).toBeInTheDocument()
   })
 
+  it('shows until when the order can be cancelled, and warns about the COD fee before cancelling', async () => {
+    signIn()
+    const preparing = orderDetail({
+      status: 'processing',
+      payment_method: 'cod',
+      can_cancel: true,
+      cancel_deadline: '2026-09-24T10:35:00+05:30',
+      cancellation_fee_if_cancelled: '200.00',
+    })
+    mockApi({ get: baseGet({ [`/orders/${NUMBER}/`]: preparing }) })
+    const { user } = renderRoute(`/account/orders/${NUMBER}`)
+    expect(await screen.findByTestId('cancel-deadline')).toHaveTextContent('You can cancel online until 10:35 AM.')
+    expect(screen.getByTestId('cancel-deadline')).toHaveTextContent('A cancellation fee of ₹200 applies now.')
+    await user.click(screen.getByRole('button', { name: 'Cancel order' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Cancel this order?' })
+    expect(within(dialog).getByText(/cancellation fee of ₹200 will be added to your next order/)).toBeInTheDocument()
+  })
+
+  it('a cancelled COD order says the fee goes on the next order, and the next order shows it in its price', async () => {
+    signIn()
+    mockApi({
+      get: baseGet({
+        [`/orders/${NUMBER}/`]: orderDetail({ status: 'cancelled', can_cancel: false, cancellation_fee: '200.00' }),
+        '/orders/OD260924NEXT01/': orderDetail({ order_number: 'OD260924NEXT01', previous_cancellation_fees: '200.00' }),
+      }),
+    })
+    renderRoute(`/account/orders/${NUMBER}`)
+    expect(await screen.findByTestId('cancellation-fee-owed')).toHaveTextContent(
+      'A cancellation fee of ₹200 will be added to your next order.',
+    )
+    renderRoute('/account/orders/OD260924NEXT01')
+    const row = await screen.findByTestId('cancellation-fee-row')
+    expect(row).toHaveTextContent('Cancellation fee (earlier cancelled order)')
+    expect(row).toHaveTextContent('₹200')
+  })
+
+  it('after the 5-minute window the order explains it can’t be cancelled online', async () => {
+    signIn()
+    mockApi({ get: baseGet({ [`/orders/${NUMBER}/`]: orderDetail({ status: 'confirmed', can_cancel: false, cancel_deadline: null }) }) })
+    renderRoute(`/account/orders/${NUMBER}`)
+    expect(await screen.findByText(/only within 5 minutes of placing/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancel order' })).not.toBeInTheDocument()
+  })
+
   it('customer cancels with a reason; the server result replaces the page state', async () => {
     signIn()
     const cancelled = orderDetail({

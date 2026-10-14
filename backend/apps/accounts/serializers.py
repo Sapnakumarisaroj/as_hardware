@@ -75,7 +75,13 @@ class AddressSerializer(serializers.ModelSerializer):
         read_only_fields = ["country", "created_at", "updated_at"]
 
     def validate(self, attrs):
-        lat, lng = attrs.get("latitude"), attrs.get("longitude")
-        if (lat is None) != (lng is None) and not self.partial:
-            raise serializers.ValidationError("Provide both latitude and longitude, or neither.")
+        # Every delivery address needs its map pin: the delivery distance (and fee) is measured to it.
+        # An edit must leave a pin in place, so an old address without one is completed when it is edited.
+        instance = self.instance
+        lat = attrs["latitude"] if "latitude" in attrs else getattr(instance, "latitude", None)
+        lng = attrs["longitude"] if "longitude" in attrs else getattr(instance, "longitude", None)
+        if lat is None or lng is None:
+            raise serializers.ValidationError(
+                {"location": ["Select your delivery location on the map (drop the pin on your building)."]}
+            )
         return attrs

@@ -10,6 +10,7 @@ import { useAuth } from '@/features/auth/context'
 import { BusinessProfileCard } from '@/features/business/BusinessProfile'
 import { ProductImage } from '@/features/catalog/components/ProductImage'
 import { OrderDeliveryCard } from '@/features/delivery/components'
+import { formatClock } from '@/features/delivery/format'
 import { DeliveryTracking } from '@/features/delivery/tracking'
 import { orderStatusLabel } from '@/features/orders/status'
 import { ORDERS_PAGE_SIZE, useOrder, useOrders, useRetryPayment, useReturns } from '@/features/orders/api'
@@ -426,12 +427,29 @@ export function OrderDetailPage() {
             </div>
           )}
           {data.can_cancel && (
-            <button type="button" onClick={() => setCancelling(true)} className="btn-secondary w-full">
-              Cancel order
-            </button>
+            <div>
+              <button type="button" onClick={() => setCancelling(true)} className="btn-secondary w-full">
+                Cancel order
+              </button>
+              {data.cancel_deadline && (
+                <p className="mt-1 text-xs text-ink-600" data-testid="cancel-deadline">
+                  You can cancel online until {formatClock(data.cancel_deadline)}.
+                  {Number(data.cancellation_fee_if_cancelled ?? 0) > 0 &&
+                    ` A cancellation fee of ${formatPrice(data.cancellation_fee_if_cancelled ?? '0')} applies now.`}
+                </p>
+              )}
+            </div>
           )}
           {!data.can_cancel && !['cancelled', 'delivered', 'returned', 'delivery_failed'].includes(data.status) && (
-            <p className="text-xs text-ink-600">This order is already being packed or delivered, so it can’t be cancelled online.</p>
+            <p className="text-xs text-ink-600">
+              This order can’t be cancelled online any more: orders can be cancelled online only within 5 minutes of placing
+              them, and before packing. Please contact the shop if you need to change it.
+            </p>
+          )}
+          {data.status === 'cancelled' && Number(data.cancellation_fee ?? 0) > 0 && (
+            <p className="text-xs text-ink-600" data-testid="cancellation-fee-owed">
+              A cancellation fee of {formatPrice(data.cancellation_fee ?? '0')} will be added to your next order.
+            </p>
           )}
         </div>
       </div>

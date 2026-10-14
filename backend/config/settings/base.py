@@ -10,6 +10,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import environ
+from corsheaders.defaults import default_headers
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # backend/
 REPO_ROOT = BASE_DIR.parent
@@ -177,6 +178,9 @@ STORAGES = {
 
 # --- CORS / CSRF ----------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
+# Placing an order sends Idempotency-Key (apps/orders/views.py): without it here the browser's preflight
+# refuses the request when the site and API are on different origins (e.g. localhost:5173 → :8000).
+CORS_ALLOW_HEADERS = (*default_headers, "idempotency-key")
 CORS_EXPOSE_HEADERS = ["X-Request-ID"]
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
@@ -252,9 +256,9 @@ SPECTACULAR_SETTINGS = {
 FAST_DELIVERY_MAX_MINUTES = env.int("FAST_DELIVERY_MAX_MINUTES", default=60)
 # Deliver only inside the active city service areas (Bengaluru); off = store zones alone decide.
 DELIVERY_RESTRICT_TO_SERVICE_AREAS = env.bool("DELIVERY_RESTRICT_TO_SERVICE_AREAS", default=True)
-# Default fee rule; delivery zones can override both (Phase 9).
+# Default fee rule; delivery zones can override both (Phase 9). Shop policy: free delivery from ₹2,000.
 DELIVERY_FEE = Decimal(env.str("DELIVERY_FEE", default="") or "40.00")
-FREE_DELIVERY_MIN_ORDER = Decimal(env.str("FREE_DELIVERY_MIN_ORDER", default="") or "499.00")
+FREE_DELIVERY_MIN_ORDER = Decimal(env.str("FREE_DELIVERY_MIN_ORDER", default="") or "2000.00")
 # The shop's own details printed on invoices (apps/orders/invoice.py). Without a GSTIN the page is an
 # "Order receipt", not a GST tax invoice. Never filled in with placeholder data.
 INVOICE_SELLER_NAME = env("INVOICE_SELLER_NAME", default="")
@@ -309,6 +313,10 @@ MAPS_TIMEOUT_SECONDS = env.float("MAPS_TIMEOUT_SECONDS", default=4.0)
 ROUTE_CACHE_SECONDS = env.int("ROUTE_CACHE_SECONDS", default=24 * 3600)
 # Days after delivery during which a customer may request a return (Phase 7).
 RETURN_WINDOW_DAYS = env.int("RETURN_WINDOW_DAYS", default=7)
+# Customers may cancel an order themselves only within this many minutes of placing it (and before packing).
+CUSTOMER_CANCEL_WINDOW_MINUTES = env.int("CUSTOMER_CANCEL_WINDOW_MINUTES", default=5)
+# Charged when a customer cancels a cash-on-delivery order the shop has started preparing; added to their next order.
+COD_CANCELLATION_FEE = Decimal(env.str("COD_CANCELLATION_FEE", default="") or "200.00")
 
 # --- Provider selection (implemented from Phase 8 onwards) ------------------------------
 # Every external service sits behind an interface; these choose the implementation.

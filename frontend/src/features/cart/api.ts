@@ -68,6 +68,9 @@ export interface CartTotals {
   first_order_free_delivery?: boolean
   /** Optional unloading service (included in grand_total). */
   unloading_fee?: string
+  /** Cancellation fees owed from earlier cancelled cash-on-delivery orders (included in grand_total). */
+  previous_cancellation_fees?: string
+  cancellation_fee_orders?: string[]
 }
 
 export interface AppliedOffer {

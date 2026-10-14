@@ -194,6 +194,14 @@ export interface OrderDetail extends Omit<OrderSummary, 'item_count' | 'item_nam
   cancelled_at: string | null
   delivered_at: string | null
   can_cancel: boolean
+  /** Until when the customer can cancel online (5 minutes after placing); null once it can't. */
+  cancel_deadline?: string | null
+  /** What cancelling now would cost (₹200 for a COD order the shop is preparing). */
+  cancellation_fee_if_cancelled?: string
+  /** Fee charged for cancelling this order (added to the customer's next order). */
+  cancellation_fee?: string
+  /** Earlier cancellation fees included in this order's total. */
+  previous_cancellation_fees?: string
   can_retry_payment: boolean
   can_return: boolean
   return_window_ends_at: string | null
