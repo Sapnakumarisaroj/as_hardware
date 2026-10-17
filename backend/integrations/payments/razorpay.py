@@ -163,7 +163,7 @@ class RazorpayPaymentProvider(PaymentProvider):
             return VerificationResult(success=False, failure_reason="Invalid payment signature.")
 
         # The signature is genuine; now ask Razorpay what actually happened.
-        gateway = _payment(self.client.request("GET", f"/payments/{urllib.parse.quote(payment_id)}"))
+        gateway = self._fetch_payment(payment_id)
         if gateway.provider_order_id != provider_order_id:
             return VerificationResult(success=False, failure_reason="Payment belongs to a different order.")
         if expected_amount is not None and gateway.amount != expected_amount:
@@ -171,7 +171,11 @@ class RazorpayPaymentProvider(PaymentProvider):
                 success=False, provider_payment_id=payment_id, failure_reason="Paid amount does not match the order."
             )
         if gateway.status == "authorized":
-            gateway = self.capture(provider_payment_id=payment_id, amount=gateway.amount, currency=gateway.currency)
+            try:
+                gateway = self.capture(provider_payment_id=payment_id, amount=gateway.amount, currency=gateway.currency)
+            except GatewayRejected:
+                # Usually "already captured" (auto-capture or the webhook won the race): ask again.
+                gateway = self._fetch_payment(payment_id)
         if gateway.status == "captured":
             return VerificationResult(
                 success=True, provider_payment_id=payment_id, method=gateway.method, amount=gateway.amount
@@ -183,6 +187,9 @@ class RazorpayPaymentProvider(PaymentProvider):
                 failure_reason=gateway.failure_reason or "Payment failed.",
             )
         return VerificationResult(success=False, pending=True, provider_payment_id=payment_id)
+
+    def _fetch_payment(self, payment_id: str) -> GatewayPayment:
+        return _payment(self.client.request("GET", f"/payments/{urllib.parse.quote(payment_id)}"))
 
     def fetch_order_payments(self, *, provider_order_id: str) -> list[GatewayPayment]:
         data = self.client.request("GET", f"/orders/{urllib.parse.quote(provider_order_id)}/payments")

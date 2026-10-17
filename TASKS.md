@@ -716,6 +716,23 @@ Scope: the Phase 26 prompt (testing only; fix genuine bugs with regression tests
   MySQL/PostgreSQL (no server), real Razorpay/WhatsApp/SMTP accounts (none yet), load tests. All listed in the
   Phase 27 go-live checklist
 
+## Payments: Razorpay / Google Pay / UPI fixes (2026-10-17)
+Diagnosis (code, tests, live read-only checks; no production change, no real payment):
+- Live `https://ashardwareandplywood.com` runs `PAYMENT_PROVIDER=none` (COD only): both `/api/payments/webhooks/razorpay/`
+  and `/webhooks/mock/` answer 404 "Unknown webhook", which happens only when neither gateway is configured. Online
+  payment there is switched off by configuration, not broken code
+- Live (and repo) `Permissions-Policy: … payment=()` disabled the browser Payment Request API in the page and in
+  Razorpay's iframe; Razorpay uses it for Google Pay / UPI apps on Chrome for Android
+- Local `.env`: Razorpay TEST keys, accepted by Razorpay (`razorpay_check --ping`, read-only)
+- [x] `frontend/nginx/security-headers.conf`: `payment=(self "https://api.razorpay.com" "https://checkout.razorpay.com")`
+- [x] Product page no longer promises "Pay online" when the shop has no gateway (`quote.payment_options.online` was hard-coded `True`)
+- [x] Gateway errors when opening a payment (order or retry) → 503 `payment_gateway_unavailable` with a clear message, everything rolled back (was an unhandled 500)
+- [x] Gateway refusing verification → 409 `payment_verification_failed`, nothing changed (was a 500)
+- [x] Capture refused because the payment was already captured (webhook/auto-capture race) → re-fetched, order confirmed (was an error to a paying customer); redelivered `payment.authorized` after capture is ignored instead of failing until Razorpay disables the webhook
+- [x] Payment page: if verification fails after Razorpay reported success, it waits for the server instead of offering a second payment; Razorpay script load failures can be retried; UPI apps named and where they open explained
+- [x] Tests: `payments/tests/test_payment_hardening.py` (12), 2 provider tests, 4 frontend tests
+- [~] Not verified: nginx config syntax with `nginx -t` (Docker not running locally); Google Pay on a real Android phone (needs HTTPS + live/whitelisted account)
+
 ## Known limitations carried forward
 - COD limit: with plywood at ₹2–5k a sheet, the default ₹10,000 cash-on-delivery limit excludes most board orders (10 sheets ≈ ₹41,000); the owner may want to raise it in the dashboard (Cash on delivery) or rely on online payment
 - Reports/assistant: no purchase costs, so no profit or margin; orders count for the store chosen at checkout (a split order's second store shows in delivery figures only); periods ≤ 366 days; the assistant knows 16 kinds of question and answers in English; with a local model on CPU an AI-worded answer takes 4–10 s

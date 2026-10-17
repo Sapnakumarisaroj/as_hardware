@@ -138,6 +138,15 @@ describe('product page (Phase 16)', () => {
     expect(await screen.findByTestId('payment-options')).toHaveTextContent('Cash on Delivery isn’t available for orders above ₹10,000.')
   })
 
+  it('does not offer online payment when the shop has no payment gateway', async () => {
+    const cod = { available: true, reason_code: '', message: '', max_order_value: null }
+    mockApi({ get: detailRoutes({ '/products/fr-pvc-copper-wire/quote/': quote({ payment_options: { online: false, cod } }) }) })
+    renderRoute('/p/fr-pvc-copper-wire')
+    const options = await screen.findByTestId('payment-options')
+    expect(options).toHaveTextContent('Online payment isn’t available yet')
+    expect(options).not.toHaveTextContent('Pay online')
+  })
+
   it('sends the chosen PIN and shows the fast badge only when the server says fast to that PIN', async () => {
     savePincode('411038')
     const api = mockApi({

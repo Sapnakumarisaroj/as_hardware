@@ -153,6 +153,43 @@ def test_authorized_payment_is_captured_and_created_one_is_pending(provider):
     assert result.pending and not result.success and not result.failure_reason
 
 
+def test_capture_refused_because_already_captured_is_still_a_success(provider):
+    """Auto-capture or the webhook captured it between our fetch and our capture call."""
+    replies = iter([_payment(status="authorized"), _payment(status="captured")])
+    provider.client = FakeApi(
+        {
+            ("GET", "/payments/pay_1"): lambda body: next(replies),
+            ("POST", "/payments/pay_1/capture"): GatewayRejected("This payment has already been captured"),
+        }
+    )
+    payload = {
+        "razorpay_order_id": "order_1",
+        "razorpay_payment_id": "pay_1",
+        "razorpay_signature": _sig("order_1", "pay_1"),
+    }
+    result = provider.verify_payment(provider_order_id="order_1", payload=payload, expected_amount=Decimal("110.00"))
+    assert result.success and result.provider_payment_id == "pay_1" and result.amount == Decimal("110.00")
+    assert [c[:2] for c in provider.client.calls] == [
+        ("GET", "/payments/pay_1"), ("POST", "/payments/pay_1/capture"), ("GET", "/payments/pay_1")
+    ]  # fmt: skip
+
+
+def test_capture_refused_and_still_authorized_is_pending_not_paid(provider):
+    provider.client = FakeApi(
+        {
+            ("GET", "/payments/pay_1"): _payment(status="authorized"),
+            ("POST", "/payments/pay_1/capture"): GatewayRejected("Capture amount mismatch"),
+        }
+    )
+    payload = {
+        "razorpay_order_id": "order_1",
+        "razorpay_payment_id": "pay_1",
+        "razorpay_signature": _sig("order_1", "pay_1"),
+    }
+    result = provider.verify_payment(provider_order_id="order_1", payload=payload)
+    assert result.pending and not result.success
+
+
 def test_cancelled_checkout_needs_no_gateway_call(provider):
     provider.client = FakeApi({})
     result = provider.verify_payment(provider_order_id="order_1", payload={"cancelled": True})

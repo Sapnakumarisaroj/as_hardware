@@ -95,6 +95,7 @@ def payment_options(total, postal_code=None) -> dict:
     from apps.delivery.models import DeliveryZone
     from apps.delivery.pin import pin_context
     from apps.payments.cod_rules import cod_eligibility
+    from integrations.payments.registry import online_payments_enabled
 
     plan = zone = None
     pin = pin_context(postal_code)
@@ -104,7 +105,8 @@ def payment_options(total, postal_code=None) -> dict:
             plan = SimpleNamespace(shipments=[SimpleNamespace(store=zone.store, zone=zone)])
     cod = cod_eligibility(grand_total=total, plan=plan)
     return {
-        "online": True,
+        # False with PAYMENT_PROVIDER=none (cash-on-delivery-only shop): never advertise what checkout refuses.
+        "online": online_payments_enabled(),
         # Order value (after discounts) from which delivery is free: the zone's own rule, else the shop default.
         "free_delivery_from": _money(FeeRule.for_zone(zone).free_min),
         "cod": {

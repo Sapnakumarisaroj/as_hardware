@@ -110,7 +110,7 @@ export function QuantityPriceQuote({ slug, variantId, quantity }: { slug: string
   )
 }
 
-/** Payment choices for this amount: online always; cash on delivery with the shop's rule and reason. */
+/** Payment choices for this amount: online when the shop has a gateway; cash on delivery with its rule and reason. */
 export function PaymentOptionsNote({ slug, variantId, quantity }: { slug: string; variantId: number; quantity: number }) {
   const quote = useProductQuote(slug, variantId, quantity)
   const options = quote.data?.payment_options
@@ -118,7 +118,11 @@ export function PaymentOptionsNote({ slug, variantId, quantity }: { slug: string
   const cod = options.cod
   return (
     <ul className="space-y-1 text-sm" aria-label="Payment options" data-testid="payment-options">
-      <li className="text-ink-800">✓ Pay online (UPI, cards, net banking)</li>
+      {options.online ? (
+        <li className="text-ink-800">✓ Pay online (UPI, cards, net banking)</li>
+      ) : (
+        <li className="text-ink-600">✗ Online payment isn’t available yet</li>
+      )}
       {cod.available ? (
         <li className="text-ink-800">
           ✓ Cash on delivery

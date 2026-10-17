@@ -31,7 +31,14 @@ from apps.notifications.services import notify_order
 from apps.orders.delivery_info import delivery_sentence
 from apps.orders.models import Order, OrderStatus, PaymentMethod, PaymentStatus
 from apps.orders.services import apply_locked_transition, create_payment_for_order, tell_staff_new_order
-from integrations.payments import GatewayError, GatewayPayment, InvalidSignature, RefundResult, get_payment_provider
+from integrations.payments import (
+    GatewayError,
+    GatewayPayment,
+    GatewayRejected,
+    InvalidSignature,
+    RefundResult,
+    get_payment_provider,
+)
 from integrations.payments.registry import ONLINE_PROVIDERS
 
 from .models import Payment, Refund, WebhookEvent
@@ -159,6 +166,15 @@ def verify_payment(payment_public_id, *, user, payload: dict) -> Payment:
             "confirmed automatically within a few minutes.",
             code="payment_verification_unavailable",
         ) from exc
+    except GatewayRejected as exc:
+        # The gateway refused to look the payment up. Nothing changes here; a genuine payment still
+        # reaches us through the webhook or reconciliation.
+        logger.warning("Gateway refused verification of payment %s: %s", payment.pk, exc)
+        raise PaymentStateError(
+            "We couldn't confirm this payment. If money was taken, your order will be confirmed automatically "
+            "within a few minutes; otherwise you can try again.",
+            code="payment_verification_failed",
+        ) from exc
 
     with transaction.atomic():
         payment, order = _lock_pair(payment.pk)
@@ -260,6 +276,22 @@ def process_webhook(provider_name: str, *, body: bytes, headers) -> WebhookEvent
     return row
 
 
+def _capture_authorized(provider, gateway: GatewayPayment) -> GatewayPayment:
+    """Capture an authorised payment. If the gateway refuses (typically: checkout verification or
+    another delivery captured it a moment ago), use the gateway's current view of that payment, so a
+    redelivered `payment.authorized` never fails forever and gets the webhook disabled."""
+    try:
+        return provider.capture(
+            provider_payment_id=gateway.provider_payment_id, amount=gateway.amount, currency=gateway.currency
+        )
+    except GatewayRejected:
+        attempts = provider.fetch_order_payments(provider_order_id=gateway.provider_order_id)
+        current = next((a for a in attempts if a.provider_payment_id == gateway.provider_payment_id), None)
+        if current is None:
+            raise
+        return current
+
+
 def _dispatch(provider_name: str, event) -> str:
     kind = event.event_type
     if kind in ("payment.captured", "payment.failed", "payment.authorized", "order.paid") and event.payment:
@@ -268,9 +300,9 @@ def _dispatch(provider_name: str, event) -> str:
         if payment is None:
             return f"ignored: no payment for gateway order {gateway.provider_order_id}"
         if gateway.status == "authorized":
-            gateway = get_payment_provider(provider_name).capture(
-                provider_payment_id=gateway.provider_payment_id, amount=gateway.amount, currency=gateway.currency
-            )
+            if payment.status in MONEY_HELD:
+                return f"ignored: payment {payment.public_id} already captured"
+            gateway = _capture_authorized(get_payment_provider(provider_name), gateway)
         return f"payment {payment.public_id}: " + apply_gateway_payment(payment.pk, gateway, source=f"webhook:{kind}")
 
     if kind.startswith("refund.") and event.refund:
@@ -305,9 +337,7 @@ def reconcile_payment(payment_pk: int) -> str:
     captured = next((a for a in attempts if a.status == "captured"), None)
     authorized = next((a for a in attempts if a.status == "authorized"), None)
     if captured is None and authorized is not None:
-        captured = provider.capture(
-            provider_payment_id=authorized.provider_payment_id, amount=authorized.amount, currency=authorized.currency
-        )
+        captured = _capture_authorized(provider, authorized)
     if captured is not None and captured.status == "captured":
         return apply_gateway_payment(payment_pk, captured, source="reconciliation")
     return "nothing_captured"

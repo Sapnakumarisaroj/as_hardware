@@ -437,6 +437,21 @@ Razorpay go-live: put the live keys in `.env` (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_
 Razorpay dashboard for `https://api.yourdomain.com/api/payments/webhooks/razorpay/` with a secret
 (`RAZORPAY_WEBHOOK_SECRET`) and the events `payment.captured`, `payment.failed`, `order.paid`, `refund.processed` and
 `refund.failed`. Enable auto-capture in the dashboard; authorised-only payments are captured by the server anyway.
+Then set `PAYMENT_PROVIDER=razorpay`, restart `backend` and `jobs`, and run `python manage.py razorpay_check --ping`
+in the backend container (prints the mode, never the secrets). Rebuild `web` too if it predates the Permissions-Policy
+fix below.
+
+Google Pay and other UPI apps (Razorpay account and browser requirements):
+- UPI must be activated on the Razorpay account (Dashboard → Account & Settings → Payment methods). Methods the
+  account doesn't have simply don't appear in Checkout, and the payment page tells customers to pick another one.
+- Google Pay *intent* on mobile web (the app opens directly) is an on-demand Razorpay feature: ask Razorpay support to
+  enable it. It works only over HTTPS in Chrome for Android (not in in-app web views). Elsewhere customers pay by UPI
+  ID (collect request).
+- Checkout uses the browser Payment Request API for this, which the site's `Permissions-Policy` must allow
+  (`frontend/nginx/security-headers.conf`: `payment=(self "https://api.razorpay.com" "https://checkout.razorpay.com")`).
+  Until October 2026 it said `payment=()`, which blocked it.
+- Test mode (`rzp_test_` keys) never moves money. Use Razorpay's test UPI ID `success@razorpay` / `failure@razorpay`
+  and test cards. UPI apps can't be opened for real in test mode.
 
 **Alternative, single domain** (if subdomains aren't possible): mount the Python app at `yourdomain.com/api`. That needs a
 small URL-prefix change; ask before choosing this.

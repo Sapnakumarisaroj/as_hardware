@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { OrderDetail, OrderPayment } from '@/features/orders/types'
 import { customer, orderDetail, pendingOnlineOrder } from '@/test/fixtures'
-import { mockApi } from '@/test/mockApi'
+import { httpError, mockApi } from '@/test/mockApi'
 import { currentUrl, renderRoute, signIn } from '@/test/utils'
 
 const NUMBER = 'OD260924ABCDEF'
@@ -124,6 +124,47 @@ describe('Razorpay checkout', () => {
     expect(screen.queryByRole('button', { name: 'Pay ₹800' })).not.toBeInTheDocument() // no double payment
     order = orderDetail({ payment_method: 'online', payment_status: 'paid' }) // webhook confirmed it
     await waitFor(() => expect(currentUrl(router)).toBe(`/order-confirmation/${NUMBER}`), { timeout: 6000 })
+  })
+})
+
+describe('Razorpay checkout when verification fails', () => {
+  it('never offers a second payment after Razorpay reported success', async () => {
+    const opened = installCheckout()
+    let order = waiting()
+    mockApi({
+      get: baseGet({ [`/orders/${NUMBER}/`]: () => order }),
+      post: { [VERIFY]: httpError(503, 'Network Error', 'network_error') },
+    })
+    const { user, router } = renderRoute(`/orders/${NUMBER}/pay`)
+    await user.click(await screen.findByRole('button', { name: 'Pay ₹800' }))
+    await waitFor(() => expect(opened).toHaveLength(1))
+    ;(opened[0]!.options.handler as (r: object) => void)({ razorpay_payment_id: 'pay_X' })
+
+    expect(await screen.findByText('Confirming your payment…')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pay ₹800' })).not.toBeInTheDocument()
+    order = orderDetail({ payment_method: 'online', payment_status: 'paid' }) // the webhook confirmed it
+    await waitFor(() => expect(currentUrl(router)).toBe(`/order-confirmation/${NUMBER}`), { timeout: 6000 })
+  })
+
+  it('a failed verification of a cancellation leaves the Pay button', async () => {
+    const opened = installCheckout()
+    mockApi({
+      get: baseGet({ [`/orders/${NUMBER}/`]: waiting() }),
+      post: { [VERIFY]: httpError(503, 'Network Error', 'network_error') },
+    })
+    const { user } = renderRoute(`/orders/${NUMBER}/pay`)
+    await user.click(await screen.findByRole('button', { name: 'Pay ₹800' }))
+    await waitFor(() => expect(opened).toHaveLength(1))
+    ;(opened[0]!.options.modal as { ondismiss: () => void }).ondismiss()
+    expect(await screen.findByRole('button', { name: 'Pay ₹800' })).toBeInTheDocument()
+    expect(screen.queryByText('Confirming your payment…')).not.toBeInTheDocument()
+  })
+
+  it('names the UPI apps and explains where they open', async () => {
+    mockApi({ get: baseGet({ [`/orders/${NUMBER}/`]: waiting() }) })
+    renderRoute(`/orders/${NUMBER}/pay`)
+    expect(await screen.findByText(/Google Pay, PhonePe, Paytm/)).toBeInTheDocument()
+    expect(screen.getByText(/UPI apps open directly on Android phones in Chrome/)).toBeInTheDocument()
   })
 })
 

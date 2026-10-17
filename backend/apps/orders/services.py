@@ -4,6 +4,7 @@ Everything runs inside a transaction: if any step fails (stock, coupon, payment 
 nothing is written.
 """
 
+import logging
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta
@@ -32,7 +33,7 @@ from apps.offers.services import get_valid_coupon
 from apps.payments.cod_rules import cod_eligibility
 from apps.payments.models import Payment, Refund
 from apps.payments.refunds import create_refund
-from integrations.payments import get_payment_provider
+from integrations.payments import GatewayError, GatewayRejected, get_payment_provider
 from integrations.payments.registry import online_payments_enabled
 
 from .delivery_info import delivery_sentence, refresh_delivery_estimate
@@ -47,6 +48,8 @@ from .state_machine import (
     can_transition,
 )
 
+logger = logging.getLogger(__name__)
+
 _ORDER_NO_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I ambiguity
 
 
@@ -56,6 +59,14 @@ class OrderError(ServiceError):
 
 class InvalidTransition(ConflictError):
     default_code = "invalid_transition"
+
+
+class PaymentGatewayUnavailable(ServiceError):
+    """The gateway could not open a payment. The surrounding transaction rolls back: no order, no
+    reserved stock, nothing charged, so the customer can simply try again (or choose COD)."""
+
+    status_code = 503
+    default_code = "payment_gateway_unavailable"
 
 
 def generate_order_number() -> str:
@@ -418,12 +429,19 @@ def create_payment_for_order(order: Order) -> Payment:
         )
     provider = get_payment_provider()
     user = order.user
-    intent = provider.create_payment(
-        reference=order.order_number,
-        amount=order.grand_total,
-        # Prefills the gateway form for the customer only; nothing here is secret.
-        customer={"name": user.full_name, "email": user.email, "contact": getattr(user, "phone", "") or ""},
-    )
+    try:
+        intent = provider.create_payment(
+            reference=order.order_number,
+            amount=order.grand_total,
+            # Prefills the gateway form for the customer only; nothing here is secret.
+            customer={"name": user.full_name, "email": user.email, "contact": getattr(user, "phone", "") or ""},
+        )
+    except (GatewayError, GatewayRejected) as exc:
+        logger.warning("Payment gateway refused to open a payment for %s: %s", order.order_number, exc)
+        raise PaymentGatewayUnavailable(
+            "Online payment couldn't be started right now. Nothing was charged. Please try again in a few minutes "
+            "or choose cash on delivery."
+        ) from exc
     return Payment.objects.create(
         order=order,
         provider=provider.name,

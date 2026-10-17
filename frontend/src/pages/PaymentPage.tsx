@@ -72,7 +72,9 @@ export function PaymentPage() {
   const outcome = result ?? (lastClosed?.status === 'failed' ? 'failed' : lastClosed?.status === 'cancelled' ? 'cancelled' : null)
   const busy = verify.isPending || opening
 
-  function report(payload: Record<string, string | boolean>, fallback: 'failed' | 'cancelled') {
+  /** `paidAtGateway`: the gateway said the customer paid. If we can't verify that now (network, gateway
+   * hiccup), wait for the server (webhook / reconciliation) instead of offering a second payment. */
+  function report(payload: Record<string, string | boolean>, fallback: 'failed' | 'cancelled', paidAtGateway = false) {
     if (!attempt) return
     verify.mutate(
       { paymentId: attempt.public_id, payload },
@@ -86,8 +88,10 @@ export function PaymentPage() {
             setResult(fallback)
           }
         },
-        onError: (error) =>
-          toast.show(error instanceof ApiError ? error.message : 'Could not verify the payment.', { tone: 'error' }),
+        onError: (error) => {
+          toast.show(error instanceof ApiError ? error.message : 'Could not verify the payment.', { tone: 'error' })
+          if (paidAtGateway) setConfirming('waiting')
+        },
       },
     )
   }
@@ -98,7 +102,7 @@ export function PaymentPage() {
     setGatewayMessage('')
     try {
       await openRazorpayCheckout(attempt.client_payload, {
-        onSuccess: (response) => report({ ...response }, 'failed'),
+        onSuccess: (response) => report({ ...response }, 'failed', true),
         onDismiss: () => report({ cancelled: true }, 'cancelled'),
         onFailure: (message) => setGatewayMessage(message),
       })
@@ -165,7 +169,13 @@ export function PaymentPage() {
               <h2 id="pay-heading" className="font-bold">
                 Pay securely
               </h2>
-              <p className="mt-1 text-sm text-ink-600">UPI, cards, net banking and wallets via Razorpay.</p>
+              <p className="mt-1 text-sm text-ink-600">
+                UPI (Google Pay, PhonePe, Paytm and other UPI apps), cards, net banking and wallets via Razorpay.
+              </p>
+              <p className="mt-1 text-xs text-ink-600">
+                UPI apps open directly on Android phones in Chrome. On other devices, choose UPI and pay with your UPI
+                ID. If a method isn’t listed, it isn’t available for this payment. Please pick another one.
+              </p>
               {attempt.client_payload.test_mode && (
                 <p className="mt-2 rounded-md bg-amber-100 px-3 py-2 text-xs text-ink-900">
                   Razorpay test mode: use test cards/UPI only. No real money is charged.

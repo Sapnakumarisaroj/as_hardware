@@ -47,11 +47,14 @@ export function loadRazorpay(): Promise<RazorpayConstructor> {
     const script = document.createElement('script')
     script.src = RAZORPAY_SCRIPT
     script.async = true
-    script.onload = () => (window.Razorpay ? resolve(window.Razorpay) : reject(new Error('Razorpay did not load')))
-    script.onerror = () => {
+    // Reset on failure so the next tap tries again instead of reusing a rejected promise.
+    const fail = () => {
       loading = null
-      reject(new Error('Could not load the payment window. Check your connection and try again.'))
+      script.remove()
+      reject(new Error('Could not load the payment window. Check your connection (or turn off any ad blocker) and try again.'))
     }
+    script.onload = () => (window.Razorpay ? resolve(window.Razorpay) : fail())
+    script.onerror = fail
     document.body.appendChild(script)
   })
   return loading
