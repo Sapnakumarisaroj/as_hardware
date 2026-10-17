@@ -17,7 +17,15 @@ describe('homepage', () => {
     const api = mockApi({ get: { ...catalogRoutes(), '/delivery/promise/': { fast_delivery_max_minutes: 60 } } })
     renderRoute('/')
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Hardware for every project' })).toBeInTheDocument()
+    // The banner picture carries the headline and category strip; they are not repeated as visible text.
+    expect(screen.getByRole('heading', { level: 1, name: 'Plywood, Hardware and More' })).toHaveClass('sr-only')
+    const banner = screen.getByTestId('hero-banner')
+    expect(banner).toHaveAttribute('src', '/images/home/hero-banner-1983.webp')
+    expect(banner.getAttribute('srcset')).toContain('/images/home/hero-banner-1200.webp 1200w')
+    expect(banner).toHaveAttribute('alt', expect.stringMatching(/hinges, drawer channels/))
+    const range = screen.getByRole('region', { name: 'Our product range' })
+    expect(within(range).getByRole('img')).toHaveAttribute('alt', expect.stringContaining('Hinges, Channels & Handles'))
+    expect(screen.queryByText('Hardware for')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Shop now/ })).toHaveAttribute('href', '/products')
     expect(screen.getByRole('link', { name: 'Browse categories' })).toHaveAttribute('href', '#categories')
     // Delivery lives in the header's selector; there is no separate delivery bar on the page.

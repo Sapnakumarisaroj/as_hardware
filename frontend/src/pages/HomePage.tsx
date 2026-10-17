@@ -86,7 +86,60 @@ function HeroGroups() {
   )
 }
 
-/** 1. Hero: headline, the two main actions and an honest delivery line. */
+const HERO_BANNER = '/images/home/hero-banner'
+const HERO_CATEGORIES = '/images/home/hero-categories-1983.webp'
+const HERO_CATEGORY_NAMES = [
+  'Plywood, MDF & HDHMR',
+  'Adhesives & Chemicals',
+  'Hinges, Channels & Handles',
+  'Kitchen Systems & Accessories',
+  'Wardrobe & Bed Fittings',
+  'Door Locks & Hardware',
+  'Tools & Accessories',
+  'Laminates, Veneers & Edge Bands',
+]
+
+/**
+ * The shop's banner (public/images/home, cut from assets/as-hardware-images/background.png). Its
+ * headline and category strip are part of the picture, so they are not repeated as visible text: the
+ * h1 is for screen readers and the strip has an alt text. Phones crop the banner's sides (the headline
+ * and products stay in the middle) and scroll the strip sideways at a readable size; from `xl` the
+ * strip fits the width.
+ */
+function HeroBanner() {
+  return (
+    <div className="mx-auto max-w-[1983px] bg-[#f3f3f3]">
+      <h1 className="sr-only">Plywood, Hardware and More</h1>
+      <img
+        src={`${HERO_BANNER}-1983.webp`}
+        srcSet={`${HERO_BANNER}-1200.webp 1200w, ${HERO_BANNER}-1983.webp 1983w`}
+        sizes="(max-width: 639px) 158vw, (min-width: 1983px) 1983px, 100vw"
+        width={1983}
+        height={663}
+        fetchPriority="high"
+        alt="Plywood, MDF and HDHMR boards, hinges, drawer channels, handles, locks, Fevicol adhesive and edge bands in front of a modern kitchen. Everything for your home and interiors: premium quality products for homes, offices and projects."
+        className="block aspect-[19/10] w-full object-cover object-center sm:aspect-[1983/663]"
+        data-testid="hero-banner"
+      />
+      <div
+        className="overflow-x-auto overscroll-x-contain xl:overflow-visible"
+        role="region"
+        aria-label="Our product range"
+        tabIndex={0}
+      >
+        <img
+          src={HERO_CATEGORIES}
+          width={1983}
+          height={130}
+          alt={`Product range: ${HERO_CATEGORY_NAMES.join('; ')}.`}
+          className="block h-[104px] w-auto max-w-none xl:h-auto xl:w-full"
+        />
+      </div>
+    </div>
+  )
+}
+
+/** 1. Hero: the banner, the two main actions and an honest delivery line. */
 function Hero() {
   const { minutes, pincode, check, fastHere, notServed } = useDeliveryClaims()
   const fastLine = fastHere
@@ -96,23 +149,14 @@ function Hero() {
       : null
   return (
     <section className="relative overflow-hidden border-b border-steel-200 bg-white text-ink-950">
-      <div className="container-page relative grid items-center gap-8 py-10 sm:py-14 lg:grid-cols-[1.05fr_1fr] lg:gap-12 lg:py-16">
+      <HeroBanner />
+      <div className="container-page relative grid items-center gap-8 py-8 sm:py-10 lg:grid-cols-[1.05fr_1fr] lg:gap-12">
         <div className="animate-rise">
           <p className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
             <PinIcon className="size-3.5" />
             {business.name} · Delivering across Bengaluru
           </p>
-          <h1 className="mt-4 text-4xl font-extrabold leading-[1.08] sm:text-5xl lg:text-6xl">
-            Hardware for <span className="text-amber-600">every project</span>
-          </h1>
-          <p className="mt-3 text-xl font-bold text-ink-800 sm:text-2xl" data-testid="hero-tagline">
-            {business.tagline}
-          </p>
-          <p className="mt-3 max-w-xl text-base text-ink-600 sm:text-lg">
-            Quality hardware, tools and fittings delivered across Bengaluru. Live prices, real stock and delivery times for your
-            address.
-          </p>
-          <div className="mt-7 flex flex-wrap gap-3">
+          <div className="mt-5 flex flex-wrap gap-3">
             <Link to="/products" className="btn-primary px-6 py-3 text-base">
               Shop now
               <ChevronRightIcon className="size-4" />
