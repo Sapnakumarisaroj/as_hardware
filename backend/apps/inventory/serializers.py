@@ -57,7 +57,8 @@ class StockAdjustSerializer(serializers.Serializer):
 
     movement_type = serializers.ChoiceField(choices=MANUAL_TYPES)
     quantity = serializers.IntegerField()
-    reason = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    # Every manual change says why, so the stock history can be understood later.
+    reason = serializers.CharField(max_length=255)
     reference = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")
 
     def validate_quantity(self, value):

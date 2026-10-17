@@ -24,6 +24,7 @@ from .serializers import (
         parameters=[
             OpenApiParameter("store", int),
             OpenApiParameter("sku", str),
+            OpenApiParameter("product", int),
             OpenApiParameter("low_stock", bool),
             OpenApiParameter("q", str, description="SKU, product, variant or store"),
             OpenApiParameter("stock", str, enum=["out", "low", "ok"]),
@@ -70,6 +71,8 @@ class InventoryViewSet(
             qs = qs.filter(store_id=store)
         if sku := params.get("sku"):
             qs = qs.filter(variant__sku__icontains=sku)
+        if (product := params.get("product")) and product.isdigit():  # one product's stock (product page)
+            qs = qs.filter(variant__product_id=product)
         if params.get("low_stock") in ("1", "true"):
             qs = qs.filter(available_quantity__lte=F("low_stock_threshold"))
         if term := (params.get("q") or "").strip():

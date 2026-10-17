@@ -12,6 +12,7 @@ import {
   useCategoryCrud,
   useChangeProductImage,
   useDeleteProduct,
+  useInventory,
   useProduct,
   useProducts,
   usePublishProduct,
@@ -20,7 +21,16 @@ import {
 } from '@/features/admin/api'
 import { flattenCategories } from '@/features/admin/categories'
 import { useSession } from '@/features/admin/session'
-import type { AdminBrand, AdminCategory, AdminProduct, AdminProductRow, ProductInput, RelationKind, VariantInput } from '@/features/admin/types'
+import type {
+  AdminBrand,
+  AdminCategory,
+  AdminProduct,
+  AdminProductRow,
+  InventoryRow,
+  ProductInput,
+  RelationKind,
+  VariantInput,
+} from '@/features/admin/types'
 import { useOptionTypes } from '@/features/admin/api'
 import {
   Badge,
@@ -47,8 +57,14 @@ import { formatPrice } from '@/lib/format'
 import { usePageMeta } from '@/lib/usePageMeta'
 
 import { NotFoundPage } from '../NotFoundPage'
+import { AdjustDialog, StockBadge } from './InventoryPage'
 
 // --- Product list --------------------------------------------------------------------------------
+
+/** Products are never really deleted (orders refer to them): the server archives them. */
+function productStateText(state: string): string | undefined {
+  return state === 'live' ? 'On sale' : state === 'deleted' ? 'Archived' : undefined
+}
 
 function priceRange(product: AdminProductRow): string {
   if (!product.price_from) return '—'
@@ -125,7 +141,7 @@ export function AdminProductsPage() {
       header: 'Status',
       cell: (product) => (
         <span className="flex flex-wrap justify-end gap-1 md:justify-start">
-          <StatusBadge status={product.state} text={product.state === 'live' ? 'On sale' : undefined} />
+          <StatusBadge status={product.state} text={productStateText(product.state)} />
           {!product.is_returnable && <Badge>No returns</Badge>}
           {product.is_featured && <Badge tone="info">Featured</Badge>}
           {product.is_demo && <Badge tone="warn">Demo</Badge>}
@@ -174,7 +190,7 @@ export function AdminProductsPage() {
 <span className="sr-only">{product.name}</span>
                   </button>
                   <button type="button" className="btn-secondary px-2.5 py-1.5 text-danger-600" onClick={() => setDeleting(product)}>
-                    Delete{' '}
+                    Archive{' '}
 <span className="sr-only">{product.name}</span>
                   </button>
                 </span>
@@ -208,12 +224,12 @@ export function AdminProductsPage() {
           list={list}
           name="state"
           label="Status"
-          all="Not deleted"
+          all="Not archived"
           options={[
             ['live', 'On sale'],
             ['draft', 'Not published'],
             ['inactive', 'Inactive'],
-            ['deleted', 'Deleted'],
+            ['deleted', 'Archived'],
           ]}
         />
         <FilterSelect
@@ -236,8 +252,8 @@ export function AdminProductsPage() {
       />
       <ConfirmDialog
         open={deleting !== null}
-        title={`Delete ${deleting?.name ?? ''}?`}
-        confirmLabel="Delete product"
+        title={`Archive ${deleting?.name ?? ''}?`}
+        confirmLabel="Archive product"
         danger
         busy={remove.isPending}
         error={remove.error}
@@ -249,13 +265,16 @@ export function AdminProductsPage() {
           if (!deleting) return
           remove.mutate(deleting.id, {
             onSuccess: () => {
-              toast.show(`${deleting.name} deleted. You can restore it from “Deleted”.`)
+              toast.show(`${deleting.name} archived. You can restore it from “Archived”.`)
               setDeleting(null)
             },
           })
         }}
       >
-        <p>Customers will no longer see this product. Past orders keep their details, and you can restore the product later.</p>
+        <p>
+          Customers will no longer see this product. Past orders, payments and stock history are kept, and you can restore the
+          product later.
+        </p>
       </ConfirmDialog>
     </>
   )
@@ -1092,6 +1111,76 @@ function ProductForm({ product }: { product: AdminProduct | null }) {
   )
 }
 
+/** Stock of each variant per store, adjusted through the same ledgered movements as the Inventory page:
+ * quantities are never typed over, reserved units stay with their orders, and every change has a reason. */
+function ProductStock({ product }: { product: AdminProduct }) {
+  const stock = useInventory({ product: product.id, page_size: 100 })
+  const [adjusting, setAdjusting] = useState<InventoryRow | null>(null)
+  const rows = stock.data?.results ?? []
+  return (
+    <Panel
+      title="Stock per store"
+      action={
+        <Link to={`/admin/inventory?q=${encodeURIComponent(product.sku)}`} className="text-sm font-semibold text-amber-700 hover:underline">
+          Open inventory
+        </Link>
+      }
+    >
+      {stock.isPending ? (
+        <p className="text-sm text-ink-600">Loading stock…</p>
+      ) : stock.isError ? (
+        <p className="text-sm text-danger-600">{errorMessage(stock.error)}</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-ink-600">No stock records yet. Add one for a store on the Inventory page.</p>
+      ) : (
+        <table className="w-full text-left text-sm">
+          <caption className="sr-only">Stock of {product.name}</caption>
+          <thead className="text-xs uppercase text-ink-600">
+            <tr>
+              <th scope="col" className="py-1.5 pr-3">
+                Variant
+              </th>
+              <th scope="col" className="py-1.5 pr-3">
+                Store
+              </th>
+              <th scope="col" className="py-1.5 pl-3 text-right">
+                Available
+              </th>
+              <th scope="col" className="py-1.5 pl-3 text-right">
+                Reserved
+              </th>
+              <th scope="col" className="py-1.5 pl-3">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody className="tabular-nums">
+            {rows.map((row) => (
+              <tr key={row.id} className="border-t border-steel-100">
+                <th scope="row" className="py-1.5 pr-3 font-medium">
+                  {row.variant_name || row.product_name}
+                  <span className="block text-xs font-normal text-ink-600">SKU {row.sku}</span>
+                </th>
+                <td className="py-1.5 pr-3">
+                  {row.store_name} <StockBadge row={row} />
+                </td>
+                <td className="py-1.5 pl-3 text-right">{row.available_quantity}</td>
+                <td className="py-1.5 pl-3 text-right">{row.reserved_quantity}</td>
+                <td className="py-1.5 pl-3 text-right">
+                  <button type="button" className="btn-secondary px-2.5 py-1.5" onClick={() => setAdjusting(row)}>
+                    Adjust <span className="sr-only">{`${row.sku} at ${row.store_name}`}</span>
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <AdjustDialog row={adjusting} onClose={() => setAdjusting(null)} />
+    </Panel>
+  )
+}
+
 function ProductSummary({ product }: { product: AdminProduct }) {
   return (
     <div className="space-y-5">
@@ -1180,7 +1269,7 @@ export function AdminProductPage() {
         description={`SKU ${product.sku} · last changed ${dateTime(product.updated_at)}`}
         actions={
           <>
-            <StatusBadge status={product.state} text={product.state === 'live' ? 'On sale' : undefined} />
+            <StatusBadge status={product.state} text={productStateText(product.state)} />
             {product.state === 'live' ? (
               <Link to={`/p/${product.slug}`} className="btn-secondary">
                 View in the shop
@@ -1194,11 +1283,12 @@ export function AdminProductPage() {
         }
       />
       {product.is_deleted && (
-        <p className="mb-4 rounded-md bg-amber-100 px-3 py-2 text-sm">This product is deleted. Restore it from the product list to change it.</p>
+        <p className="mb-4 rounded-md bg-amber-100 px-3 py-2 text-sm">This product is archived. Restore it from the product list (Status: Archived) to change it.</p>
       )}
       {editable ? (
         <div className="space-y-5">
           <Images product={product} />
+          <ProductStock product={product} />
           <ProductForm key={product.updated_at} product={product} />
         </div>
       ) : (

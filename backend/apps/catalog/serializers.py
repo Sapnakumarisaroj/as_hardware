@@ -15,6 +15,7 @@ from .models import (
     ProductSpecification,
     ProductVariant,
     RecentSearch,
+    normalize_sku,
 )
 from .selectors import stock_status
 
@@ -754,6 +755,28 @@ class ProductWriteSerializer(serializers.ModelSerializer):
     def validate_tags(self, value):
         if not isinstance(value, list) or not all(isinstance(t, str) and len(t) <= 50 for t in value):
             raise serializers.ValidationError("Tags must be a list of short strings.")
+        return value
+
+    def _unused(self, field: str, value: str) -> str:
+        # Archived products keep their SKU and address; the default manager hides them, so look at all rows
+        # (otherwise the clash is only found by the database, as a server error).
+        clash = Product.all_objects.filter(**{field: value}).exclude(pk=getattr(self.instance, "pk", None)).first()
+        if clash is not None:
+            where = "an archived product" if clash.is_deleted else f"'{clash.name}'"
+            raise serializers.ValidationError(f"'{value}' is already used by {where}. Choose another.")
+        return value
+
+    def validate_sku(self, value):
+        return self._unused("sku", normalize_sku(value))
+
+    def validate_slug(self, value):
+        return self._unused("slug", value) if value else value
+
+    def validate_hsn_code(self, value):
+        # Same rule as the Django admin. An unchanged legacy code doesn't block other edits.
+        unchanged = self.instance is not None and value == self.instance.hsn_code
+        if value and not unchanged and not (value.isdigit() and len(value) in (4, 6, 8)):
+            raise serializers.ValidationError("HSN codes are 4, 6 or 8 digits.")
         return value
 
     def validate(self, attrs):

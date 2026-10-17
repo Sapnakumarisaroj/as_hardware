@@ -61,7 +61,7 @@ describe('products', () => {
     const { user } = renderRoute('/admin/products')
     await screen.findByRole('table', { name: 'Products' })
     await user.type(screen.getByLabelText('Search by name or SKU'), 'drill{Enter}')
-    await user.selectOptions(screen.getByLabelText('Status'), 'Deleted')
+    await user.selectOptions(screen.getByLabelText('Status'), 'Archived')
     await user.selectOptions(screen.getByLabelText('Category'), 'Tools › Drills')
     await waitFor(() =>
       expect(paramsSent(api.get, '/admin/products/').at(-1)).toEqual({
@@ -86,7 +86,7 @@ describe('products', () => {
     expect(await screen.findByText('Impact Drill 650W is no longer on sale.')).toBeInTheDocument()
   })
 
-  it('deletes only after a confirmation, and restores a deleted product', async () => {
+  it('archives only after a confirmation, and restores an archived product', async () => {
     signIn()
     const api = mockApi({
       get: staffGet('admin', {
@@ -97,16 +97,17 @@ describe('products', () => {
       post: { '/admin/products/5/restore/': adminProduct({ id: 5, name: 'Old Saw', state: 'draft' }) },
     })
     const { user } = renderRoute('/admin/products?state=all')
-    await user.click(await screen.findByRole('button', { name: 'Delete Impact Drill 650W' }))
-    const dialog = within(screen.getByRole('dialog', { name: 'Delete Impact Drill 650W?' }))
+    expect(await screen.findByText('Archived')).toBeInTheDocument() // Old Saw's status
+    await user.click(await screen.findByRole('button', { name: 'Archive Impact Drill 650W' }))
+    const dialog = within(screen.getByRole('dialog', { name: 'Archive Impact Drill 650W?' }))
     expect(api.delete).not.toHaveBeenCalled()
     await user.click(dialog.getByRole('button', { name: 'Cancel' }))
     expect(api.delete).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('button', { name: 'Delete Impact Drill 650W' }))
-    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete product' }))
+    await user.click(screen.getByRole('button', { name: 'Archive Impact Drill 650W' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Archive product' }))
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/admin/products/1/'))
-    expect(await screen.findByText(/Impact Drill 650W deleted/)).toBeInTheDocument()
+    expect(await screen.findByText(/Impact Drill 650W archived/)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Restore Old Saw' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/admin/products/5/restore/', {}))
@@ -118,7 +119,7 @@ describe('products', () => {
     const { user } = renderRoute('/admin/products')
     await screen.findByRole('table', { name: 'Products' })
     expect(screen.queryByRole('link', { name: 'Add product' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Delete|Unpublish/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Archive|Delete|Unpublish/ })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('link', { name: 'Impact Drill 650W' }))
     const variants = within(await screen.findByRole('table', { name: 'Variants of Impact Drill 650W' }))
@@ -242,6 +243,55 @@ describe('products', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalled())
     const form = lastBody(api.post, '/admin/products/1/images/') as FormData
     expect(form.get('image')).toBe(file)
+  })
+
+  it('adjusts stock per store from the product page through the ledger, with a reason', async () => {
+    signIn()
+    const api = mockApi({
+      get: staffGet('admin', catalogGet({ '/admin/products/1/': adminProduct(), '/inventory/': page([inventoryRow()]) })),
+      post: {
+        '/inventory/51/adjust/': ({ body }: RequestInfo) => ({
+          id: 901,
+          inventory: 51,
+          movement_type: 'purchase',
+          quantity: (body as { quantity: number }).quantity,
+          available_after: 10,
+          reserved_after: 2,
+        }),
+      },
+    })
+    const { user } = renderRoute('/admin/products/1')
+    const stock = within(await screen.findByRole('table', { name: 'Stock of Impact Drill 650W' }))
+    expect(paramsSent(api.get, '/inventory/').at(-1)).toMatchObject({ product: '1' })
+    const row = within(stock.getByRole('row', { name: /DEMO-DRILL-STD/ }))
+    expect(row.getByText('4')).toBeInTheDocument() // available
+    expect(row.getByText('2')).toBeInTheDocument() // reserved for orders: shown, never editable
+
+    await user.click(row.getByRole('button', { name: 'Adjust DEMO-DRILL-STD at Kothrud Store' }))
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getByText(/4 available, 2 reserved for orders/)).toBeInTheDocument()
+    await user.type(dialog.getByLabelText(/^Units/), '6')
+    await user.click(dialog.getByRole('button', { name: 'Record movement' }))
+    expect(api.post).not.toHaveBeenCalled() // no movement without a reason
+
+    await user.type(dialog.getByLabelText(/^Reason/), 'Supplier bill 42')
+    await user.click(dialog.getByRole('button', { name: 'Record movement' }))
+    await waitFor(() =>
+      expect(lastBody(api.post, '/inventory/51/adjust/')).toEqual({
+        movement_type: 'purchase',
+        quantity: 6,
+        reason: 'Supplier bill 42',
+      }),
+    )
+    expect(await screen.findByText('DEMO-DRILL-STD: 10 units available now.')).toBeInTheDocument()
+  })
+
+  it('a store manager does not get the product page stock controls', async () => {
+    signIn()
+    mockApi({ get: staffGet('manager', catalogGet({ '/admin/products/1/': adminProduct(), '/inventory/': page([inventoryRow()]) })) })
+    renderRoute('/admin/products/1')
+    await screen.findByRole('table', { name: 'Variants of Impact Drill 650W' })
+    expect(screen.queryByRole('button', { name: /^Adjust/ })).not.toBeInTheDocument()
   })
 })
 

@@ -41,14 +41,14 @@ const KINDS: Record<Kind, { label: string; type: ManualMovement; sign: 1 | -1; h
   returned: { label: 'Returned to the shelf', type: 'return', sign: 1, hint: 'Sellable goods that came back outside a return request.' },
 }
 
-function StockBadge({ row }: { row: InventoryRow }) {
+export function StockBadge({ row }: { row: InventoryRow }) {
   if (!row.is_active) return <Badge>Not used</Badge>
   if (row.available_quantity === 0) return <Badge tone="bad">Out of stock</Badge>
   if (row.is_low_stock) return <Badge tone="warn">Low stock</Badge>
   return <Badge tone="good">In stock</Badge>
 }
 
-function AdjustDialog({ row, onClose }: { row: InventoryRow | null; onClose: () => void }) {
+export function AdjustDialog({ row, onClose }: { row: InventoryRow | null; onClose: () => void }) {
   const adjust = useAdjustStock()
   const toast = useToast()
   const [kind, setKind] = useState<Kind>('received')
